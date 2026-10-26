@@ -1,0 +1,151 @@
+// Prisma Schema for Ekdant Logistics - ICEGATE EDI Accelerator
+// Optimized for Supabase PostgreSQL and Indian Customs Compliance
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ShipmentType {
+  EXPORT // Shipping Bill (.sb)
+  IMPORT // Bill of Entry (.be)
+}
+
+enum ShipmentStatus {
+  DRAFT
+  EXTRACTED
+  AUDIT_PENDING
+  AUDIT_PASSED
+  EXPORTED_EDI
+  FILED_ICEGATE
+}
+
+enum UserRole {
+  OPERATOR
+  SENIOR_CHA_ADMIN
+}
+
+model ExporterMaster {
+  id              String     @id @default(uuid())
+  companyName     String
+  iec             String     @unique // 10-digit statutory IEC
+  gstin           String     @unique // 15-digit statutory GSTIN
+  adCode          String     // 7-digit RBI Authorized Dealer Code
+  bankName        String?
+  branchCode      String?
+  address         String?
+  defaultPortCode String     @default("INNSA1") // Nhava Sheva JNPT default
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  shipments       Shipment[]
+}
+
+model Shipment {
+  id              String         @id @default(uuid())
+  jobNo           String         @unique // Internal CHA Job Number e.g. EKD-2026-0042
+  shipmentType    ShipmentType   @default(EXPORT)
+  portCode        String         @default("INNSA1") // INNSA1 (Nhava Sheva) or INBOM4 (Air Cargo Mumbai)
+  customsHouse    String         @default("JNPT / Nhava Sheva")
+  status          ShipmentStatus @default(DRAFT)
+  
+  // Exporter / Importer reference
+  exporterId      String?
+  exporter        ExporterMaster? @relation(fields: [exporterId], references: [id])
+  exporterName    String
+  iec             String         // 10 digits
+  gstin           String         // 15 digits
+  adCode          String         // 7 digits
+  
+  // Consignee details
+  consigneeName   String
+  consigneeAddress String?
+  destinationCountry String?     @default("US")
+  portOfDischarge String?
+  
+  // Packages and Weight (Strict: Gross >= Net)
+  totalPackages   Int            @default(1)
+  packageType     String         @default("BOX")
+  grossWeightKg   Float
+  netWeightKg     Float
+  
+  // e-Sanchit Digital Signature Attribution
+  eSanchitIrn     String?        // 16-character e-Sanchit IRN signed via Class-3 DSC
+  
+  // Source PDF storage reference
+  pdfStoragePath  String?
+  pdfFileName     String?
+  pdfFileSize     Int?
+  
+  // Operator & Review
+  operatorRole    UserRole       @default(OPERATOR)
+  operatorNotes   String?
+  
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  invoices        Invoice[]
+  auditLogs       AuditLog[]
+}
+
+model Invoice {
+  id              String     @id @default(uuid())
+  shipmentId      String
+  shipment        Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  invoiceNo       String
+  invoiceDate     DateTime
+  currency        String     @default("USD")
+  exchangeRate    Float      @default(86.50)
+  incoterm        String     @default("FOB") // FOB, CIF, CFR, etc.
+  
+  invoiceTotal    Float      // Total on header
+  freightAmount   Float?     @default(0.0)
+  insuranceAmount Float?     @default(0.0)
+  miscCharges     Float?     @default(0.0)
+  
+  itemsTotalCalc  Float      @default(0.0) // Sum of line items
+  isMathBalanced  Boolean    @default(false)
+  mathDifference  Float      @default(0.0)
+  
+  items           LineItem[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model LineItem {
+  id              String   @id @default(uuid())
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  itemNumber      Int
+  description     String
+  
+  // Strict 8-digit Indian Customs Tariff Code (HSN/RITC)
+  hsnCode         String   // Exactly 8 digits
+  isHsnValid      Boolean  @default(false)
+  
+  quantity        Float
+  uqc             String   // ICEGATE standard: PCS, BOX, MTR, NOS, KGS, etc.
+  unitPrice       Float
+  itemTotalValue  Float    // Quantity * UnitPrice
+  
+  // Line level math check (|qty * rate - total| <= 0.5)
+  isLineMathValid Boolean  @default(true)
+  
+  schemeCode      String?  @default("00") // Drawback / RoDTEP export scheme code
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  ruleName   String   // e.g. "HSN_LENGTH_CHECK", "ARITHMETIC_RECONCILIATION", "WEIGHT_LOGIC"
+  severity   String   // "ERROR", "WARNING", "INFO"
+  message    String
+  resolved   Boolean  @default(false)
+  timestamp  DateTime @default(now())
+}
