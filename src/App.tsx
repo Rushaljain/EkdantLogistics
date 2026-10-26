@@ -40,9 +40,14 @@ export function App() {
   const [editingInvoice, setEditingInvoice] = useState<ConvertedInvoice | null>(null);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
 
-  // Gemini API Key
+  // Gemini API Key (reads from Vercel env PDF_Parser / VITE_GEMINI_API_KEY, localStorage, or default)
   const [apiKey, setApiKey] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_KEY_KEY) || import.meta.env.VITE_GEMINI_API_KEY || '';
+    return (
+      localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
+      (import.meta.env as any).PDF_Parser ||
+      import.meta.env.VITE_GEMINI_API_KEY ||
+      'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA'
+    );
   });
 
   // Persist invoices whenever updated
