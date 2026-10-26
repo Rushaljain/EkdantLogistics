@@ -1,346 +1,250 @@
-import React, { useState, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './components/Header';
-import { PdfViewerPane } from './components/PdfViewerPane';
-import { AuditStatusBar } from './components/AuditStatusBar';
-import { CustomsHeaderCards } from './components/CustomsHeaderCards';
-import { LineItemsGrid } from './components/LineItemsGrid';
-import { StickyMathFooter } from './components/StickyMathFooter';
-import { EdiInspectorModal } from './components/EdiInspectorModal';
-import { GeminiApiKeyModal } from './components/GeminiApiKeyModal';
-import { SAMPLE_SHIPMENT_NHAVA_SHEVA } from './data/mockInvoices';
-import type { 
-  ShipmentData, 
-  CustomsPortCode, 
-  UserRole, 
-  LineItemData, 
-  ExporterMasterData 
-} from './types/customs';
-import { 
-  runCustomsPreflightAudit, 
-  autoReconcileHeaderTotal 
-} from './services/arithmeticReconciliation';
-import { autoPadHsn, validateHsnCode } from './services/hsnValidator';
-import { 
-  extractInvoiceWithGemini, 
-  buildShipmentFromExtractedData 
-} from './services/geminiExtraction';
-import { saveShipment, getSavedShipments } from './services/supabaseClient';
-import { Loader2, Sparkles } from 'lucide-react';
+import { UploadZone } from './components/UploadZone';
+import { FileQueueCard } from './components/FileQueueCard';
+import { ConvertedOutputsFeed } from './components/ConvertedOutputsFeed';
+import { EditModal } from './components/EditModal';
+import { ApiKeyModal } from './components/ApiKeyModal';
+import type { ConvertedInvoice, QueueFile, CustomsPort } from './types';
+import { INITIAL_SAMPLE_INVOICE } from './data/profiles';
+import { extractInvoiceFromPdf } from './utils/geminiExtractor';
+
+const LOCAL_STORAGE_INVOICES_KEY = 'ekdant_customs_invoices_v2';
+const LOCAL_STORAGE_PORT_KEY = 'ekdant_customs_port_v2';
+const LOCAL_STORAGE_KEY_KEY = 'ekdant_gemini_key';
 
 export function App() {
-  const [shipment, setShipment] = useState<ShipmentData>(() => {
-    const saved = getSavedShipments();
-    return saved.length > 0 ? saved[0] : SAMPLE_SHIPMENT_NHAVA_SHEVA;
+  // Current active port
+  const [currentPort, setCurrentPort] = useState<CustomsPort>(() => {
+    return (localStorage.getItem(LOCAL_STORAGE_PORT_KEY) as CustomsPort) || 'INNSA1';
   });
 
-  const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
-  const [userRole, setUserRole] = useState<UserRole>('OPERATOR');
-  const [isEdiModalOpen, setIsEdiModalOpen] = useState<boolean>(false);
+  // Converted Invoices Feed
+  const [invoices, setInvoices] = useState<ConvertedInvoice[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    // Initial state: pre-load 1 realistic converted invoice
+    return [INITIAL_SAMPLE_INVOICE];
+  });
+
+  // Upload Queue
+  const [queue, setQueue] = useState<QueueFile[]>([]);
+  const [isProcessingQueue, setIsProcessingQueue] = useState<boolean>(false);
+
+  // Modals state
+  const [editingInvoice, setEditingInvoice] = useState<ConvertedInvoice | null>(null);
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
-  const [geminiKey, setGeminiKey] = useState<string>(() => {
-    return localStorage.getItem('ekdant_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY || '';
+
+  // Gemini API Key
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return localStorage.getItem(LOCAL_STORAGE_KEY_KEY) || import.meta.env.VITE_GEMINI_API_KEY || '';
   });
-  const [geminiModel, setGeminiModel] = useState<string>('gemini-2.5-flash');
-  const [isExtracting, setIsExtracting] = useState<boolean>(false);
-  const [uploadedPdfUrl, setUploadedPdfUrl] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Recalculate audit report whenever shipment changes
-  const updateShipmentWithAudit = (updated: ShipmentData) => {
-    const auditReport = runCustomsPreflightAudit(
-      updated.exporter,
-      updated.invoice,
-      updated.packages,
-      updated.lineItems
-    );
-    const newShipment = {
-      ...updated,
-      auditReport,
-      status: auditReport.overallAuditPassed ? ('AUDIT_PASSED' as const) : ('AUDIT_PENDING' as const)
-    };
-    setShipment(newShipment);
-    saveShipment(newShipment);
-  };
-
-  // Port change handler
-  const handlePortChange = (port: CustomsPortCode) => {
-    updateShipmentWithAudit({
-      ...shipment,
-      portCode: port,
-      customsHouse: port === 'INNSA1' ? 'Nhava Sheva / JNPT' : 'Mumbai Air Cargo',
-      invoice: {
-        ...shipment.invoice,
-        portOfLoading: port
-      }
-    });
-  };
-
-  // 1-Click Auto-Balance Header Math
-  const handleAutoReconcileMath = () => {
-    const newHeaderTotal = autoReconcileHeaderTotal(shipment.lineItems);
-    updateShipmentWithAudit({
-      ...shipment,
-      invoice: {
-        ...shipment.invoice,
-        invoiceTotal: newHeaderTotal
-      }
-    });
-  };
-
-  // 1-Click Auto-Pad all HSNs to 8 digits
-  const handleAutoPadAllHsns = () => {
-    const updatedLineItems = shipment.lineItems.map(item => {
-      const padded = autoPadHsn(item.hsnCode);
-      const hsnResult = validateHsnCode(padded);
-      return {
-        ...item,
-        hsnCode: padded,
-        isHsnValid: hsnResult.isValid
-      };
-    });
-    updateShipmentWithAudit({
-      ...shipment,
-      lineItems: updatedLineItems
-    });
-  };
-
-  // Update Exporter Master
-  const handleUpdateExporter = (exporter: ExporterMasterData) => {
-    updateShipmentWithAudit({
-      ...shipment,
-      exporter,
-      portCode: exporter.defaultPortCode || shipment.portCode
-    });
-  };
-
-  // Update Invoice Header
-  const handleUpdateInvoice = (invoicePartial: Partial<ShipmentData['invoice']>) => {
-    updateShipmentWithAudit({
-      ...shipment,
-      invoice: {
-        ...shipment.invoice,
-        ...invoicePartial
-      }
-    });
-  };
-
-  // Update Packages & Weights
-  const handleUpdatePackages = (packagesPartial: Partial<ShipmentData['packages']>) => {
-    const updatedPackages = {
-      ...shipment.packages,
-      ...packagesPartial
-    };
-    updatedPackages.weightRulePassed = updatedPackages.grossWeightKg >= updatedPackages.netWeightKg;
-    updateShipmentWithAudit({
-      ...shipment,
-      packages: updatedPackages
-    });
-  };
-
-  // Line item handlers
-  const handleUpdateItem = (index: number, updatedItem: LineItemData) => {
-    const newItems = [...shipment.lineItems];
-    newItems[index] = updatedItem;
-    updateShipmentWithAudit({
-      ...shipment,
-      lineItems: newItems
-    });
-  };
-
-  const handleAddItem = () => {
-    const nextNum = shipment.lineItems.length + 1;
-    const newItem: LineItemData = {
-      id: `item-${Date.now()}`,
-      itemNumber: nextNum,
-      description: 'NEW INDUSTRIAL GOODS LINE ITEM',
-      hsnCode: '84818090',
-      quantity: 1,
-      uqc: 'PCS',
-      unitPrice: 100.00,
-      itemTotalValue: 100.00,
-      calculatedTotal: 100.00,
-      isLineMathValid: true,
-      isHsnValid: true,
-      schemeCode: '00'
-    };
-    updateShipmentWithAudit({
-      ...shipment,
-      lineItems: [...shipment.lineItems, newItem]
-    });
-  };
-
-  const handleDuplicateItem = (index: number) => {
-    const source = shipment.lineItems[index];
-    const cloned: LineItemData = {
-      ...source,
-      id: `item-${Date.now()}`,
-      itemNumber: shipment.lineItems.length + 1
-    };
-    const newItems = [...shipment.lineItems];
-    newItems.splice(index + 1, 0, cloned);
-    updateShipmentWithAudit({
-      ...shipment,
-      lineItems: newItems
-    });
-  };
-
-  const handleDeleteItem = (index: number) => {
-    if (shipment.lineItems.length <= 1) return;
-    const newItems = shipment.lineItems.filter((_, idx) => idx !== index);
-    updateShipmentWithAudit({
-      ...shipment,
-      lineItems: newItems
-    });
-  };
-
-  // PDF File Upload & Gemini AI Extraction
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const fileUrl = URL.createObjectURL(file);
-    setUploadedPdfUrl(fileUrl);
-
-    // If no Gemini key, notify and open key modal
-    if (!geminiKey) {
-      setIsKeyModalOpen(true);
-      return;
+  // Persist invoices whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_INVOICES_KEY, JSON.stringify(invoices));
+    } catch (err) {
+      console.warn('Failed to save invoices to localStorage:', err);
     }
+  }, [invoices]);
+
+  // Persist port
+  const handlePortChange = (port: CustomsPort) => {
+    setCurrentPort(port);
+    localStorage.setItem(LOCAL_STORAGE_PORT_KEY, port);
+  };
+
+  // Save API Key
+  const handleSaveKey = (newKey: string) => {
+    setApiKey(newKey);
+    localStorage.setItem(LOCAL_STORAGE_KEY_KEY, newKey);
+  };
+
+  // Handle multiple files selected
+  const handleFilesSelected = async (files: File[]) => {
+    const newQueueItems: QueueFile[] = files.map(file => ({
+      id: `queue-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: file.name,
+      size: file.size,
+      status: 'processing',
+      file
+    }));
+
+    setQueue(prev => [...newQueueItems, ...prev]);
+    setIsProcessingQueue(true);
+
+    // Process each file
+    for (const item of newQueueItems) {
+      try {
+        if (!item.file) continue;
+        const converted = await extractInvoiceFromPdf(item.file, apiKey, currentPort);
+
+        // Update queue item status to converted
+        setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'converted' } : q));
+
+        // Add to converted invoices feed (newest first)
+        setInvoices(prev => [converted, ...prev]);
+      } catch (err: any) {
+        setQueue(prev => prev.map(q => q.id === item.id ? { 
+          ...q, 
+          status: 'failed', 
+          errorMessage: err.message || 'Processing failed' 
+        } : q));
+      }
+    }
+
+    setIsProcessingQueue(false);
+  };
+
+  // Retry a failed file
+  const handleRetryFile = async (fileId: string) => {
+    const target = queue.find(q => q.id === fileId);
+    if (!target || !target.file) return;
+
+    setQueue(prev => prev.map(q => q.id === fileId ? { ...q, status: 'processing', errorMessage: undefined } : q));
 
     try {
-      setIsExtracting(true);
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64 = reader.result as string;
-          const extracted = await extractInvoiceWithGemini(base64, geminiKey, geminiModel);
-          const newShipment = buildShipmentFromExtractedData(extracted, file.name);
-          updateShipmentWithAudit(newShipment);
-        } catch (err: any) {
-          alert(`Gemini Extraction Error: ${err.message || 'Failed to extract invoice'}`);
-        } finally {
-          setIsExtracting(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      setIsExtracting(false);
-      console.error(err);
+      const converted = await extractInvoiceFromPdf(target.file, apiKey, currentPort);
+      setQueue(prev => prev.map(q => q.id === fileId ? { ...q, status: 'converted' } : q));
+      setInvoices(prev => [converted, ...prev]);
+    } catch (err: any) {
+      setQueue(prev => prev.map(q => q.id === fileId ? { 
+        ...q, 
+        status: 'failed', 
+        errorMessage: err.message || 'Processing failed' 
+      } : q));
     }
   };
 
-  const handleSaveGeminiKey = (newKey: string, model: string) => {
-    setGeminiKey(newKey);
-    setGeminiModel(model);
-    localStorage.setItem('ekdant_gemini_key', newKey);
+  const handleRemoveQueueItem = (fileId: string) => {
+    setQueue(prev => prev.filter(q => q.id !== fileId));
   };
 
-  const handleLoadSample = (sample: ShipmentData) => {
-    setUploadedPdfUrl(null);
-    updateShipmentWithAudit(sample);
+  const handleClearCompletedQueue = () => {
+    setQueue(prev => prev.filter(q => q.status !== 'converted'));
+  };
+
+  // 1-Click Load Sample Invoice
+  const handleLoadSample = () => {
+    const now = new Date();
+    const timeString = `Today, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const isAir = currentPort === 'INBOM4';
+
+    const newSample: ConvertedInvoice = {
+      ...INITIAL_SAMPLE_INVOICE,
+      id: `inv-sample-${Date.now()}`,
+      invoiceNumber: `EXP/${now.getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
+      portOfLoading: currentPort,
+      portOfDischarge: isAir ? 'DEMUC' : 'DEHAM',
+      convertedAt: timeString,
+      rawTimestamp: Date.now()
+    };
+
+    setInvoices(prev => [newSample, ...prev]);
+
+    // Also add temporary item in queue for visual delight
+    setQueue(prev => [
+      {
+        id: `queue-${Date.now()}`,
+        name: isAir ? 'Sahyadri_Pharma_Air_Invoice.pdf' : 'Apex_Engineering_Valves_Invoice.pdf',
+        size: 248100,
+        status: 'converted'
+      },
+      ...prev
+    ]);
+  };
+
+  // Invoice Card Actions
+  const handleEditInvoice = (invoice: ConvertedInvoice) => {
+    setEditingInvoice(invoice);
+  };
+
+  const handleSaveInvoiceEdit = (updated: ConvertedInvoice) => {
+    setInvoices(prev => prev.map(inv => inv.id === updated.id ? updated : inv));
+  };
+
+  const handleDeleteInvoice = (invoiceId: string) => {
+    setInvoices(prev => prev.filter(inv => inv.id !== invoiceId));
+  };
+
+  const handleClearAllInvoices = () => {
+    setInvoices([]);
+    localStorage.removeItem(LOCAL_STORAGE_INVOICES_KEY);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Navigation */}
+    <div className="min-h-screen bg-slate-50/80 text-slate-900 flex flex-col font-sans">
+      {/* Top Navigation Bar */}
       <Header
-        currentPort={shipment.portCode}
+        currentPort={currentPort}
         onPortChange={handlePortChange}
-        userRole={userRole}
-        onRoleChange={setUserRole}
-        hasGeminiKey={Boolean(geminiKey)}
+        hasApiKey={Boolean(apiKey)}
         onOpenKeyModal={() => setIsKeyModalOpen(true)}
-        onLoadSample={handleLoadSample}
-        onUploadPdfClick={() => fileInputRef.current?.click()}
-        jobNo={shipment.jobNo}
       />
 
-      {/* Hidden File Input for PDF Ingestion */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/pdf"
-        className="hidden"
-        onChange={handleFileUpload}
+      {/* Main Workspace (2-Column Split) */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Left Column (5 Cols) — Upload & Queue */}
+          <section className="lg:col-span-5 space-y-5">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                Upload Documents
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Ingest multi-page invoices & packing lists for automatic ICEGATE conversion
+              </p>
+            </div>
+
+            {/* Drag & Drop Zone */}
+            <UploadZone
+              onFilesSelected={handleFilesSelected}
+              onLoadSample={handleLoadSample}
+              isProcessing={isProcessingQueue}
+            />
+
+            {/* Selected Files Queue Card */}
+            <FileQueueCard
+              queue={queue}
+              onRetry={handleRetryFile}
+              onRemove={handleRemoveQueueItem}
+              onClearCompleted={handleClearCompletedQueue}
+            />
+          </section>
+
+          {/* Right Column (7 Cols) — Converted Outputs Feed */}
+          <section className="lg:col-span-7">
+            <ConvertedOutputsFeed
+              invoices={invoices}
+              onEdit={handleEditInvoice}
+              onDelete={handleDeleteInvoice}
+              onClearAll={handleClearAllInvoices}
+              onLoadSample={handleLoadSample}
+            />
+          </section>
+        </div>
+      </main>
+
+      {/* Preview & Edit Modal */}
+      <EditModal
+        invoice={editingInvoice}
+        isOpen={Boolean(editingInvoice)}
+        onClose={() => setEditingInvoice(null)}
+        onSave={handleSaveInvoiceEdit}
       />
 
-      {/* Gemini AI Extraction Loading Overlay */}
-      {isExtracting && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
-          <div className="p-4 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm">
-            <Loader2 className="w-10 h-10 text-sky-400 animate-spin mb-3" />
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-sky-400" /> Google Gemini Vision
-            </h3>
-            <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-              Extracting structured Indian Customs EDI line items, 8-digit HSN codes, UQC values, and commercial totals...
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Main Split-Screen HITL Workspace */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Pane: Interactive Document & PDF Preview (45% Width) */}
-        <div className="w-[45%] h-full hidden md:block">
-          <PdfViewerPane
-            shipment={shipment}
-            activeItemIndex={activeItemIndex}
-            uploadedPdfUrl={uploadedPdfUrl}
-          />
-        </div>
-
-        {/* Right Pane: HITL Audit & Reconciliation Engine (55% Width) */}
-        <div className="flex-1 h-full flex flex-col overflow-hidden bg-slate-950">
-          {/* Compliance Status Bar */}
-          <AuditStatusBar
-            auditReport={shipment.auditReport}
-            onAutoPadAllHsns={handleAutoPadAllHsns}
-            onAutoReconcileMath={handleAutoReconcileMath}
-          />
-
-          {/* Exporter, Commercial Invoice, and Weight Master Cards */}
-          <CustomsHeaderCards
-            shipment={shipment}
-            onUpdateExporter={handleUpdateExporter}
-            onUpdateInvoice={handleUpdateInvoice}
-            onUpdatePackages={handleUpdatePackages}
-          />
-
-          {/* Interactive Line Items Grid */}
-          <LineItemsGrid
-            items={shipment.lineItems}
-            currency={shipment.invoice.currency}
-            onUpdateItem={handleUpdateItem}
-            onAddItem={handleAddItem}
-            onDuplicateItem={handleDuplicateItem}
-            onDeleteItem={handleDeleteItem}
-            onHoverItem={setActiveItemIndex}
-          />
-
-          {/* Sticky Reconciled Math Footer with Exporters */}
-          <StickyMathFooter
-            shipment={shipment}
-            onAutoReconcile={handleAutoReconcileMath}
-            onOpenEdiInspector={() => setIsEdiModalOpen(true)}
-          />
-        </div>
-      </div>
-
-      {/* ICEGATE ICES 1.5 Flat File Inspector Modal */}
-      <EdiInspectorModal
-        isOpen={isEdiModalOpen}
-        onClose={() => setIsEdiModalOpen(false)}
-        shipment={shipment}
-      />
-
-      {/* Gemini Vision API Key Configuration Modal */}
-      <GeminiApiKeyModal
+      {/* API Key Modal */}
+      <ApiKeyModal
         isOpen={isKeyModalOpen}
         onClose={() => setIsKeyModalOpen(false)}
-        currentKey={geminiKey}
-        onSaveKey={handleSaveGeminiKey}
+        currentKey={apiKey}
+        onSaveKey={handleSaveKey}
       />
     </div>
   );
