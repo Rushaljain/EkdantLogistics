@@ -5,11 +5,10 @@ import { FileQueueCard } from './components/FileQueueCard';
 import { ConvertedOutputsFeed } from './components/ConvertedOutputsFeed';
 import { EditModal } from './components/EditModal';
 import type { ConvertedInvoice, QueueFile, CustomsPort } from './types';
-import { INITIAL_SAMPLE_INVOICE } from './data/profiles';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 
-const LOCAL_STORAGE_INVOICES_KEY = 'ekdant_customs_invoices_v2';
-const LOCAL_STORAGE_PORT_KEY = 'ekdant_customs_port_v2';
+const LOCAL_STORAGE_INVOICES_KEY = 'ekdant_customs_invoices_v4';
+const LOCAL_STORAGE_PORT_KEY = 'ekdant_customs_port_v4';
 const LOCAL_STORAGE_KEY_KEY = 'ekdant_gemini_key';
 
 export function App() {
@@ -18,7 +17,7 @@ export function App() {
     return (localStorage.getItem(LOCAL_STORAGE_PORT_KEY) as CustomsPort) || 'INNSA1';
   });
 
-  // Converted Invoices Feed
+  // Converted Invoices Feed - starts clean with no hardcoded sample invoices
   const [invoices, setInvoices] = useState<ConvertedInvoice[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
@@ -27,8 +26,7 @@ export function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    // Initial state: pre-load 1 realistic converted invoice
-    return [INITIAL_SAMPLE_INVOICE];
+    return [];
   });
 
   // Upload Queue
@@ -120,36 +118,6 @@ export function App() {
     setQueue(prev => prev.filter(q => q.status !== 'converted'));
   };
 
-  // 1-Click Load Sample Invoice
-  const handleLoadSample = () => {
-    const now = new Date();
-    const timeString = `Today, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const isAir = currentPort === 'INBOM4';
-
-    const newSample: ConvertedInvoice = {
-      ...INITIAL_SAMPLE_INVOICE,
-      id: `inv-sample-${Date.now()}`,
-      invoiceNumber: `EXP/${now.getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
-      portOfLoading: currentPort,
-      portOfDischarge: isAir ? 'DEMUC' : 'DEHAM',
-      convertedAt: timeString,
-      rawTimestamp: Date.now()
-    };
-
-    setInvoices(prev => [newSample, ...prev]);
-
-    // Also add temporary item in queue for visual delight
-    setQueue(prev => [
-      {
-        id: `queue-${Date.now()}`,
-        name: isAir ? 'Sahyadri_Pharma_Air_Invoice.pdf' : 'Apex_Engineering_Valves_Invoice.pdf',
-        size: 248100,
-        status: 'converted'
-      },
-      ...prev
-    ]);
-  };
-
   // Invoice Card Actions
   const handleEditInvoice = (invoice: ConvertedInvoice) => {
     setEditingInvoice(invoice);
@@ -208,7 +176,6 @@ export function App() {
               onEdit={handleEditInvoice}
               onDelete={handleDeleteInvoice}
               onClearAll={handleClearAllInvoices}
-              onLoadSample={handleLoadSample}
             />
           </section>
         </div>

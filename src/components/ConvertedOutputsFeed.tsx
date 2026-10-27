@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Inbox, Trash2 } from 'lucide-react';
+import { Inbox, Trash2 } from 'lucide-react';
 import type { ConvertedInvoice } from '../types';
 import { OutputCard } from './OutputCard';
 
@@ -8,15 +8,13 @@ interface ConvertedOutputsFeedProps {
   onEdit: (invoice: ConvertedInvoice) => void;
   onDelete: (invoiceId: string) => void;
   onClearAll: () => void;
-  onLoadSample: () => void;
 }
 
 export const ConvertedOutputsFeed: React.FC<ConvertedOutputsFeedProps> = ({
   invoices,
   onEdit,
   onDelete,
-  onClearAll,
-  onLoadSample
+  onClearAll
 }) => {
   return (
     <div className="space-y-4">
@@ -56,15 +54,8 @@ export const ConvertedOutputsFeed: React.FC<ConvertedOutputsFeedProps> = ({
             No converted documents yet
           </h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm leading-relaxed">
-            Upload your commercial invoice or packing list PDF on the left, or test instantly with our pre-loaded customs sample.
+            Upload your commercial invoice or packing list PDF on the left to extract customs line items and generate EDI / Excel outputs.
           </p>
-          <button
-            onClick={onLoadSample}
-            className="mt-4 inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/80 px-3.5 py-1.5 rounded-lg transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Load Sample Invoice</span>
-          </button>
         </div>
       ) : (
         <div className="space-y-4">
