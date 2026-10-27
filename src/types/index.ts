@@ -45,6 +45,9 @@ export interface ConvertedInvoice {
   currency: string;    // USD, EUR, GBP, INR, AED, etc.
   exchangeRate: number;
   incoterm: 'FOB' | 'CIF' | 'CFR' | 'EXW';
+  subtotal?: number;   // Taxable amount of line items
+  gstAmount?: number;  // GST / Tax amount (CGST + SGST or IGST)
+  gstRate?: number;    // GST % (e.g. 18)
   invoiceTotal: number;
   
   // Physical Manifest

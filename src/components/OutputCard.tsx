@@ -38,9 +38,12 @@ export const OutputCard: React.FC<OutputCardProps> = ({
     minimumFractionDigits: 2
   }).format(invoice.invoiceTotal || 0);
 
-  // Math & HSN audit status check
+  // Math & HSN audit status check (accounting for GST/taxes if present)
   const itemsSum = invoice.lineItems.reduce((acc, it) => acc + (it.total || 0), 0);
-  const mathDrift = Math.abs(itemsSum - invoice.invoiceTotal) > 0.5;
+  const gstAmount = invoice.gstAmount || 0;
+  const isDirectMatch = Math.abs(itemsSum - invoice.invoiceTotal) <= 0.5;
+  const isGstMatch = Math.abs((itemsSum + gstAmount) - invoice.invoiceTotal) <= 0.5;
+  const mathDrift = !isDirectMatch && !isGstMatch;
   const hasShortHsn = invoice.lineItems.some(it => it.hsnCode.length !== 8);
   const isReviewSuggested = invoice.status === 'review_suggested' || mathDrift || hasShortHsn;
 

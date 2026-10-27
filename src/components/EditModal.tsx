@@ -107,10 +107,18 @@ export const EditModal: React.FC<EditModalProps> = ({
         };
       });
 
+      // If header total is greater than line items sum, the difference is GST
+      let finalGst = prev.gstAmount || 0;
+      if (finalGst === 0 && prev.invoiceTotal > sum) {
+        finalGst = Number((prev.invoiceTotal - sum).toFixed(2));
+      }
+      const newHeaderTotal = Number((sum + finalGst).toFixed(2));
+
       return {
         ...prev,
         lineItems: fixedItems,
-        invoiceTotal: Number(sum.toFixed(2)),
+        gstAmount: finalGst,
+        invoiceTotal: newHeaderTotal,
         status: 'converted'
       };
     });
@@ -120,9 +128,18 @@ export const EditModal: React.FC<EditModalProps> = ({
   const itemsSum = Number(
     formData.lineItems.reduce((acc, it) => acc + (it.total || 0), 0).toFixed(2)
   );
+  const gstAmount = Number((formData.gstAmount || 0).toFixed(2));
+  const effectiveTotal = Number((itemsSum + gstAmount).toFixed(2));
   const headerTotal = Number(formData.invoiceTotal.toFixed(2));
-  const mathDiff = Number(Math.abs(itemsSum - headerTotal).toFixed(2));
-  const isBalanced = mathDiff <= 0.5;
+
+  // Reconcile math: matches if itemsSum + gstAmount == headerTotal OR itemsSum == headerTotal
+  const isDirectMatch = Math.abs(itemsSum - headerTotal) <= 0.5;
+  const isGstMatch = Math.abs(effectiveTotal - headerTotal) <= 0.5;
+  const isBalanced = isDirectMatch || isGstMatch;
+  const mathDiff = isGstMatch ? 0 : (isDirectMatch ? 0 : Number(Math.abs(effectiveTotal - headerTotal).toFixed(2)));
+  const unallocatedGst = (!formData.gstAmount || formData.gstAmount === 0) && headerTotal > itemsSum 
+    ? Number((headerTotal - itemsSum).toFixed(2)) 
+    : 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -426,6 +443,32 @@ export const EditModal: React.FC<EditModalProps> = ({
                 </select>
               </div>
 
+              {/* GST / Taxes Amount */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-medium text-slate-600">
+                    GST / Taxes ({formData.currency})
+                  </label>
+                  {itemsSum > 0 && formData.invoiceTotal > itemsSum && (!formData.gstAmount || formData.gstAmount === 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(p => ({ ...p, gstAmount: Number((p.invoiceTotal - itemsSum).toFixed(2)) }))}
+                      className="text-[10px] text-indigo-600 font-semibold hover:underline"
+                    >
+                      Auto-Fill
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.gstAmount ?? ''}
+                  placeholder="0.00"
+                  onChange={(e) => setFormData(p => ({ ...p, gstAmount: parseFloat(e.target.value) || 0 }))}
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono font-semibold text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+
               {/* Total Invoice Value */}
               <div>
                 <label className="text-[11px] font-medium text-slate-600 block mb-1">
@@ -645,7 +688,7 @@ export const EditModal: React.FC<EditModalProps> = ({
           {/* SECTION 3: Modal Footer with Math Balance Area */}
           <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
             {/* Left: Math Balance Indicator */}
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${
                 isBalanced
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
@@ -654,18 +697,34 @@ export const EditModal: React.FC<EditModalProps> = ({
                 {isBalanced ? (
                   <>
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Totals Reconciled</span>
+                    <span>
+                      Totals Reconciled
+                      {gstAmount > 0 ? ` (Items: ${itemsSum.toFixed(2)} + GST: ${gstAmount.toFixed(2)})` : ''}
+                    </span>
                   </>
                 ) : (
                   <>
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
                     <span>Variance: {mathDiff.toFixed(2)} {formData.currency}</span>
+                    {unallocatedGst > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(p => ({ ...p, gstAmount: unallocatedGst }))}
+                        className="ml-2 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-2xs"
+                      >
+                        + Add GST ({unallocatedGst.toFixed(2)} {formData.currency})
+                      </button>
+                    )}
                   </>
                 )}
               </div>
 
               <div className="text-xs text-slate-500 font-mono">
-                Items Sum: <strong className="text-slate-800">{itemsSum.toFixed(2)}</strong> | Header Total: <strong className="text-slate-800">{headerTotal.toFixed(2)}</strong>
+                Items Sum: <strong className="text-slate-800">{itemsSum.toFixed(2)}</strong>
+                {gstAmount > 0 && (
+                  <> + GST: <strong className="text-indigo-600">{gstAmount.toFixed(2)}</strong></>
+                )}
+                {' '}| Header Total: <strong className="text-slate-800">{headerTotal.toFixed(2)}</strong>
               </div>
             </div>
 

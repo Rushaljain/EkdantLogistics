@@ -54,6 +54,9 @@ Extract structured JSON strictly matching this schema:
   "currency": "3-letter currency code (e.g. USD, EUR, GBP, INR, AED)",
   "exchangeRate": 84.15,
   "incoterm": "FOB or CIF or CFR or EXW",
+  "subtotal": 0.00,
+  "gstAmount": 0.00,
+  "gstRate": 18.0,
   "invoiceTotal": 0.00,
   "grossWeightKg": 0.00,
   "netWeightKg": 0.00,
@@ -77,7 +80,8 @@ CRITICAL RULES:
 1. Extract the REAL vendor name and REAL buyer name exactly as written in the uploaded PDF.
 2. Never invent or hallucinate company names.
 3. Extract EVERY line item in the invoice table with its quantity, price, and total.
-4. Return ONLY valid JSON matching this schema, without code fences or extra text.
+4. If the invoice has GST (CGST/SGST or IGST) or taxes, capture the total tax in "gstAmount", taxable value in "subtotal", and the final payable grand total in "invoiceTotal".
+5. Return ONLY valid JSON matching this schema, without code fences or extra text.
 `;
 
 /**
@@ -172,9 +176,19 @@ export async function extractInvoiceFromPdf(
     };
   });
 
-  const itemsSum = items.reduce((s, it) => s + it.total, 0);
-  const invoiceTotal = Number(parsed.invoiceTotal) || itemsSum;
-  const isMathDrift = Math.abs(itemsSum - invoiceTotal) > 0.5;
+  const itemsSum = Number(items.reduce((s, it) => s + it.total, 0).toFixed(2));
+  const parsedGst = Number(parsed.gstAmount) || 0;
+  const parsedTotal = Number(parsed.invoiceTotal) || itemsSum;
+
+  // Auto-detect GST if parsedTotal exceeds itemsSum
+  const gstDifference = parsedTotal > itemsSum ? Number((parsedTotal - itemsSum).toFixed(2)) : 0;
+  const effectiveGst = parsedGst > 0 ? parsedGst : gstDifference;
+
+  // Reconcile math: itemsSum + effectiveGst vs invoiceTotal
+  const effectiveSumWithGst = Number((itemsSum + effectiveGst).toFixed(2));
+  const isDirectMatch = Math.abs(itemsSum - parsedTotal) <= 0.5;
+  const isGstMatch = Math.abs(effectiveSumWithGst - parsedTotal) <= 0.5;
+  const isMathDrift = !isDirectMatch && !isGstMatch;
   const hasInvalidHsn = items.some(it => it.hsnCode.length !== 8);
 
   // REAL vendor name from PDF without hardcoding
@@ -205,7 +219,10 @@ export async function extractInvoiceFromPdf(
     currency: parsed.currency || 'USD',
     exchangeRate: Number(parsed.exchangeRate) || 84.15,
     incoterm: (parsed.incoterm as any) || 'FOB',
-    invoiceTotal,
+    subtotal: itemsSum,
+    gstAmount: effectiveGst,
+    gstRate: Number(parsed.gstRate) || 18,
+    invoiceTotal: parsedTotal,
     grossWeightKg: Number(parsed.grossWeightKg) || 0,
     netWeightKg: Number(parsed.netWeightKg) || 0,
     totalPackages: Number(parsed.totalPackages) || 1,
@@ -218,8 +235,8 @@ export async function extractInvoiceFromPdf(
         hsnCode: '84818090',
         quantity: 1,
         uqc: 'NOS',
-        unitPrice: invoiceTotal,
-        total: invoiceTotal
+        unitPrice: parsedTotal,
+        total: parsedTotal
       }
     ]
   };
