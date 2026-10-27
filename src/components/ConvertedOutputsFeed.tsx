@@ -46,7 +46,7 @@ export const ConvertedOutputsFeed: React.FC<ConvertedOutputsFeedProps> = ({
         )}
       </div>
 
-      {/* Invoice Cards List */}
+      {/* Invoice Rows List */}
       {invoices.length === 0 ? (
         <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center">
           <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
@@ -60,7 +60,7 @@ export const ConvertedOutputsFeed: React.FC<ConvertedOutputsFeedProps> = ({
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs divide-y divide-slate-100 overflow-hidden">
           {invoices.map(inv => (
             <OutputCard
               key={inv.id}
