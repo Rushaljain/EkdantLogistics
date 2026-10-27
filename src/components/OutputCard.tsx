@@ -4,8 +4,6 @@ import {
   FileCode, 
   Edit3, 
   Trash2, 
-  CheckCircle2, 
-  AlertTriangle,
   ArrowRight,
   Ship,
   Plane,
@@ -38,42 +36,13 @@ export const OutputCard: React.FC<OutputCardProps> = ({
     minimumFractionDigits: 2
   }).format(invoice.invoiceTotal || 0);
 
-  // Math & HSN audit status check (accounting for GST/taxes if present)
-  const itemsSum = invoice.lineItems.reduce((acc, it) => acc + (it.total || 0), 0);
-  const gstAmount = invoice.gstAmount || 0;
-  const isDirectMatch = Math.abs(itemsSum - invoice.invoiceTotal) <= 0.5;
-  const isGstMatch = Math.abs((itemsSum + gstAmount) - invoice.invoiceTotal) <= 0.5;
-  const mathDrift = !isDirectMatch && !isGstMatch;
-  const hasShortHsn = invoice.lineItems.some(it => it.hsnCode.length !== 8);
-  const isReviewSuggested = invoice.status === 'review_suggested' || mathDrift || hasShortHsn;
-
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 p-5 space-y-4">
       {/* 1. Top Row */}
       <div className="flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-bold text-slate-900 text-sm font-mono tracking-tight">
-            {invoice.invoiceNumber}
-          </span>
-
-          {/* Filing Type Badge */}
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200/60">
-            {invoice.filingType} • .{ediExt.toUpperCase()}
-          </span>
-
-          {/* Status Pill */}
-          {!isReviewSuggested ? (
-            <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/50">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-              <span>Converted</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60" title="Check HSN length or line item math">
-              <AlertTriangle className="w-3 h-3 text-amber-500" />
-              <span>Review Suggested</span>
-            </span>
-          )}
-        </div>
+        <span className="font-bold text-slate-900 text-sm font-mono tracking-tight">
+          {invoice.invoiceNumber}
+        </span>
 
         {/* Right side of Top Row: Port Dropdown + Timestamp */}
         <div className="flex items-center space-x-2">
