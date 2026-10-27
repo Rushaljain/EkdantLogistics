@@ -1,6 +1,6 @@
 import React from 'react';
 import { Inbox, Trash2 } from 'lucide-react';
-import type { ConvertedInvoice } from '../types';
+import type { ConvertedInvoice, CustomsPort } from '../types';
 import { OutputCard } from './OutputCard';
 
 interface ConvertedOutputsFeedProps {
@@ -8,13 +8,15 @@ interface ConvertedOutputsFeedProps {
   onEdit: (invoice: ConvertedInvoice) => void;
   onDelete: (invoiceId: string) => void;
   onClearAll: () => void;
+  onPortChange?: (invoiceId: string, port: CustomsPort) => void;
 }
 
 export const ConvertedOutputsFeed: React.FC<ConvertedOutputsFeedProps> = ({
   invoices,
   onEdit,
   onDelete,
-  onClearAll
+  onClearAll,
+  onPortChange
 }) => {
   return (
     <div className="space-y-4">
@@ -65,6 +67,7 @@ export const ConvertedOutputsFeed: React.FC<ConvertedOutputsFeedProps> = ({
               invoice={inv}
               onEdit={onEdit}
               onDelete={onDelete}
+              onPortChange={onPortChange}
             />
           ))}
         </div>

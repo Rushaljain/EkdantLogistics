@@ -6,9 +6,12 @@ import {
   Trash2, 
   CheckCircle2, 
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  Ship,
+  Plane,
+  ChevronDown
 } from 'lucide-react';
-import type { ConvertedInvoice } from '../types';
+import type { ConvertedInvoice, CustomsPort } from '../types';
 import { downloadEdi } from '../utils/ediCompiler';
 import { downloadExcel } from '../utils/excelCompiler';
 
@@ -16,12 +19,14 @@ interface OutputCardProps {
   invoice: ConvertedInvoice;
   onEdit: (invoice: ConvertedInvoice) => void;
   onDelete: (invoiceId: string) => void;
+  onPortChange?: (invoiceId: string, port: CustomsPort) => void;
 }
 
 export const OutputCard: React.FC<OutputCardProps> = ({
   invoice,
   onEdit,
-  onDelete
+  onDelete,
+  onPortChange
 }) => {
   const isExport = invoice.filingType === 'EXPORT';
   const ediExt = isExport ? 'sb' : 'be';
@@ -42,8 +47,8 @@ export const OutputCard: React.FC<OutputCardProps> = ({
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 p-5 space-y-4">
       {/* 1. Top Row */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center space-x-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-bold text-slate-900 text-sm font-mono tracking-tight">
             {invoice.invoiceNumber}
           </span>
@@ -67,10 +72,35 @@ export const OutputCard: React.FC<OutputCardProps> = ({
           )}
         </div>
 
-        {/* Timestamp */}
-        <span className="text-[11px] text-slate-400 font-mono">
-          {invoice.convertedAt}
-        </span>
+        {/* Right side of Top Row: Port Dropdown + Timestamp */}
+        <div className="flex items-center space-x-2">
+          {/* Port Dropdown for each specific output */}
+          <div className="relative inline-flex items-center">
+            <select
+              value={invoice.portOfLoading || 'INNSA1'}
+              onChange={(e) => onPortChange && onPortChange(invoice.id, e.target.value as CustomsPort)}
+              className="appearance-none bg-slate-50 hover:bg-slate-100/90 text-slate-800 text-[11px] font-semibold pl-6 pr-6 py-1 rounded-lg border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer transition-colors shadow-2xs"
+            >
+              <option value="INNSA1">Nhava Sheva (INNSA1)</option>
+              <option value="INBOM4">Mumbai Air (INBOM4)</option>
+            </select>
+            <div className="absolute left-1.5 pointer-events-none text-indigo-600">
+              {invoice.portOfLoading === 'INBOM4' ? (
+                <Plane className="w-3.5 h-3.5" />
+              ) : (
+                <Ship className="w-3.5 h-3.5" />
+              )}
+            </div>
+            <div className="absolute right-1.5 pointer-events-none text-slate-400">
+              <ChevronDown className="w-3 h-3" />
+            </div>
+          </div>
+
+          {/* Timestamp */}
+          <span className="text-[11px] text-slate-400 font-mono">
+            {invoice.convertedAt}
+          </span>
+        </div>
       </div>
 
       {/* 2. Subtitle: Exporter & Consignee */}

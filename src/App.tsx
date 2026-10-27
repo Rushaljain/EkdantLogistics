@@ -8,15 +8,10 @@ import type { ConvertedInvoice, QueueFile, CustomsPort } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 
 const LOCAL_STORAGE_INVOICES_KEY = 'ekdant_customs_invoices_v4';
-const LOCAL_STORAGE_PORT_KEY = 'ekdant_customs_port_v4';
 const LOCAL_STORAGE_KEY_KEY = 'ekdant_gemini_key';
+const DEFAULT_PORT: CustomsPort = 'INNSA1';
 
 export function App() {
-  // Current active port
-  const [currentPort, setCurrentPort] = useState<CustomsPort>(() => {
-    return (localStorage.getItem(LOCAL_STORAGE_PORT_KEY) as CustomsPort) || 'INNSA1';
-  });
-
   // Converted Invoices Feed - starts clean with no hardcoded sample invoices
   const [invoices, setInvoices] = useState<ConvertedInvoice[]>(() => {
     try {
@@ -51,12 +46,6 @@ export function App() {
     }
   }, [invoices]);
 
-  // Persist port
-  const handlePortChange = (port: CustomsPort) => {
-    setCurrentPort(port);
-    localStorage.setItem(LOCAL_STORAGE_PORT_KEY, port);
-  };
-
   // Handle multiple files selected
   const handleFilesSelected = async (files: File[]) => {
     const newQueueItems: QueueFile[] = files.map(file => ({
@@ -73,7 +62,7 @@ export function App() {
     for (const item of newQueueItems) {
       try {
         if (!item.file) continue;
-        const converted = await extractInvoiceFromPdf(item.file, apiKey, currentPort);
+        const converted = await extractInvoiceFromPdf(item.file, apiKey, DEFAULT_PORT);
 
         // Update queue item status to converted
         setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'converted' } : q));
@@ -98,7 +87,7 @@ export function App() {
     setQueue(prev => prev.map(q => q.id === fileId ? { ...q, status: 'processing', errorMessage: undefined } : q));
 
     try {
-      const converted = await extractInvoiceFromPdf(target.file, apiKey, currentPort);
+      const converted = await extractInvoiceFromPdf(target.file, apiKey, DEFAULT_PORT);
       setQueue(prev => prev.map(q => q.id === fileId ? { ...q, status: 'converted' } : q));
       setInvoices(prev => [converted, ...prev]);
     } catch (err: any) {
@@ -119,6 +108,18 @@ export function App() {
   };
 
   // Invoice Card Actions
+  const handleInvoicePortChange = (invoiceId: string, newPort: CustomsPort) => {
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id !== invoiceId) return inv;
+      const isAir = newPort === 'INBOM4';
+      return {
+        ...inv,
+        portOfLoading: newPort,
+        portOfDischarge: isAir ? (inv.portOfDischarge === 'DEHAM' ? 'DEMUC' : inv.portOfDischarge) : (inv.portOfDischarge === 'DEMUC' ? 'DEHAM' : inv.portOfDischarge)
+      };
+    }));
+  };
+
   const handleEditInvoice = (invoice: ConvertedInvoice) => {
     setEditingInvoice(invoice);
   };
@@ -139,10 +140,7 @@ export function App() {
   return (
     <div className="min-h-screen bg-slate-50/80 text-slate-900 flex flex-col font-sans">
       {/* Top Navigation Bar */}
-      <Header
-        currentPort={currentPort}
-        onPortChange={handlePortChange}
-      />
+      <Header />
 
       {/* Main Workspace (2-Column Split) */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
@@ -176,6 +174,7 @@ export function App() {
               onEdit={handleEditInvoice}
               onDelete={handleDeleteInvoice}
               onClearAll={handleClearAllInvoices}
+              onPortChange={handleInvoicePortChange}
             />
           </section>
         </div>
