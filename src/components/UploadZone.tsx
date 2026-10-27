@@ -1,16 +1,14 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, Sparkles, FolderUp } from 'lucide-react';
+import { UploadCloud, FolderUp } from 'lucide-react';
 
 interface UploadZoneProps {
   onFilesSelected: (files: File[]) => void;
-  onLoadSample: () => void;
-  isProcessing: boolean;
+  onLoadSample?: () => void;
+  isProcessing?: boolean;
 }
 
 export const UploadZone: React.FC<UploadZoneProps> = ({
-  onFilesSelected,
-  onLoadSample,
-  isProcessing
+  onFilesSelected
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,22 +91,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
             </span>
           </div>
         </div>
-      </div>
-
-      {/* Secondary Action: Load Sample Invoice */}
-      <div className="flex items-center justify-between px-1">
-        <span className="text-[11px] text-slate-400">
-          Want to test instantly without a file?
-        </span>
-        <button
-          type="button"
-          onClick={onLoadSample}
-          disabled={isProcessing}
-          className="text-xs font-semibold text-slate-700 hover:text-indigo-600 flex items-center space-x-1 px-2.5 py-1 rounded-md hover:bg-slate-100 transition-colors disabled:opacity-50"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-          <span>Load Sample Invoice</span>
-        </button>
       </div>
     </div>
   );

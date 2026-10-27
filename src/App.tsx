@@ -4,7 +4,6 @@ import { UploadZone } from './components/UploadZone';
 import { FileQueueCard } from './components/FileQueueCard';
 import { ConvertedOutputsFeed } from './components/ConvertedOutputsFeed';
 import { EditModal } from './components/EditModal';
-import { ApiKeyModal } from './components/ApiKeyModal';
 import type { ConvertedInvoice, QueueFile, CustomsPort } from './types';
 import { INITIAL_SAMPLE_INVOICE } from './data/profiles';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
@@ -34,21 +33,16 @@ export function App() {
 
   // Upload Queue
   const [queue, setQueue] = useState<QueueFile[]>([]);
-  const [isProcessingQueue, setIsProcessingQueue] = useState<boolean>(false);
 
   // Modals state
   const [editingInvoice, setEditingInvoice] = useState<ConvertedInvoice | null>(null);
-  const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
 
   // Gemini API Key (reads from Vercel env PDF_Parser / VITE_GEMINI_API_KEY, localStorage, or default)
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return (
-      localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
-      (import.meta.env as any).PDF_Parser ||
-      import.meta.env.VITE_GEMINI_API_KEY ||
-      'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA'
-    );
-  });
+  const apiKey = 
+    localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
+    (import.meta.env as any).PDF_Parser ||
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA';
 
   // Persist invoices whenever updated
   useEffect(() => {
@@ -65,12 +59,6 @@ export function App() {
     localStorage.setItem(LOCAL_STORAGE_PORT_KEY, port);
   };
 
-  // Save API Key
-  const handleSaveKey = (newKey: string) => {
-    setApiKey(newKey);
-    localStorage.setItem(LOCAL_STORAGE_KEY_KEY, newKey);
-  };
-
   // Handle multiple files selected
   const handleFilesSelected = async (files: File[]) => {
     const newQueueItems: QueueFile[] = files.map(file => ({
@@ -82,7 +70,6 @@ export function App() {
     }));
 
     setQueue(prev => [...newQueueItems, ...prev]);
-    setIsProcessingQueue(true);
 
     // Process each file
     for (const item of newQueueItems) {
@@ -103,8 +90,6 @@ export function App() {
         } : q));
       }
     }
-
-    setIsProcessingQueue(false);
   };
 
   // Retry a failed file
@@ -189,8 +174,6 @@ export function App() {
       <Header
         currentPort={currentPort}
         onPortChange={handlePortChange}
-        hasApiKey={Boolean(apiKey)}
-        onOpenKeyModal={() => setIsKeyModalOpen(true)}
       />
 
       {/* Main Workspace (2-Column Split) */}
@@ -202,16 +185,11 @@ export function App() {
               <h2 className="text-sm font-bold text-slate-900 tracking-tight">
                 Upload Documents
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Ingest multi-page invoices & packing lists for automatic ICEGATE conversion
-              </p>
             </div>
 
             {/* Drag & Drop Zone */}
             <UploadZone
               onFilesSelected={handleFilesSelected}
-              onLoadSample={handleLoadSample}
-              isProcessing={isProcessingQueue}
             />
 
             {/* Selected Files Queue Card */}
@@ -242,14 +220,6 @@ export function App() {
         isOpen={Boolean(editingInvoice)}
         onClose={() => setEditingInvoice(null)}
         onSave={handleSaveInvoiceEdit}
-      />
-
-      {/* API Key Modal */}
-      <ApiKeyModal
-        isOpen={isKeyModalOpen}
-        onClose={() => setIsKeyModalOpen(false)}
-        currentKey={apiKey}
-        onSaveKey={handleSaveKey}
       />
     </div>
   );
