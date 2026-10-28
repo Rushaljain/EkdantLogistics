@@ -17,29 +17,35 @@ import {
   ChevronRight, 
   ZoomIn, 
   ZoomOut, 
-  Save
+  Save,
+  Sparkles,
+  Loader2,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
-import type { ConvertedInvoice, LineItem, CustomsPort } from '../types';
+import type { ConvertedInvoice, LineItem, CustomsPort, AppDocument } from '../types';
 import { EXPORTER_PROFILES } from '../data/profiles';
 import { cleanHsn, generateMockIrn } from '../utils/geminiExtractor';
 import { downloadEdi } from '../utils/ediCompiler';
 import { downloadExcel } from '../utils/excelCompiler';
 
 interface PreviewPaneProps {
-  invoice: ConvertedInvoice | null;
+  document: AppDocument | null;
   onSave: (updated: ConvertedInvoice) => void;
-  onPortChange: (invoiceId: string, port: CustomsPort) => void;
+  onPortChange: (docId: string, port: CustomsPort) => void;
+  onConvert?: (docId: string) => void;
 }
 
 type ViewMode = 'split' | 'data' | 'pdf';
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
-  invoice,
+  document,
   onSave,
-  onPortChange
+  onPortChange,
+  onConvert
 }) => {
   // If no document is selected
-  if (!invoice) {
+  if (!document) {
     return (
       <div className="flex-1 h-screen flex flex-col items-center justify-center p-8 bg-slate-50/40 text-center select-none">
         <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-400 mb-4">
@@ -49,13 +55,257 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           Document Preview & Extraction Pane
         </h3>
         <p className="text-xs text-slate-500 mt-1.5 max-w-sm leading-relaxed">
-          Select an uploaded invoice from the queue on the left or drop a new PDF to inspect extracted statutory data and compare side-by-side with the source document.
+          Select an uploaded document from the list on the left or drop a new PDF to inspect extracted statutory data and compare side-by-side with the source document.
         </p>
       </div>
     );
   }
 
-  return <ActivePreviewPaneContent key={invoice.id} invoice={invoice} onSave={onSave} onPortChange={onPortChange} />;
+  // If document is processed and has converted invoice
+  if (document.status === 'processed' && document.invoice) {
+    return (
+      <ActivePreviewPaneContent
+        key={document.invoice.id}
+        invoice={document.invoice}
+        onSave={onSave}
+        onPortChange={(_id, port) => onPortChange(document.id, port)}
+      />
+    );
+  }
+
+  // If document is pending, processing, or failed
+  return (
+    <PendingPreviewPaneContent
+      document={document}
+      onConvert={onConvert}
+    />
+  );
+};
+
+interface PendingContentProps {
+  document: AppDocument;
+  onConvert?: (docId: string) => void;
+}
+
+const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
+  document,
+  onConvert
+}) => {
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalPages] = useState<number>(2);
+  const [zoom, setZoom] = useState<number>(100);
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const isProcessing = document.status === 'processing';
+  const isFailed = document.status === 'failed';
+
+  return (
+    <div className="flex-1 h-screen flex flex-col bg-white overflow-hidden select-none">
+      {/* Top Header */}
+      <div className="h-16 px-6 border-b border-slate-200/80 flex items-center justify-between shrink-0 bg-white">
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <FileText className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-900 truncate">
+              {document.fileName}
+            </h2>
+            <div className="flex items-center space-x-2 text-[11px] text-slate-400 font-mono">
+              <span>{formatFileSize(document.fileSize)}</span>
+              <span>•</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                isProcessing
+                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                  : isFailed
+                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }`}>
+                {isProcessing ? 'Processing' : isFailed ? 'Failed' : 'Pending Processing'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        {onConvert && (
+          <button
+            type="button"
+            onClick={() => onConvert(document.id)}
+            disabled={isProcessing}
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Converting...</span>
+              </>
+            ) : isFailed ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Conversion</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                <span>Convert Invoice</span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Main Workspace (Split: Left Info Card, Right PDF Viewer) */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Side: Conversion Status & Instructions */}
+        <div className="w-1/2 h-full p-8 flex flex-col justify-center items-center text-center bg-slate-50/50 border-r border-slate-200/80 overflow-y-auto">
+          {isProcessing ? (
+            <div className="max-w-md space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-100/80 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
+                <Loader2 className="w-8 h-8 animate-spin" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">
+                Processing Document
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Gemini AI is analyzing document tables, extracting statutory exporter & consignee details, validating 8-digit HSN codes, and calculating GST totals.
+              </p>
+            </div>
+          ) : isFailed ? (
+            <div className="max-w-md space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">
+                Extraction Failed
+              </h3>
+              <p className="text-xs text-rose-600 leading-relaxed bg-rose-50 p-3 rounded-xl border border-rose-200">
+                {document.errorMessage || 'Unable to extract data from this PDF.'}
+              </p>
+              {onConvert && (
+                <button
+                  type="button"
+                  onClick={() => onConvert(document.id)}
+                  className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry Conversion</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="max-w-md space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
+                <Sparkles className="w-8 h-8" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">
+                Ready to Convert
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This document is uploaded and ready for extraction. Click <strong>Convert Invoice</strong> to extract vendor information, line items, and generate Indian Customs ICES 1.5 EDI output.
+              </p>
+              {onConvert && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => onConvert(document.id)}
+                    className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-indigo-200" />
+                    <span>Convert Invoice Now</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right Side: PDF Viewer */}
+        <div className="w-1/2 h-full flex flex-col bg-slate-900 select-none overflow-hidden">
+          <div className="h-11 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
+            <div className="flex items-center space-x-2 truncate">
+              <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span className="font-medium truncate max-w-[180px]" title={document.fileName}>
+                {document.fileName}
+              </span>
+              <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                PDF
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1 bg-slate-700/80 px-1.5 py-0.5 rounded">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                  disabled={currentPage <= 1}
+                  className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[11px] font-mono px-1 text-white">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                  disabled={currentPage >= totalPages}
+                  className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center space-x-1 bg-slate-700/80 px-1.5 py-0.5 rounded">
+                <button
+                  type="button"
+                  onClick={() => setZoom(z => Math.max(z - 15, 60))}
+                  className="p-1 text-slate-300 hover:text-white transition-colors"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[11px] font-mono px-1 text-white">
+                  {zoom}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setZoom(z => Math.min(z + 15, 180))}
+                  className="p-1 text-slate-300 hover:text-white transition-colors"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 bg-slate-900 overflow-auto p-4 flex items-center justify-center">
+            {document.pdfUrl ? (
+              <iframe
+                src={`${document.pdfUrl}#toolbar=0&navpanes=0`}
+                className="w-full h-full rounded shadow-md border-0 bg-white"
+                style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
+                title={document.fileName}
+              />
+            ) : (
+              <div className="text-center text-slate-400 p-8 space-y-2">
+                <FileText className="w-12 h-12 mx-auto text-slate-600" />
+                <p className="text-xs">PDF preview not available for this session.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 interface ActiveContentProps {

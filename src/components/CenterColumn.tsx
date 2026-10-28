@@ -4,48 +4,59 @@ import {
   Trash2, 
   FileCode, 
   FileSpreadsheet, 
-  ArrowRight,
-  Ship,
-  Plane,
-  ChevronDown
+  ArrowRight, 
+  Ship, 
+  Plane, 
+  ChevronDown, 
+  Sparkles, 
+  Loader2, 
+  CheckCircle2, 
+  RefreshCw, 
+  FileText, 
+  AlertCircle 
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
-import { FileQueueCard } from './FileQueueCard';
-import type { ConvertedInvoice, QueueFile, CustomsPort } from '../types';
+import type { AppDocument, CustomsPort } from '../types';
 import { downloadEdi } from '../utils/ediCompiler';
 import { downloadExcel } from '../utils/excelCompiler';
 
 interface CenterColumnProps {
-  invoices: ConvertedInvoice[];
-  queue: QueueFile[];
-  selectedInvoiceId: string | null;
-  onSelectInvoice: (invoiceId: string) => void;
+  documents: AppDocument[];
+  selectedDocumentId: string | null;
+  onSelectDocument: (docId: string) => void;
   onFilesSelected: (files: File[]) => void;
-  onRetryFile: (fileId: string) => void;
-  onRemoveQueueItem: (fileId: string) => void;
-  onClearCompletedQueue: () => void;
-  onDeleteInvoice: (invoiceId: string) => void;
-  onClearAllInvoices: () => void;
-  onPortChange: (invoiceId: string, port: CustomsPort) => void;
+  onConvertDocument: (docId: string) => void;
+  onConvertAll: () => void;
+  isBulkConverting?: boolean;
+  onDeleteDocument: (docId: string) => void;
+  onClearAllDocuments: () => void;
+  onPortChange: (docId: string, port: CustomsPort) => void;
 }
 
 export const CenterColumn: React.FC<CenterColumnProps> = ({
-  invoices,
-  queue,
-  selectedInvoiceId,
-  onSelectInvoice,
+  documents,
+  selectedDocumentId,
+  onSelectDocument,
   onFilesSelected,
-  onRetryFile,
-  onRemoveQueueItem,
-  onClearCompletedQueue,
-  onDeleteInvoice,
-  onClearAllInvoices,
+  onConvertDocument,
+  onConvertAll,
+  isBulkConverting = false,
+  onDeleteDocument,
+  onClearAllDocuments,
   onPortChange
 }) => {
+  const pendingCount = documents.filter(d => d.status === 'pending' || d.status === 'failed').length;
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <div className="w-[380px] lg:w-[420px] xl:w-[450px] h-screen border-r border-slate-200/80 bg-slate-50/60 flex flex-col shrink-0 select-none overflow-hidden">
       {/* =========================================================================
-          TOP: COMPACT UPLOAD DOCUMENTS ZONE
+          TOP: COMPACT UPLOAD DOCUMENTS DROPZONE
          ========================================================================= */}
       <div className="shrink-0 p-4 border-b border-slate-200/80 space-y-3">
         <div className="flex items-center justify-between">
@@ -57,53 +68,69 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </span>
         </div>
 
-        {/* Upload Drop Zone (Direct, no extra nesting) */}
+        {/* Upload Drop Zone (Direct, no auto-processing) */}
         <UploadZone onFilesSelected={onFilesSelected} />
-
-        {/* Processing Queue Card (if any files are processing / error) */}
-        {queue.length > 0 && (
-          <FileQueueCard
-            queue={queue}
-            onRetry={onRetryFile}
-            onRemove={onRemoveQueueItem}
-            onClearCompleted={onClearCompletedQueue}
-          />
-        )}
       </div>
 
       {/* =========================================================================
-          BOTTOM: EXPANDED LIST OF UPLOADED FILES READY TO PREVIEW (flex-1)
+          BOTTOM: UPLOADED DOCUMENTS QUEUE & CONVERTED LIST (flex-1)
          ========================================================================= */}
       <div className="flex-1 flex flex-col p-4 overflow-hidden">
-        {/* Header */}
+        {/* Header: Title + Convert All Button + Clear */}
         <div className="flex items-center justify-between pb-3 shrink-0">
           <div className="flex items-center space-x-2">
             <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-              Uploaded & Ready to Preview
+              Uploaded Documents
             </h2>
             <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
-              {invoices.length}
+              {documents.length}
             </span>
           </div>
 
-          {invoices.length > 0 && (
-            <button
-              onClick={() => {
-                if (window.confirm('Clear all uploaded invoice history?')) {
-                  onClearAllInvoices();
-                }
-              }}
-              className="text-[11px] text-slate-400 hover:text-rose-600 transition-colors flex items-center space-x-1"
-            >
-              <Trash2 className="w-3 h-3" />
-              <span>Clear</span>
-            </button>
-          )}
+          <div className="flex items-center space-x-2">
+            {/* Convert All Button for bulk processing */}
+            {pendingCount > 0 && (
+              <button
+                type="button"
+                onClick={onConvertAll}
+                disabled={isBulkConverting}
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-2xs transition-all disabled:opacity-50 cursor-pointer"
+                title="Convert all pending documents at once"
+              >
+                {isBulkConverting ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin text-white" />
+                    <span>Converting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                    <span>Convert All ({pendingCount})</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {documents.length > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Clear all uploaded documents and history?')) {
+                    onClearAllDocuments();
+                  }
+                }}
+                className="text-[11px] text-slate-400 hover:text-rose-600 transition-colors flex items-center space-x-1 p-1"
+                title="Clear all documents"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Scrollable Invoices List / Clean Unboxed Empty State */}
+        {/* Scrollable Document List / Unboxed Clean Empty State */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {invoices.length === 0 ? (
+          {documents.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
               <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-2.5">
                 <Inbox className="w-6 h-6" />
@@ -112,119 +139,249 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 No documents uploaded yet
               </h3>
               <p className="text-[11px] text-slate-400 mt-1 max-w-[220px] leading-relaxed">
-                Drop your commercial invoice PDF in the section above to preview and edit extraction.
+                Drop PDF documents above. They will appear here ready to convert individually or in bulk.
               </p>
             </div>
           ) : (
-            invoices.map(inv => {
-              const isSelected = inv.id === selectedInvoiceId;
-              const isExport = inv.filingType === 'EXPORT';
+            documents.map(doc => {
+              const isSelected = doc.id === selectedDocumentId;
+              const isProcessing = doc.status === 'processing';
+              const isProcessed = doc.status === 'processed' && Boolean(doc.invoice);
+              const isFailed = doc.status === 'failed';
+
+              const inv = doc.invoice;
+              const isExport = inv ? inv.filingType === 'EXPORT' : true;
               const ediExt = isExport ? 'sb' : 'be';
 
-              const formattedTotal = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: inv.currency || 'USD',
-                minimumFractionDigits: 2
-              }).format(inv.invoiceTotal || 0);
+              const formattedTotal = inv
+                ? new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: inv.currency || 'USD',
+                    minimumFractionDigits: 2
+                  }).format(inv.invoiceTotal || 0)
+                : null;
 
               return (
                 <div
-                  key={inv.id}
-                  onClick={() => onSelectInvoice(inv.id)}
+                  key={doc.id}
+                  onClick={() => onSelectDocument(doc.id)}
                   className={`p-3 rounded-xl border transition-all cursor-pointer text-left relative ${
                     isSelected
                       ? 'bg-white border-indigo-500 shadow-sm ring-2 ring-indigo-500/20'
                       : 'bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-2xs'
                   }`}
                 >
-                  {/* Top Line: Invoice Number + Total + Port */}
-                  <div className="flex items-center justify-between gap-1.5">
-                    <div className="flex items-center space-x-2 min-w-0">
-                      <span className="font-bold text-slate-900 text-xs font-mono truncate">
-                        {inv.invoiceNumber}
-                      </span>
-                      {isSelected && (
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/50">
-                          Active
+                  {/* ========================================================
+                      1. PROCESSED INVOICE
+                     ======================================================== */}
+                  {isProcessed && inv ? (
+                    <>
+                      {/* Top Line: Invoice Number + Processed Badge + Port Selector */}
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <span className="font-bold text-slate-900 text-xs font-mono truncate" title={inv.invoiceNumber}>
+                            {inv.invoiceNumber}
+                          </span>
+                          <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shrink-0">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            <span>Processed</span>
+                          </span>
+                        </div>
+
+                        {/* Port Selector Dropdown */}
+                        <div 
+                          className="relative inline-flex items-center shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <select
+                            value={inv.portOfLoading || 'INNSA1'}
+                            onChange={(e) => onPortChange(doc.id, e.target.value as CustomsPort)}
+                            className="appearance-none bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-semibold pl-5 pr-5 py-0.5 rounded-md border border-slate-200 focus:outline-none cursor-pointer"
+                          >
+                            <option value="INNSA1">INNSA1</option>
+                            <option value="INBOM4">INBOM4</option>
+                          </select>
+                          <div className="absolute left-1 pointer-events-none text-indigo-600">
+                            {inv.portOfLoading === 'INBOM4' ? (
+                              <Plane className="w-3 h-3" />
+                            ) : (
+                              <Ship className="w-3 h-3" />
+                            )}
+                          </div>
+                          <div className="absolute right-1 pointer-events-none text-slate-400">
+                            <ChevronDown className="w-2.5 h-2.5" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Exporter -> Consignee */}
+                      <div className="text-[11px] text-slate-500 truncate flex items-center space-x-1 mt-1" title={`${inv.exporterName} → ${inv.consigneeName}`}>
+                        <span className="font-medium text-slate-700 truncate max-w-[140px]">
+                          {inv.exporterName}
                         </span>
-                      )}
-                    </div>
-
-                    {/* Port Selector Dropdown */}
-                    <div 
-                      className="relative inline-flex items-center"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <select
-                        value={inv.portOfLoading || 'INNSA1'}
-                        onChange={(e) => onPortChange(inv.id, e.target.value as CustomsPort)}
-                        className="appearance-none bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-semibold pl-5 pr-5 py-0.5 rounded-md border border-slate-200 focus:outline-none cursor-pointer"
-                      >
-                        <option value="INNSA1">INNSA1</option>
-                        <option value="INBOM4">INBOM4</option>
-                      </select>
-                      <div className="absolute left-1 pointer-events-none text-indigo-600">
-                        {inv.portOfLoading === 'INBOM4' ? (
-                          <Plane className="w-3 h-3" />
-                        ) : (
-                          <Ship className="w-3 h-3" />
-                        )}
+                        <ArrowRight className="w-2.5 h-2.5 text-slate-300 shrink-0" />
+                        <span className="truncate max-w-[140px] text-slate-500">
+                          {inv.consigneeName}
+                        </span>
                       </div>
-                      <div className="absolute right-1 pointer-events-none text-slate-400">
-                        <ChevronDown className="w-2.5 h-2.5" />
+
+                      {/* Bottom Line: Total Value + Items + Direct Downloads */}
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                        <div className="flex items-center space-x-1.5 font-mono">
+                          <span className="font-bold text-slate-900">{formattedTotal}</span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-500">{inv.lineItems.length} items</span>
+                        </div>
+
+                        {/* Direct Action Buttons */}
+                        <div 
+                          className="flex items-center space-x-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => downloadEdi(inv)}
+                            className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                            title={`Download EDI (.${ediExt})`}
+                          >
+                            <FileCode className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => downloadExcel(inv)}
+                            className="p-1 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                            title="Download Excel (.xlsx)"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => onDeleteDocument(doc.id)}
+                            className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    </>
+                  ) : isProcessing ? (
+                    /* ========================================================
+                        2. PROCESSING INVOICE
+                       ======================================================== */
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <FileText className="w-4 h-4 text-indigo-500 shrink-0" />
+                          <span className="font-medium text-slate-900 text-xs truncate" title={doc.fileName}>
+                            {doc.fileName}
+                          </span>
+                        </div>
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/50 shrink-0">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-600" />
+                          <span>Processing...</span>
+                        </span>
+                      </div>
 
-                  {/* Vendor -> Consignee */}
-                  <div className="text-[11px] text-slate-500 truncate flex items-center space-x-1 mt-1" title={`${inv.exporterName} → ${inv.consigneeName}`}>
-                    <span className="font-medium text-slate-700 truncate max-w-[150px]">
-                      {inv.exporterName}
-                    </span>
-                    <ArrowRight className="w-2.5 h-2.5 text-slate-300 shrink-0" />
-                    <span className="truncate max-w-[150px] text-slate-500">
-                      {inv.consigneeName}
-                    </span>
-                  </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                        <span className="font-mono">{formatFileSize(doc.fileSize)}</span>
+                        <span className="text-indigo-600 text-[10px] animate-pulse">Extracting customs data...</span>
+                      </div>
+                    </>
+                  ) : isFailed ? (
+                    /* ========================================================
+                        3. FAILED INVOICE
+                       ======================================================== */
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                          <span className="font-medium text-slate-900 text-xs truncate" title={doc.fileName}>
+                            {doc.fileName}
+                          </span>
+                        </div>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200/50 shrink-0">
+                          Failed
+                        </span>
+                      </div>
 
-                  {/* Bottom Line: Total Value + Items + Direct Downloads */}
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
-                    <div className="flex items-center space-x-1.5 font-mono">
-                      <span className="font-bold text-slate-900">{formattedTotal}</span>
-                      <span className="text-slate-300">•</span>
-                      <span className="text-slate-500">{inv.lineItems.length} items</span>
-                    </div>
+                      <p className="text-[11px] text-rose-500 mt-1 truncate" title={doc.errorMessage}>
+                        {doc.errorMessage || 'Conversion failed'}
+                      </p>
 
-                    {/* Direct Action Buttons */}
-                    <div 
-                      className="flex items-center space-x-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => downloadEdi(inv)}
-                        className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                        title={`Download EDI (.${ediExt})`}
-                      >
-                        <FileCode className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                        <span className="text-slate-400 font-mono">{formatFileSize(doc.fileSize)}</span>
+                        <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => onConvertDocument(doc.id)}
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
+                            title="Retry conversion"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Retry</span>
+                          </button>
+                          <button
+                            onClick={() => onDeleteDocument(doc.id)}
+                            className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    /* ========================================================
+                        4. PENDING INVOICE (Ready to Convert)
+                       ======================================================== */
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                            <FileText className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 text-xs truncate" title={doc.fileName}>
+                              {doc.fileName}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              {formatFileSize(doc.fileSize)}
+                            </p>
+                          </div>
+                        </div>
 
-                      <button
-                        onClick={() => downloadExcel(inv)}
-                        className="p-1 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                        title="Download Excel (.xlsx)"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                      </button>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60 shrink-0">
+                          Pending
+                        </span>
+                      </div>
 
-                      <button
-                        onClick={() => onDeleteInvoice(inv.id)}
-                        className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                        title="Remove"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100 text-[11px]">
+                        <span className="text-[10px] text-slate-400">
+                          Ready to convert
+                        </span>
+
+                        <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => onConvertDocument(doc.id)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
+                            title="Convert this document"
+                          >
+                            <Sparkles className="w-3 h-3 text-indigo-200" />
+                            <span>Convert</span>
+                          </button>
+
+                          <button
+                            onClick={() => onDeleteDocument(doc.id)}
+                            className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })

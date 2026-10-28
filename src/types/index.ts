@@ -63,6 +63,20 @@ export interface ConvertedInvoice {
   lineItems: LineItem[];
 }
 
+export type DocumentStatus = 'pending' | 'processing' | 'processed' | 'failed';
+
+export interface AppDocument {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  uploadedAt: string;
+  status: DocumentStatus;
+  errorMessage?: string;
+  file?: File;
+  pdfUrl?: string;
+  invoice?: ConvertedInvoice;
+}
+
 export interface QueueFile {
   id: string;
   name: string;
