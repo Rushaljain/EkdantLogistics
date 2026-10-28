@@ -1,0 +1,994 @@
+import React, { useState } from 'react';
+import { 
+  FileText, 
+  FileSpreadsheet, 
+  FileCode, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Building2, 
+  Scale, 
+  Plus, 
+  Trash2, 
+  Wand2, 
+  Columns, 
+  Eye, 
+  FileCheck, 
+  ChevronLeft, 
+  ChevronRight, 
+  ZoomIn, 
+  ZoomOut, 
+  Save
+} from 'lucide-react';
+import type { ConvertedInvoice, LineItem, CustomsPort } from '../types';
+import { EXPORTER_PROFILES } from '../data/profiles';
+import { cleanHsn, generateMockIrn } from '../utils/geminiExtractor';
+import { downloadEdi } from '../utils/ediCompiler';
+import { downloadExcel } from '../utils/excelCompiler';
+
+interface PreviewPaneProps {
+  invoice: ConvertedInvoice | null;
+  onSave: (updated: ConvertedInvoice) => void;
+  onPortChange: (invoiceId: string, port: CustomsPort) => void;
+}
+
+type ViewMode = 'split' | 'data' | 'pdf';
+
+export const PreviewPane: React.FC<PreviewPaneProps> = ({
+  invoice,
+  onSave,
+  onPortChange
+}) => {
+  // If no document is selected
+  if (!invoice) {
+    return (
+      <div className="flex-1 h-screen flex flex-col items-center justify-center p-8 bg-slate-50/40 text-center select-none">
+        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-400 mb-4">
+          <Columns className="w-8 h-8 text-indigo-500/80" />
+        </div>
+        <h3 className="text-sm font-bold text-slate-800 tracking-tight">
+          Document Preview & Extraction Pane
+        </h3>
+        <p className="text-xs text-slate-500 mt-1.5 max-w-sm leading-relaxed">
+          Select an uploaded invoice from the queue on the left or drop a new PDF to inspect extracted statutory data and compare side-by-side with the source document.
+        </p>
+      </div>
+    );
+  }
+
+  return <ActivePreviewPaneContent key={invoice.id} invoice={invoice} onSave={onSave} onPortChange={onPortChange} />;
+};
+
+interface ActiveContentProps {
+  invoice: ConvertedInvoice;
+  onSave: (updated: ConvertedInvoice) => void;
+  onPortChange: (invoiceId: string, port: CustomsPort) => void;
+}
+
+const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
+  invoice,
+  onSave,
+  onPortChange
+}) => {
+  const [formData, setFormData] = useState<ConvertedInvoice>(() => ({
+    ...invoice,
+    lineItems: invoice.lineItems.map(it => ({ ...it }))
+  }));
+
+  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalPages] = useState<number>(2);
+  const [zoom, setZoom] = useState<number>(100);
+  const [isSaved, setIsSaved] = useState<boolean>(false);
+
+  const isExport = formData.filingType === 'EXPORT';
+  const ediExt = isExport ? 'sb' : 'be';
+
+  // Profile Autofill
+  const handleSelectExporter = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const profile = EXPORTER_PROFILES.find(p => p.id === e.target.value);
+    if (profile) {
+      setFormData(prev => ({
+        ...prev,
+        exporterName: profile.companyName,
+        iec: profile.iec,
+        gstin: profile.gstin,
+        adCode: profile.adCode,
+        portOfLoading: profile.defaultPort
+      }));
+    }
+  };
+
+  // Line item updates
+  const handleItemChange = (index: number, field: keyof LineItem, value: any) => {
+    setFormData(prev => {
+      const updated = [...prev.lineItems];
+      const target = { ...updated[index], [field]: value };
+
+      if (field === 'quantity' || field === 'unitPrice') {
+        const qty = field === 'quantity' ? Number(value) || 0 : target.quantity;
+        const rate = field === 'unitPrice' ? Number(value) || 0 : target.unitPrice;
+        target.total = Number((qty * rate).toFixed(2));
+      }
+
+      updated[index] = target;
+      return { ...prev, lineItems: updated };
+    });
+  };
+
+  const handleAddItem = () => {
+    const newItem: LineItem = {
+      id: `item-${Date.now()}`,
+      itemNumber: formData.lineItems.length + 1,
+      description: 'NEW COMMERCIAL ITEM LINE',
+      hsnCode: '84818090',
+      quantity: 1,
+      uqc: 'NOS',
+      unitPrice: 100.0,
+      total: 100.0
+    };
+    setFormData(prev => ({
+      ...prev,
+      lineItems: [...prev.lineItems, newItem]
+    }));
+  };
+
+  const handleDeleteItem = (index: number) => {
+    if (formData.lineItems.length <= 1) return;
+    setFormData(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.filter((_, idx) => idx !== index)
+    }));
+  };
+
+  // 1-Click Auto-Fix HSN & Totals with GST detection
+  const handleAutoFix = () => {
+    setFormData(prev => {
+      let sum = 0;
+      const fixedItems = prev.lineItems.map(it => {
+        const paddedHsn = cleanHsn(it.hsnCode);
+        const correctTotal = Number((it.quantity * it.unitPrice).toFixed(2));
+        sum += correctTotal;
+        return {
+          ...it,
+          hsnCode: paddedHsn,
+          total: correctTotal
+        };
+      });
+
+      let finalGst = prev.gstAmount || 0;
+      if (finalGst === 0 && prev.invoiceTotal > sum) {
+        finalGst = Number((prev.invoiceTotal - sum).toFixed(2));
+      }
+      const newHeaderTotal = Number((sum + finalGst).toFixed(2));
+
+      return {
+        ...prev,
+        lineItems: fixedItems,
+        gstAmount: finalGst,
+        invoiceTotal: newHeaderTotal,
+        status: 'converted'
+      };
+    });
+  };
+
+  // Live Math calculations
+  const itemsSum = Number(
+    formData.lineItems.reduce((acc, it) => acc + (it.total || 0), 0).toFixed(2)
+  );
+  const gstAmount = Number((formData.gstAmount || 0).toFixed(2));
+  const effectiveTotal = Number((itemsSum + gstAmount).toFixed(2));
+  const headerTotal = Number(formData.invoiceTotal.toFixed(2));
+
+  const isDirectMatch = Math.abs(itemsSum - headerTotal) <= 0.5;
+  const isGstMatch = Math.abs(effectiveTotal - headerTotal) <= 0.5;
+  const isBalanced = isDirectMatch || isGstMatch;
+  const mathDiff = isGstMatch ? 0 : (isDirectMatch ? 0 : Number(Math.abs(effectiveTotal - headerTotal).toFixed(2)));
+  const unallocatedGst = (!formData.gstAmount || formData.gstAmount === 0) && headerTotal > itemsSum 
+    ? Number((headerTotal - itemsSum).toFixed(2)) 
+    : 0;
+
+  const handleSave = () => {
+    const updated: ConvertedInvoice = {
+      ...formData,
+      status: isBalanced && formData.lineItems.every(i => i.hsnCode.length === 8) ? 'converted' : 'review_suggested'
+    };
+    onSave(updated);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  return (
+    <div className="flex-1 h-screen flex flex-col bg-slate-50/50 overflow-hidden">
+      {/* =========================================================================
+          TOP ACTION BAR OF PREVIEW PANE
+         ========================================================================= */}
+      <div className="h-16 px-6 bg-white border-b border-slate-200/80 flex items-center justify-between shrink-0 gap-4">
+        {/* Left: Invoice Title & Port Selector */}
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <FileText className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center space-x-2">
+              <h2 className="text-sm font-bold text-slate-900 tracking-tight font-mono truncate">
+                {formData.invoiceNumber}
+              </h2>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200">
+                {formData.filingType} • .{ediExt.toUpperCase()}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 truncate">
+              {formData.fileName} • {formData.convertedAt}
+            </p>
+          </div>
+        </div>
+
+        {/* Center: View Mode Toggle (Split View / Data Only / PDF Only) */}
+        <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/70 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setViewMode('split')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-all ${
+              viewMode === 'split'
+                ? 'bg-white text-indigo-700 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span>Split View</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('data')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-all ${
+              viewMode === 'data'
+                ? 'bg-white text-indigo-700 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileCheck className="w-3.5 h-3.5" />
+            <span>Extracted Data</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('pdf')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-all ${
+              viewMode === 'pdf'
+                ? 'bg-white text-indigo-700 shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>PDF Carousel</span>
+          </button>
+        </div>
+
+        {/* Right: Actions (Save, Download EDI, Download Excel) */}
+        <div className="flex items-center space-x-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleSave}
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-all ${
+              isSaved
+                ? 'bg-emerald-600 text-white'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+            }`}
+          >
+            {isSaved ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Saved!</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Changes</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadEdi(formData)}
+            className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200/60 shadow-2xs transition-colors"
+            title="Download ICES 1.5 EDI Flat File"
+          >
+            <FileCode className="w-3.5 h-3.5 text-indigo-600" />
+            <span>.{ediExt}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadExcel(formData)}
+            className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200/60 shadow-2xs transition-colors"
+            title="Download Excel Spreadsheet"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>.xlsx</span>
+          </button>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          MAIN WORKSPACE: SPLIT VIEW / DATA VIEW / PDF CAROUSEL VIEW
+         ========================================================================= */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* PANEL A: EXTRACTED TEXT ("Preview & Edit Invoice" Section) */}
+        {(viewMode === 'split' || viewMode === 'data') && (
+          <div className={`${viewMode === 'split' ? 'w-1/2 border-r border-slate-200/80' : 'w-full'} h-full flex flex-col bg-white overflow-y-auto p-6 space-y-6 text-xs`}>
+            {/* Section 1: Shipment & Statutory Grid */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                  Shipment & Statutory Information
+                </h3>
+
+                {/* Filing Type Toggle: Export vs Import */}
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setFormData(p => ({ ...p, filingType: 'EXPORT' }))}
+                    className={`px-2 py-0.5 rounded font-semibold transition-all ${
+                      formData.filingType === 'EXPORT'
+                        ? 'bg-white text-indigo-700 shadow-2xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Export (.sb)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(p => ({ ...p, filingType: 'IMPORT' }))}
+                    className={`px-2 py-0.5 rounded font-semibold transition-all ${
+                      formData.filingType === 'IMPORT'
+                        ? 'bg-white text-indigo-700 shadow-2xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Import (.be)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                {/* Invoice Number */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Invoice Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.invoiceNumber}
+                    onChange={(e) => setFormData(p => ({ ...p, invoiceNumber: e.target.value }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                    required
+                  />
+                </div>
+
+                {/* Invoice Date */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Invoice Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.invoiceDate}
+                    onChange={(e) => setFormData(p => ({ ...p, invoiceDate: e.target.value }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    required
+                  />
+                </div>
+
+                {/* e-Sanchit IRN */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-medium text-slate-600">
+                      16-Digit e-Sanchit IRN
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(p => ({ ...p, esanchitIrn: generateMockIrn(formData.portOfLoading) }))}
+                      className="text-[10px] text-indigo-600 font-semibold hover:underline"
+                    >
+                      Generate Mock IRN
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    maxLength={16}
+                    value={formData.esanchitIrn}
+                    onChange={(e) => setFormData(p => ({ ...p, esanchitIrn: e.target.value.toUpperCase() }))}
+                    placeholder="e.g. 2026102700948215"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Exporter Name with Profile Dropdown */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-medium text-slate-600">
+                      Exporter / Consignor Name
+                    </label>
+                    <select
+                      onChange={handleSelectExporter}
+                      className="text-[10px] bg-slate-100 text-slate-700 rounded px-1.5 py-0.5 border border-slate-200 outline-none"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Auto-fill Profile...</option>
+                      {EXPORTER_PROFILES.map(p => (
+                        <option key={p.id} value={p.id}>{p.companyName.slice(0, 28)}...</option>
+                      ))}
+                    </select>
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.exporterName}
+                    onChange={(e) => setFormData(p => ({ ...p, exporterName: e.target.value }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-medium"
+                    required
+                  />
+                </div>
+
+                {/* 10-Digit IEC */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    10-Digit IEC
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={10}
+                    value={formData.iec}
+                    onChange={(e) => setFormData(p => ({ ...p, iec: e.target.value.toUpperCase() }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* 15-Digit GSTIN */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    15-Digit GSTIN
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={15}
+                    value={formData.gstin}
+                    onChange={(e) => setFormData(p => ({ ...p, gstin: e.target.value.toUpperCase() }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                  />
+                </div>
+
+                {/* Bank AD Code */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Bank AD Code (7 Digits)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={7}
+                    value={formData.adCode}
+                    onChange={(e) => setFormData(p => ({ ...p, adCode: e.target.value }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Consignee Name */}
+                <div className="md:col-span-2">
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Consignee / Buyer (Overseas)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.consigneeName}
+                    onChange={(e) => setFormData(p => ({ ...p, consigneeName: e.target.value }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-medium"
+                  />
+                </div>
+
+                {/* Port of Loading */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Port of Loading
+                  </label>
+                  <select
+                    value={formData.portOfLoading}
+                    onChange={(e) => onPortChange(formData.id, e.target.value as CustomsPort)}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                  >
+                    <option value="INNSA1">Nhava Sheva (INNSA1)</option>
+                    <option value="INBOM4">Mumbai Air (INBOM4)</option>
+                  </select>
+                </div>
+
+                {/* Discharge Port & Country */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                      Discharge Port
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.portOfDischarge}
+                      onChange={(e) => setFormData(p => ({ ...p, portOfDischarge: e.target.value.toUpperCase() }))}
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                      Country
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={2}
+                      value={formData.destinationCountry}
+                      onChange={(e) => setFormData(p => ({ ...p, destinationCountry: e.target.value.toUpperCase() }))}
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Currency, Exch Rate, Incoterm */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Currency
+                  </label>
+                  <select
+                    value={formData.currency}
+                    onChange={(e) => setFormData(p => ({ ...p, currency: e.target.value }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                  >
+                    <option value="INR">INR (₹)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="AED">AED</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Exchange Rate (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.exchangeRate}
+                    onChange={(e) => setFormData(p => ({ ...p, exchangeRate: parseFloat(e.target.value) || 1 }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Incoterm
+                  </label>
+                  <select
+                    value={formData.incoterm}
+                    onChange={(e) => setFormData(p => ({ ...p, incoterm: e.target.value as any }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                  >
+                    <option value="FOB">FOB</option>
+                    <option value="CIF">CIF</option>
+                    <option value="CFR">CFR</option>
+                    <option value="EXW">EXW</option>
+                  </select>
+                </div>
+
+                {/* GST / Taxes Amount */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-medium text-slate-600">
+                      GST / Taxes ({formData.currency})
+                    </label>
+                    {itemsSum > 0 && formData.invoiceTotal > itemsSum && (!formData.gstAmount || formData.gstAmount === 0) && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(p => ({ ...p, gstAmount: Number((p.invoiceTotal - itemsSum).toFixed(2)) }))}
+                        className="text-[10px] text-indigo-600 font-semibold hover:underline"
+                      >
+                        Auto-Fill
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.gstAmount ?? ''}
+                    placeholder="0.00"
+                    onChange={(e) => setFormData(p => ({ ...p, gstAmount: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono font-semibold text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Total Invoice Value */}
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    Header Invoice Total
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.invoiceTotal}
+                    onChange={(e) => setFormData(p => ({ ...p, invoiceTotal: parseFloat(e.target.value) || 0 }))}
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono font-bold text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Line Items & Tariff Codes */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Scale className="w-3.5 h-3.5 text-indigo-600" />
+                    Line Items & Tariff Codes ({formData.lineItems.length} items)
+                  </h3>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleAutoFix}
+                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200/50 transition-colors"
+                  >
+                    <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Auto-Fix HSN & Totals</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAddItem}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Item</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/90 text-slate-500 text-[11px] font-semibold border-b border-slate-200">
+                      <th className="py-2 px-3 w-10 text-center">#</th>
+                      <th className="py-2 px-3">Description</th>
+                      <th className="py-2 px-3 w-32">HSN (8-Digit)</th>
+                      <th className="py-2 px-3 w-16 text-right">Qty</th>
+                      <th className="py-2 px-3 w-20">Unit</th>
+                      <th className="py-2 px-3 w-24 text-right">Price</th>
+                      <th className="py-2 px-3 w-28 text-right">Total</th>
+                      <th className="py-2 px-2 w-10 text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {formData.lineItems.map((item, idx) => {
+                      const isHsnValid = item.hsnCode && item.hsnCode.length === 8 && /^\d+$/.test(item.hsnCode);
+                      const calculated = Number((item.quantity * item.unitPrice).toFixed(2));
+                      const isMathValid = Math.abs(calculated - item.total) < 0.05;
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px]">
+                            {idx + 1}
+                          </td>
+
+                          <td className="py-2 px-3">
+                            <input
+                              type="text"
+                              value={item.description}
+                              onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
+                              className="w-full bg-transparent border-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 rounded px-1.5 py-1 text-slate-800 outline-none"
+                            />
+                          </td>
+
+                          <td className="py-2 px-3">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                maxLength={8}
+                                value={item.hsnCode}
+                                onChange={(e) => handleItemChange(idx, 'hsnCode', e.target.value.replace(/[^0-9]/g, ''))}
+                                className={`w-full font-mono text-xs px-2 py-1 rounded border outline-none ${
+                                  isHsnValid
+                                    ? 'border-slate-200 bg-slate-50/50 text-slate-900 focus:bg-white focus:border-indigo-500'
+                                    : 'border-amber-400 bg-amber-50/60 text-amber-900 focus:border-amber-500'
+                                }`}
+                              />
+                            </div>
+                          </td>
+
+                          <td className="py-2 px-3 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              value={item.quantity}
+                              onChange={(e) => handleItemChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                              className="w-full text-right font-mono bg-transparent border-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 rounded px-1 py-1 text-slate-900 outline-none"
+                            />
+                          </td>
+
+                          <td className="py-2 px-3">
+                            <select
+                              value={item.uqc}
+                              onChange={(e) => handleItemChange(idx, 'uqc', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] text-slate-700 outline-none cursor-pointer"
+                            >
+                              <option value="NOS">NOS</option>
+                              <option value="PCS">PCS</option>
+                              <option value="KGS">KGS</option>
+                              <option value="MTR">MTR</option>
+                              <option value="BOX">BOX</option>
+                              <option value="SET">SET</option>
+                              <option value="CTN">CTN</option>
+                            </select>
+                          </td>
+
+                          <td className="py-2 px-3 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={item.unitPrice}
+                              onChange={(e) => handleItemChange(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
+                              className="w-full text-right font-mono bg-transparent border-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 rounded px-1 py-1 text-slate-900 outline-none"
+                            />
+                          </td>
+
+                          <td className="py-2 px-3 text-right">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={item.total}
+                              onChange={(e) => handleItemChange(idx, 'total', parseFloat(e.target.value) || 0)}
+                              className={`w-full font-mono font-bold text-right px-1.5 py-1 rounded border outline-none ${
+                                isMathValid
+                                  ? 'border-transparent bg-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 text-slate-900'
+                                  : 'border-rose-400 bg-rose-50/60 text-rose-900'
+                              }`}
+                            />
+                          </td>
+
+                          <td className="py-2 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteItem(idx)}
+                              disabled={formData.lineItems.length <= 1}
+                              className="p-1 text-slate-300 hover:text-rose-600 rounded disabled:opacity-30 transition-colors"
+                              title="Delete Item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Section 3: Math Audit Footer Indicator */}
+            <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                  isBalanced
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}>
+                  {isBalanced ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>
+                        Totals Reconciled
+                        {gstAmount > 0 ? ` (Items: ${itemsSum.toFixed(2)} + GST: ${gstAmount.toFixed(2)})` : ''}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span>Variance: {mathDiff.toFixed(2)} {formData.currency}</span>
+                      {unallocatedGst > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData(p => ({ ...p, gstAmount: unallocatedGst }))}
+                          className="ml-2 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-2xs"
+                        >
+                          + Add GST ({unallocatedGst.toFixed(2)} {formData.currency})
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="text-xs text-slate-500 font-mono">
+                  Items Sum: <strong className="text-slate-800">{itemsSum.toFixed(2)}</strong>
+                  {gstAmount > 0 && (
+                    <> + GST: <strong className="text-indigo-600">{gstAmount.toFixed(2)}</strong></>
+                  )}
+                  {' '}| Header Total: <strong className="text-slate-800">{headerTotal.toFixed(2)}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PANEL B: PDF DOCUMENT VIEWER & CAROUSEL */}
+        {(viewMode === 'split' || viewMode === 'pdf') && (
+          <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} h-full flex flex-col bg-slate-900 border-l border-slate-200/80 select-none overflow-hidden`}>
+            {/* Carousel Toolbar */}
+            <div className="h-11 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
+              <div className="flex items-center space-x-2 truncate">
+                <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+                <span className="font-medium truncate max-w-[180px]" title={formData.fileName}>
+                  {formData.fileName}
+                </span>
+                <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                  PDF
+                </span>
+              </div>
+
+              {/* Carousel Page Controls */}
+              <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1 bg-slate-700/80 px-1.5 py-0.5 rounded">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                    disabled={currentPage <= 1}
+                    className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[11px] font-mono px-1 text-white">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                    disabled={currentPage >= totalPages}
+                    className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
+                    title="Next Page"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Zoom Controls */}
+                <div className="flex items-center space-x-1 bg-slate-700/80 px-1 py-0.5 rounded">
+                  <button
+                    type="button"
+                    onClick={() => setZoom(z => Math.max(z - 15, 60))}
+                    className="p-1 text-slate-300 hover:text-white transition-colors"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[11px] font-mono px-1 text-slate-300">
+                    {zoom}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setZoom(z => Math.min(z + 15, 160))}
+                    className="p-1 text-slate-300 hover:text-white transition-colors"
+                    title="Zoom In"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Document Display Canvas */}
+            <div className="flex-1 overflow-auto p-4 flex justify-center items-start bg-slate-950/60">
+              {formData.pdfUrl ? (
+                <div 
+                  className="w-full h-full min-h-[500px] bg-white rounded-lg shadow-2xl overflow-hidden transition-transform origin-top"
+                  style={{ transform: `scale(${zoom / 100})` }}
+                >
+                  <iframe
+                    src={`${formData.pdfUrl}#page=${currentPage}&toolbar=0&navpanes=0`}
+                    title="Document PDF Preview"
+                    className="w-full h-full min-h-[650px] border-none"
+                  />
+                </div>
+              ) : (
+                /* High-Fidelity Mock PDF Visualizer if direct Blob URL expired across reload */
+                <div 
+                  className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-xl text-slate-900 font-sans text-xs transition-transform origin-top select-text"
+                  style={{ transform: `scale(${zoom / 100})` }}
+                >
+                  {/* Document Header */}
+                  <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4 mb-4">
+                    <div>
+                      <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                        {formData.exporterName}
+                      </h4>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        GSTIN: {formData.gstin || '27AABCS8891D1Z1'} | IEC: {formData.iec || '0399003418'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-bold font-mono text-indigo-700 block">
+                        COMMERCIAL INVOICE
+                      </span>
+                      <span className="font-mono text-[11px] font-bold text-slate-800">
+                        #{formData.invoiceNumber}
+                      </span>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        Date: {formData.invoiceDate}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Consignee */}
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4 text-[11px]">
+                    <span className="font-bold uppercase tracking-wider text-slate-400 block text-[9px]">
+                      Buyer / Consignee:
+                    </span>
+                    <span className="font-semibold text-slate-800 block mt-0.5">
+                      {formData.consigneeName}
+                    </span>
+                    <span className="text-slate-500 block">
+                      Destination: {formData.portOfDischarge} ({formData.destinationCountry}) | Terms: {formData.incoterm}
+                    </span>
+                  </div>
+
+                  {/* Document Items Table */}
+                  <div className="mb-4">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="border-b border-slate-300 text-slate-600 font-semibold">
+                          <th className="py-1">Description</th>
+                          <th className="py-1 text-center">HSN</th>
+                          <th className="py-1 text-right">Qty</th>
+                          <th className="py-1 text-right">Rate</th>
+                          <th className="py-1 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {formData.lineItems.map((it, i) => (
+                          <tr key={i}>
+                            <td className="py-1.5 font-medium text-slate-800">{it.description}</td>
+                            <td className="py-1.5 text-center font-mono text-slate-600">{it.hsnCode}</td>
+                            <td className="py-1.5 text-right font-mono">{it.quantity} {it.uqc}</td>
+                            <td className="py-1.5 text-right font-mono">{it.unitPrice.toFixed(2)}</td>
+                            <td className="py-1.5 text-right font-mono font-semibold">{it.total.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Document Totals */}
+                  <div className="border-t-2 border-slate-800 pt-3 flex justify-between items-center text-xs">
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      <span>Source File: {formData.fileName}</span>
+                    </div>
+                    <div className="text-right space-y-0.5 font-mono">
+                      {formData.gstAmount && formData.gstAmount > 0 ? (
+                        <>
+                          <div className="text-[10px] text-slate-500">
+                            Subtotal: {formData.currency} {itemsSum.toFixed(2)}
+                          </div>
+                          <div className="text-[10px] text-indigo-600">
+                            GST (18%): {formData.currency} {formData.gstAmount.toFixed(2)}
+                          </div>
+                        </>
+                      ) : null}
+                      <div className="text-sm font-bold text-slate-900">
+                        Grand Total: {formData.currency} {formData.invoiceTotal.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

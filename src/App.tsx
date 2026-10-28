@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Header } from './components/Header';
-import { UploadZone } from './components/UploadZone';
-import { FileQueueCard } from './components/FileQueueCard';
-import { ConvertedOutputsFeed } from './components/ConvertedOutputsFeed';
-import { EditModal } from './components/EditModal';
+import { Sidebar } from './components/Sidebar';
+import { CenterColumn } from './components/CenterColumn';
+import { PreviewPane } from './components/PreviewPane';
+import { ApiKeyModal } from './components/ApiKeyModal';
 import type { ConvertedInvoice, QueueFile, CustomsPort } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 
@@ -12,7 +11,7 @@ const LOCAL_STORAGE_KEY_KEY = 'ekdant_gemini_key';
 const DEFAULT_PORT: CustomsPort = 'INNSA1';
 
 export function App() {
-  // Converted Invoices Feed - starts clean with no hardcoded sample invoices
+  // Converted Invoices Feed
   const [invoices, setInvoices] = useState<ConvertedInvoice[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
@@ -24,18 +23,36 @@ export function App() {
     return [];
   });
 
+  // Selected Invoice ID for Right Preview Pane
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0].id;
+      }
+    } catch {}
+    return null;
+  });
+
   // Upload Queue
   const [queue, setQueue] = useState<QueueFile[]>([]);
 
-  // Modals state
-  const [editingInvoice, setEditingInvoice] = useState<ConvertedInvoice | null>(null);
+  // Settings Modal
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
 
-  // Gemini API Key (reads from Vercel env PDF_Parser / VITE_GEMINI_API_KEY, localStorage, or default)
-  const apiKey = 
-    localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
-    (import.meta.env as any).PDF_Parser ||
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA';
+  // Gemini API Key
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return (
+      localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
+      (import.meta.env as any).PDF_Parser ||
+      import.meta.env.VITE_GEMINI_API_KEY ||
+      'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA'
+    );
+  });
+
+  // Active Selected Invoice (defaults to selected or first invoice)
+  const activeInvoice = invoices.find(inv => inv.id === selectedInvoiceId) || (invoices.length > 0 ? invoices[0] : null);
 
   // Persist invoices whenever updated
   useEffect(() => {
@@ -67,8 +84,11 @@ export function App() {
         // Update queue item status to converted
         setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'converted' } : q));
 
-        // Add to converted invoices feed (newest first)
+        // Add to converted invoices list (newest first)
         setInvoices(prev => [converted, ...prev]);
+
+        // Auto-select the newly converted invoice into the preview pane
+        setSelectedInvoiceId(converted.id);
       } catch (err: any) {
         setQueue(prev => prev.map(q => q.id === item.id ? { 
           ...q, 
@@ -90,6 +110,7 @@ export function App() {
       const converted = await extractInvoiceFromPdf(target.file, apiKey, DEFAULT_PORT);
       setQueue(prev => prev.map(q => q.id === fileId ? { ...q, status: 'converted' } : q));
       setInvoices(prev => [converted, ...prev]);
+      setSelectedInvoiceId(converted.id);
     } catch (err: any) {
       setQueue(prev => prev.map(q => q.id === fileId ? { 
         ...q, 
@@ -107,7 +128,7 @@ export function App() {
     setQueue(prev => prev.filter(q => q.status !== 'converted'));
   };
 
-  // Invoice Card Actions
+  // Update port on invoice
   const handleInvoicePortChange = (invoiceId: string, newPort: CustomsPort) => {
     setInvoices(prev => prev.map(inv => {
       if (inv.id !== invoiceId) return inv;
@@ -120,72 +141,68 @@ export function App() {
     }));
   };
 
-  const handleEditInvoice = (invoice: ConvertedInvoice) => {
-    setEditingInvoice(invoice);
-  };
-
+  // Save edits from the Right Preview Pane
   const handleSaveInvoiceEdit = (updated: ConvertedInvoice) => {
     setInvoices(prev => prev.map(inv => inv.id === updated.id ? updated : inv));
   };
 
+  // Delete invoice
   const handleDeleteInvoice = (invoiceId: string) => {
-    setInvoices(prev => prev.filter(inv => inv.id !== invoiceId));
+    setInvoices(prev => {
+      const remaining = prev.filter(inv => inv.id !== invoiceId);
+      if (selectedInvoiceId === invoiceId) {
+        setSelectedInvoiceId(remaining.length > 0 ? remaining[0].id : null);
+      }
+      return remaining;
+    });
   };
 
+  // Clear all invoices
   const handleClearAllInvoices = () => {
     setInvoices([]);
+    setSelectedInvoiceId(null);
     localStorage.removeItem(LOCAL_STORAGE_INVOICES_KEY);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/80 text-slate-900 flex flex-col font-sans">
-      {/* Top Navigation Bar */}
-      <Header />
+    <div className="h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-900 font-sans">
+      {/* 1. Left Non-Collapsible Sidebar (Green Block 1 with Logo shifted to top-left) */}
+      <Sidebar 
+        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
+        hasApiKey={Boolean(apiKey)}
+      />
 
-      {/* Main Workspace (2-Column Split) */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column (5 Cols) — Upload & Queue */}
-          <section className="lg:col-span-5 space-y-5">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                Upload Documents
-              </h2>
-            </div>
+      {/* 2. Center Workspace (Red Box: Top 50% Upload, Bottom 50% Uploaded & Ready Files List) */}
+      <CenterColumn
+        invoices={invoices}
+        queue={queue}
+        selectedInvoiceId={activeInvoice?.id || null}
+        onSelectInvoice={(id) => setSelectedInvoiceId(id)}
+        onFilesSelected={handleFilesSelected}
+        onRetryFile={handleRetryFile}
+        onRemoveQueueItem={handleRemoveQueueItem}
+        onClearCompletedQueue={handleClearCompletedQueue}
+        onDeleteInvoice={handleDeleteInvoice}
+        onClearAllInvoices={handleClearAllInvoices}
+        onPortChange={handleInvoicePortChange}
+      />
 
-            {/* Drag & Drop Zone */}
-            <UploadZone
-              onFilesSelected={handleFilesSelected}
-            />
-
-            {/* Selected Files Queue Card */}
-            <FileQueueCard
-              queue={queue}
-              onRetry={handleRetryFile}
-              onRemove={handleRemoveQueueItem}
-              onClearCompleted={handleClearCompletedQueue}
-            />
-          </section>
-
-          {/* Right Column (7 Cols) — Converted Outputs Feed */}
-          <section className="lg:col-span-7">
-            <ConvertedOutputsFeed
-              invoices={invoices}
-              onEdit={handleEditInvoice}
-              onDelete={handleDeleteInvoice}
-              onClearAll={handleClearAllInvoices}
-              onPortChange={handleInvoicePortChange}
-            />
-          </section>
-        </div>
-      </main>
-
-      {/* Preview & Edit Modal */}
-      <EditModal
-        invoice={editingInvoice}
-        isOpen={Boolean(editingInvoice)}
-        onClose={() => setEditingInvoice(null)}
+      {/* 3. Right Preview Pane (Green Box 2: Integrated "Preview & Edit" + PDF Side-by-Side Carousel) */}
+      <PreviewPane
+        invoice={activeInvoice}
         onSave={handleSaveInvoiceEdit}
+        onPortChange={handleInvoicePortChange}
+      />
+
+      {/* API Key Settings Modal */}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        currentKey={apiKey}
+        onSaveKey={(newKey) => {
+          localStorage.setItem(LOCAL_STORAGE_KEY_KEY, newKey);
+          setApiKey(newKey);
+        }}
       />
     </div>
   );

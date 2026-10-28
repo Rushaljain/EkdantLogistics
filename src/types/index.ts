@@ -56,6 +56,9 @@ export interface ConvertedInvoice {
   totalPackages: number;
   packageType: string; // BOX, CTN, CRATE, PLT
   
+  // Document Source
+  pdfUrl?: string;     // Object URL for live PDF preview
+  
   // Line Items
   lineItems: LineItem[];
 }

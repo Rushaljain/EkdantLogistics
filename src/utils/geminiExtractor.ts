@@ -227,6 +227,7 @@ export async function extractInvoiceFromPdf(
     netWeightKg: Number(parsed.netWeightKg) || 0,
     totalPackages: Number(parsed.totalPackages) || 1,
     packageType: parsed.packageType || 'BOX',
+    pdfUrl: typeof window !== 'undefined' && window.URL ? URL.createObjectURL(file) : undefined,
     lineItems: items.length > 0 ? items : [
       {
         id: `item-${Date.now()}-1`,
