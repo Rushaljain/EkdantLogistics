@@ -50,46 +50,43 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
   };
 
   return (
-    <div className="space-y-3">
-      {/* Drag & Drop Zone */}
-      <div
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all duration-200 ${
-          isDragging
-            ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01]'
-            : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50 shadow-subtle'
-        }`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf"
-          multiple
-          onChange={handleFileChange}
-          className="hidden"
-        />
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onClick={() => fileInputRef.current?.click()}
+      className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
+        isDragging
+          ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01]'
+          : 'border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-slate-50/50 shadow-2xs'
+      }`}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        multiple
+        onChange={handleFileChange}
+        className="hidden"
+      />
 
-        <div className="flex flex-col items-center">
-          <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 transition-transform group-hover:scale-105">
-            <UploadCloud className="w-6 h-6" />
-          </div>
+      <div className="flex flex-col items-center">
+        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2 transition-transform group-hover:scale-105">
+          <UploadCloud className="w-5 h-5" />
+        </div>
 
-          <h3 className="text-sm font-semibold text-slate-900">
-            Drop PDF documents here
-          </h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-[260px] leading-relaxed">
-            Multi-page commercial invoices & packing lists from SAP, Tally, or scanned PDFs
-          </p>
+        <h3 className="text-xs font-semibold text-slate-900">
+          Drop PDF documents here
+        </h3>
+        <p className="text-[11px] text-slate-500 mt-0.5 max-w-[260px] leading-relaxed">
+          Multi-page commercial invoices & packing lists from SAP, Tally, or scanned PDFs
+        </p>
 
-          <div className="mt-4 flex items-center space-x-2">
-            <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/80 px-3 py-1.5 rounded-lg transition-colors">
-              <FolderUp className="w-3.5 h-3.5" />
-              <span>Browse Files</span>
-            </span>
-          </div>
+        <div className="mt-3 flex items-center space-x-2">
+          <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/80 px-3 py-1.5 rounded-lg transition-colors">
+            <FolderUp className="w-3.5 h-3.5" />
+            <span>Browse Files</span>
+          </span>
         </div>
       </div>
     </div>
