@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { CenterColumn } from './components/CenterColumn';
 import { PreviewPane } from './components/PreviewPane';
-import { ApiKeyModal } from './components/ApiKeyModal';
 import type { ConvertedInvoice, QueueFile, CustomsPort } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 
@@ -38,18 +37,12 @@ export function App() {
   // Upload Queue
   const [queue, setQueue] = useState<QueueFile[]>([]);
 
-  // Settings Modal
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
-
-  // Gemini API Key
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return (
-      localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
-      (import.meta.env as any).PDF_Parser ||
-      import.meta.env.VITE_GEMINI_API_KEY ||
-      'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA'
-    );
-  });
+  // Gemini API Key (reads from Vercel env PDF_Parser / VITE_GEMINI_API_KEY, localStorage, or default)
+  const apiKey = 
+    (import.meta.env as any).PDF_Parser ||
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
+    'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA';
 
   // Active Selected Invoice (defaults to selected or first invoice)
   const activeInvoice = invoices.find(inv => inv.id === selectedInvoiceId) || (invoices.length > 0 ? invoices[0] : null);
@@ -166,13 +159,10 @@ export function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-900 font-sans">
-      {/* 1. Left Non-Collapsible Sidebar (Green Block 1 with Logo shifted to top-left) */}
-      <Sidebar 
-        onOpenApiKeyModal={() => setIsApiKeyModalOpen(true)}
-        hasApiKey={Boolean(apiKey)}
-      />
+      {/* 1. Left Non-Collapsible Sidebar */}
+      <Sidebar />
 
-      {/* 2. Center Workspace (Red Box: Top 50% Upload, Bottom 50% Uploaded & Ready Files List) */}
+      {/* 2. Center Workspace (Upload + Ready Files List) */}
       <CenterColumn
         invoices={invoices}
         queue={queue}
@@ -187,22 +177,11 @@ export function App() {
         onPortChange={handleInvoicePortChange}
       />
 
-      {/* 3. Right Preview Pane (Green Box 2: Integrated "Preview & Edit" + PDF Side-by-Side Carousel) */}
+      {/* 3. Right Preview Pane (Integrated "Preview & Edit" + PDF Side-by-Side Carousel) */}
       <PreviewPane
         invoice={activeInvoice}
         onSave={handleSaveInvoiceEdit}
         onPortChange={handleInvoicePortChange}
-      />
-
-      {/* API Key Settings Modal */}
-      <ApiKeyModal
-        isOpen={isApiKeyModalOpen}
-        onClose={() => setIsApiKeyModalOpen(false)}
-        currentKey={apiKey}
-        onSaveKey={(newKey) => {
-          localStorage.setItem(LOCAL_STORAGE_KEY_KEY, newKey);
-          setApiKey(newKey);
-        }}
       />
     </div>
   );
