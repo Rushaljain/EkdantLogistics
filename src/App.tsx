@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Key, FolderArchive } from 'lucide-react';
+import { FolderArchive } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import type { NavTab } from './components/Sidebar';
 import { CenterColumn } from './components/CenterColumn';
@@ -405,16 +405,10 @@ export function App() {
               Customs Document Converter
             </p>
           </div>
-
-          <div className="hidden sm:flex items-center space-x-2 pl-3 border-l border-slate-200/80">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-              ICEGATE & Customs EDI
-            </span>
-          </div>
         </div>
 
-        {/* Center: Context Status / Active Document */}
-        <div className="hidden md:flex items-center space-x-2 text-xs font-medium text-slate-500">
+        {/* Right: Context Status / Active Document */}
+        <div className="flex items-center space-x-2 text-xs font-medium text-slate-500">
           {activeTab === 'files' ? (
             <div className="flex items-center space-x-2 text-slate-700 font-semibold">
               <FolderArchive className="w-4 h-4 text-indigo-600" />
@@ -423,7 +417,7 @@ export function App() {
           ) : activeDocument ? (
             <div className="flex items-center space-x-2">
               <span className="text-slate-400">Active Document:</span>
-              <span className="font-semibold text-slate-800 truncate max-w-[200px] lg:max-w-[320px]">
+              <span className="font-semibold text-slate-800 truncate max-w-[240px] lg:max-w-[380px]">
                 {activeDocument.invoice?.invoiceNumber || activeDocument.fileName}
               </span>
               {activeDocument.status === 'processed' && (
@@ -445,28 +439,6 @@ export function App() {
           ) : (
             <span className="text-slate-400 font-medium">Multi-Page Customs Invoices & Packing Lists</span>
           )}
-        </div>
-
-        {/* Right: API Key Trigger & User Profile */}
-        <div className="flex items-center space-x-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => setIsKeyModalOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/70 border border-slate-200/80 transition-colors cursor-pointer"
-            title="Configure Gemini API Key"
-          >
-            <Key className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline font-semibold">API Key</span>
-          </button>
-
-          <div className="flex items-center space-x-2 pl-3 border-l border-slate-200/80">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white font-bold flex items-center justify-center text-xs shadow-xs">
-              U
-            </div>
-            <span className="text-xs font-semibold text-slate-800 hidden sm:inline">
-              User XYZ
-            </span>
-          </div>
         </div>
       </header>
 
