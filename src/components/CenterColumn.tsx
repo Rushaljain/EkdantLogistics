@@ -4,7 +4,6 @@ import {
   Trash2, 
   FileCode, 
   FileSpreadsheet, 
-  ArrowRight, 
   Ship, 
   Plane, 
   ChevronDown, 
@@ -153,14 +152,6 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
               const isExport = inv ? inv.filingType === 'EXPORT' : true;
               const ediExt = isExport ? 'sb' : 'be';
 
-              const formattedTotal = inv
-                ? new Intl.NumberFormat('en-US', {
-                    style: 'currency',
-                    currency: inv.currency || 'USD',
-                    minimumFractionDigits: 2
-                  }).format(inv.invoiceTotal || 0)
-                : null;
-
               return (
                 <div
                   key={doc.id}
@@ -214,28 +205,15 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         </div>
                       </div>
 
-                      {/* Exporter -> Consignee */}
-                      <div className="text-[11px] text-slate-500 truncate flex items-center space-x-1 mt-1" title={`${inv.exporterName} → ${inv.consigneeName}`}>
-                        <span className="font-medium text-slate-700 truncate max-w-[140px]">
+                      {/* Row 2: Exporter Name on left + Direct Action Buttons shifted to right */}
+                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100/80 text-[11px] gap-2">
+                        <span className="font-medium text-slate-700 truncate min-w-0" title={inv.exporterName}>
                           {inv.exporterName}
                         </span>
-                        <ArrowRight className="w-2.5 h-2.5 text-slate-300 shrink-0" />
-                        <span className="truncate max-w-[140px] text-slate-500">
-                          {inv.consigneeName}
-                        </span>
-                      </div>
 
-                      {/* Bottom Line: Total Value + Items + Direct Downloads */}
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
-                        <div className="flex items-center space-x-1.5 font-mono">
-                          <span className="font-bold text-slate-900">{formattedTotal}</span>
-                          <span className="text-slate-300">•</span>
-                          <span className="text-slate-500">{inv.lineItems.length} items</span>
-                        </div>
-
-                        {/* Direct Action Buttons */}
+                        {/* Direct Action Buttons (Shifted from bottom) */}
                         <div 
-                          className="flex items-center space-x-1"
+                          className="flex items-center space-x-1 shrink-0"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button

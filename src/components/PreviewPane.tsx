@@ -36,7 +36,7 @@ interface PreviewPaneProps {
   onConvert?: (docId: string) => void;
 }
 
-type ViewMode = 'split' | 'data' | 'pdf';
+type ViewMode = 'data' | 'pdf';
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
   document,
@@ -324,7 +324,7 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
     lineItems: invoice.lineItems.map(it => ({ ...it }))
   }));
 
-  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [viewMode, setViewMode] = useState<ViewMode>('data');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages] = useState<number>(2);
   const [zoom, setZoom] = useState<number>(100);
@@ -473,21 +473,8 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
           </div>
         </div>
 
-        {/* Center: View Mode Toggle (Split View / Data Only / PDF Only) */}
+        {/* Center: View Mode Toggle (Extracted Data / PDF Carousel) */}
         <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/70 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setViewMode('split')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-all ${
-              viewMode === 'split'
-                ? 'bg-white text-indigo-700 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Columns className="w-3.5 h-3.5" />
-            <span>Split View</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setViewMode('data')}
@@ -566,8 +553,8 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
          ========================================================================= */}
       <div className="flex-1 overflow-hidden flex">
         {/* PANEL A: EXTRACTED TEXT ("Preview & Edit Invoice" Section) */}
-        {(viewMode === 'split' || viewMode === 'data') && (
-          <div className={`${viewMode === 'split' ? 'w-1/2 border-r border-slate-200/80' : 'w-full'} h-full flex flex-col bg-white overflow-y-auto p-6 space-y-6 text-xs`}>
+        {viewMode === 'data' && (
+          <div className="w-full h-full flex flex-col bg-white overflow-y-auto p-6 space-y-6 text-xs">
             {/* Section 1: Shipment & Statutory Grid */}
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -1066,8 +1053,8 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
         )}
 
         {/* PANEL B: PDF DOCUMENT VIEWER & CAROUSEL */}
-        {(viewMode === 'split' || viewMode === 'pdf') && (
-          <div className={`${viewMode === 'split' ? 'w-1/2' : 'w-full'} h-full flex flex-col bg-slate-900 border-l border-slate-200/80 select-none overflow-hidden`}>
+        {viewMode === 'pdf' && (
+          <div className="w-full h-full flex flex-col bg-slate-900 select-none overflow-hidden">
             {/* Carousel Toolbar */}
             <div className="h-11 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
               <div className="flex items-center space-x-2 truncate">
