@@ -96,15 +96,15 @@ export async function extractInvoiceFromPdf(
   const now = new Date();
   const timeString = `Today, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-  if (!apiKey || apiKey.trim().length === 0 || apiKey.startsWith('AQ.')) {
-    throw new Error('Valid Google Gemini API key required. Please click "Configure Gemini API Key" or enter a key from Google AI Studio (starts with AIzaSy...).');
+  if (!apiKey || apiKey.trim().length === 0) {
+    throw new Error('API key is missing. Please click "Enter Gemini API Key" to configure your key.');
   }
 
   const cleanKey = apiKey.trim();
   const genAI = new GoogleGenerativeAI(cleanKey);
 
-  // Models to try in order of priority: 2.0-flash, 1.5-flash, 2.5-flash, 3.8-flash
-  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-3.8-flash'];
+  // Models to try in order of priority: 3.5-flash, 3.5-flash-lite, 3.8-flash, flash-latest
+  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
   let text = '';
   let lastError: any = null;
 

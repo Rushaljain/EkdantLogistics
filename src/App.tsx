@@ -21,16 +21,16 @@ export function App() {
   // Gemini API Key Modal
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
 
-  // Gemini API Key (stored in localStorage or from Vercel env, ignoring deprecated placeholder)
+  // Gemini API Key (stored in localStorage or from Vercel env)
   const [apiKey, setApiKey] = useState<string>(() => {
     try {
       const savedKey = localStorage.getItem(LOCAL_STORAGE_KEY_KEY);
-      if (savedKey && savedKey.trim().length > 0 && !savedKey.startsWith('AQ.')) {
+      if (savedKey && savedKey.trim().length > 0) {
         return savedKey.trim();
       }
     } catch {}
     const envKey = (import.meta.env as any).PDF_Parser || import.meta.env.VITE_GEMINI_API_KEY || '';
-    if (envKey && typeof envKey === 'string' && !envKey.startsWith('AQ.')) {
+    if (envKey && typeof envKey === 'string' && envKey.trim().length > 0) {
       return envKey.trim();
     }
     return '';
@@ -156,12 +156,12 @@ export function App() {
       return;
     }
 
-    if (!apiKey || apiKey.startsWith('AQ.')) {
+    if (!apiKey) {
       setIsKeyModalOpen(true);
       setDocuments(prev => prev.map(d => d.id === docId ? {
         ...d,
         status: 'failed',
-        errorMessage: 'Gemini API key is required. Please enter a valid key from Google AI Studio (starting with AIzaSy).'
+        errorMessage: 'Gemini API key is required. Please enter an API key in settings.'
       } : d));
       return;
     }
@@ -200,12 +200,12 @@ export function App() {
     const targets = documents.filter(d => d.status === 'pending' || d.status === 'failed');
     if (targets.length === 0 || isBulkConverting) return;
 
-    if (!apiKey || apiKey.startsWith('AQ.')) {
+    if (!apiKey) {
       setIsKeyModalOpen(true);
       setDocuments(prev => prev.map(d => targets.some(t => t.id === d.id) ? {
         ...d,
         status: 'failed',
-        errorMessage: 'Gemini API key is required. Please enter a valid key from Google AI Studio (starting with AIzaSy).'
+        errorMessage: 'Gemini API key is required. Please enter an API key in settings.'
       } : d));
       return;
     }

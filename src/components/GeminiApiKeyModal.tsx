@@ -31,11 +31,6 @@ export const GeminiApiKeyModal: React.FC<GeminiApiKeyModalProps> = ({
       return;
     }
 
-    if (cleanKey.startsWith('AQ.')) {
-      setError('Invalid key format. Gemini API keys start with "AIzaSy...".');
-      return;
-    }
-
     setError(null);
     onSaveKey(cleanKey);
     setIsSaved(true);
