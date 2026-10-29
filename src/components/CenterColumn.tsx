@@ -81,9 +81,6 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
               Uploaded Documents
             </h2>
-            <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
-              {documents.length}
-            </span>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -96,7 +93,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 title="Save all converted invoices to Files and clear the board"
               >
                 <FolderArchive className="w-3.5 h-3.5 text-emerald-100" />
-                <span>Save to Files ({processedCount})</span>
+                <span>Save to Files</span>
               </button>
             )}
 
@@ -117,7 +114,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
-                    <span>Convert All ({pendingCount})</span>
+                    <span>Convert All</span>
                   </>
                 )}
               </button>
