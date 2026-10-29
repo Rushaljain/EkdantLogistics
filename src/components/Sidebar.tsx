@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, FolderArchive, Key } from 'lucide-react';
+import { FileText, FolderArchive } from 'lucide-react';
 
 export type NavTab = 'converter' | 'files';
 
@@ -14,31 +14,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'converter',
   onSelectTab,
   savedFilesCount = 0,
-  onOpenKeyModal
 }) => {
   return (
-    <aside className="w-64 h-screen bg-white border-r border-slate-200/80 flex flex-col shrink-0 select-none">
-      {/* 1. Top Brand Header: Logo & Wordmark */}
-      <div className="h-16 px-5 border-b border-slate-200/80 flex items-center space-x-3 shrink-0">
-        <img 
-          src="/logo.png" 
-          alt="Ekdant Logistics Logo" 
-          className="h-9 w-auto object-contain rounded" 
-          onError={(e) => {
-            (e.target as HTMLElement).style.display = 'none';
-          }}
-        />
-        <div className="min-w-0">
-          <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight truncate">
-            Ekdant Logistics
-          </h1>
-          <p className="text-[10px] text-slate-400 font-medium truncate">
-            Customs Document Converter
-          </p>
-        </div>
-      </div>
-
-      {/* 2. Navigation Items */}
+    <aside className="w-64 h-full bg-white border-r border-slate-200/80 flex flex-col shrink-0 select-none">
+      {/* Navigation Items */}
       <div className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto">
         {/* Document Converter */}
         <button
@@ -74,22 +53,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* 3. Bottom User Profile & API Key Trigger */}
-      <div className="p-3.5 border-t border-slate-200/80 bg-slate-50/40 shrink-0 flex items-center justify-between">
-        <div className="px-2 text-xs font-semibold text-slate-800 tracking-tight truncate">
-          User XYZ
+      {/* Bottom System & Port Indicator */}
+      <div className="p-3.5 border-t border-slate-200/80 bg-slate-50/40 shrink-0 flex items-center justify-between text-[11px]">
+        <div className="text-slate-500 font-semibold tracking-tight truncate">
+          Ekdant EDI System
         </div>
-        {onOpenKeyModal && (
-          <button
-            type="button"
-            onClick={onOpenKeyModal}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/80 transition-colors cursor-pointer"
-            title="Configure Gemini API Key"
-          >
-            <Key className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-200/60 text-slate-700">
+          INNSA1 / INBOM4
+        </span>
       </div>
     </aside>
   );
 };
+

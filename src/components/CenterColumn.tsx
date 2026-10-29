@@ -56,7 +56,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
   };
 
   return (
-    <div className="w-[380px] lg:w-[420px] xl:w-[450px] h-screen border-r border-slate-200/80 bg-slate-50/60 flex flex-col shrink-0 select-none overflow-hidden">
+    <div className="w-[380px] lg:w-[420px] xl:w-[450px] h-full border-r border-slate-200/80 bg-slate-50/60 flex flex-col shrink-0 select-none overflow-hidden">
       {/* =========================================================================
           TOP: COMPACT UPLOAD DOCUMENTS DROPZONE
          ========================================================================= */}

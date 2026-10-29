@@ -61,7 +61,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   };
 
   return (
-    <div className="flex-1 h-screen flex flex-col bg-slate-50/50 overflow-hidden select-none">
+    <div className="flex-1 h-full flex flex-col bg-slate-50/50 overflow-hidden select-none">
       {/* =========================================================================
           TOP HEADER BAR OF FILES VIEW
          ========================================================================= */}

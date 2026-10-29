@@ -44,7 +44,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // If no document is selected
   if (!document) {
     return (
-      <div className="flex-1 h-screen flex flex-col items-center justify-center p-8 bg-slate-50/40 text-center select-none">
+      <div className="flex-1 h-full flex flex-col items-center justify-center p-8 bg-slate-50/40 text-center select-none">
         <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-400 mb-4">
           <Columns className="w-8 h-8 text-indigo-500/80" />
         </div>
@@ -105,7 +105,7 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
   const isFailed = document.status === 'failed';
 
   return (
-    <div className="flex-1 h-screen flex flex-col bg-white overflow-hidden select-none">
+    <div className="flex-1 h-full flex flex-col bg-white overflow-hidden select-none">
       {/* Top Header */}
       <div className="h-16 px-6 border-b border-slate-200/80 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center space-x-3 min-w-0">
@@ -426,7 +426,7 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
   };
 
   return (
-    <div className="flex-1 h-screen flex flex-col bg-slate-50/50 overflow-hidden">
+    <div className="flex-1 h-full flex flex-col bg-slate-50/50 overflow-hidden">
       {/* =========================================================================
           TOP ACTION BAR OF PREVIEW PANE (Clean, well-spaced layout)
          ========================================================================= */}
