@@ -18,7 +18,8 @@ import {
   Sparkles,
   Loader2,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Key
 } from 'lucide-react';
 import type { ConvertedInvoice, LineItem, CustomsPort, AppDocument } from '../types';
 import { EXPORTER_PROFILES } from '../data/profiles';
@@ -28,6 +29,7 @@ interface PreviewPaneProps {
   onSave: (updated: ConvertedInvoice) => void;
   onPortChange: (docId: string, port: CustomsPort) => void;
   onConvert?: (docId: string) => void;
+  onOpenKeyModal?: () => void;
 }
 
 type ViewMode = 'data' | 'pdf';
@@ -36,7 +38,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   document,
   onSave,
   onPortChange,
-  onConvert
+  onConvert,
+  onOpenKeyModal
 }) => {
   // If no document is selected
   if (!document) {
@@ -72,6 +75,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     <PendingPreviewPaneContent
       document={document}
       onConvert={onConvert}
+      onOpenKeyModal={onOpenKeyModal}
     />
   );
 };
@@ -79,11 +83,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
 interface PendingContentProps {
   document: AppDocument;
   onConvert?: (docId: string) => void;
+  onOpenKeyModal?: () => void;
 }
 
 const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
   document,
-  onConvert
+  onConvert,
+  onOpenKeyModal
 }) => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages] = useState<number>(2);
@@ -181,16 +187,28 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
               <p className="text-xs text-rose-600 leading-relaxed bg-rose-50 p-3 rounded-xl border border-rose-200">
                 {document.errorMessage || 'Unable to extract data from this PDF.'}
               </p>
-              {onConvert && (
-                <button
-                  type="button"
-                  onClick={() => onConvert(document.id)}
-                  className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Retry Conversion</span>
-                </button>
-              )}
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {onOpenKeyModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenKeyModal}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Enter Gemini API Key</span>
+                  </button>
+                )}
+                {onConvert && (
+                  <button
+                    type="button"
+                    onClick={() => onConvert(document.id)}
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Retry Conversion</span>
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="max-w-md space-y-4">

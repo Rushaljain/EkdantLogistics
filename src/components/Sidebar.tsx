@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, FolderArchive } from 'lucide-react';
+import { FileText, FolderArchive, Key } from 'lucide-react';
 
 export type NavTab = 'converter' | 'files';
 
@@ -7,12 +7,14 @@ interface SidebarProps {
   activeTab?: NavTab;
   onSelectTab?: (tab: NavTab) => void;
   savedFilesCount?: number;
+  onOpenKeyModal?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'converter',
   onSelectTab,
-  savedFilesCount = 0
+  savedFilesCount = 0,
+  onOpenKeyModal
 }) => {
   return (
     <aside className="w-64 h-screen bg-white border-r border-slate-200/80 flex flex-col shrink-0 select-none">
@@ -72,11 +74,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* 3. Bottom User Profile: User XYZ (Clean text, no icon) */}
-      <div className="p-4 border-t border-slate-200/80 bg-slate-50/40 shrink-0">
-        <div className="px-2 text-xs font-semibold text-slate-800 tracking-tight">
+      {/* 3. Bottom User Profile & API Key Trigger */}
+      <div className="p-3.5 border-t border-slate-200/80 bg-slate-50/40 shrink-0 flex items-center justify-between">
+        <div className="px-2 text-xs font-semibold text-slate-800 tracking-tight truncate">
           User XYZ
         </div>
+        {onOpenKeyModal && (
+          <button
+            type="button"
+            onClick={onOpenKeyModal}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/80 transition-colors cursor-pointer"
+            title="Configure Gemini API Key"
+          >
+            <Key className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </aside>
   );

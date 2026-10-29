@@ -96,15 +96,15 @@ export async function extractInvoiceFromPdf(
   const now = new Date();
   const timeString = `Today, ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-  if (!apiKey || apiKey.trim().length === 0) {
-    throw new Error('API key is missing. Please ensure PDF_Parser is set in Vercel environment variables.');
+  if (!apiKey || apiKey.trim().length === 0 || apiKey.startsWith('AQ.')) {
+    throw new Error('Valid Google Gemini API key required. Please click "Configure Gemini API Key" or enter a key from Google AI Studio (starts with AIzaSy...).');
   }
 
   const cleanKey = apiKey.trim();
   const genAI = new GoogleGenerativeAI(cleanKey);
 
-  // Models to try in order of priority: 3.5-flash, 3.5-flash-lite, 3.8-flash
-  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+  // Models to try in order of priority: 2.0-flash, 1.5-flash, 2.5-flash, 3.8-flash
+  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-3.8-flash'];
   let text = '';
   let lastError: any = null;
 
@@ -142,6 +142,10 @@ export async function extractInvoiceFromPdf(
   }
 
   if (!text) {
+    const errorMsg = lastError?.message || '';
+    if (errorMsg.includes('401') || errorMsg.includes('API key not valid')) {
+      throw new Error('Google Gemini API Key is invalid or expired. Please update your API key in settings.');
+    }
     throw new Error(lastError?.message || 'Failed to extract document contents from PDF');
   }
 

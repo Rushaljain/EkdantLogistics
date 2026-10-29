@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Key, CheckCircle, ExternalLink } from 'lucide-react';
+import { X, Sparkles, Key, CheckCircle, ExternalLink, ShieldCheck } from 'lucide-react';
 
 interface GeminiApiKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentKey: string;
-  onSaveKey: (newKey: string, model: string) => void;
+  onSaveKey: (newKey: string) => void;
 }
 
 export const GeminiApiKeyModal: React.FC<GeminiApiKeyModalProps> = ({
@@ -14,15 +14,30 @@ export const GeminiApiKeyModal: React.FC<GeminiApiKeyModalProps> = ({
   currentKey,
   onSaveKey
 }) => {
-  const [apiKey, setApiKey] = useState<string>(currentKey);
-  const [model, setModel] = useState<string>('gemini-2.5-flash');
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return currentKey && !currentKey.startsWith('AQ.') ? currentKey : '';
+  });
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveKey(apiKey.trim(), model);
+    const cleanKey = apiKey.trim();
+
+    if (!cleanKey) {
+      setError('Please enter a Gemini API key.');
+      return;
+    }
+
+    if (cleanKey.startsWith('AQ.')) {
+      setError('Invalid key format. Gemini API keys start with "AIzaSy...".');
+      return;
+    }
+
+    setError(null);
+    onSaveKey(cleanKey);
     setIsSaved(true);
     setTimeout(() => {
       setIsSaved(false);
@@ -31,87 +46,100 @@ export const GeminiApiKeyModal: React.FC<GeminiApiKeyModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="px-5 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Sparkles className="w-5 h-5 text-sky-400" />
-            <h2 className="text-sm font-bold text-white">
-              Google Gemini Vision Engine Configuration
-            </h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs select-none">
+      <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="px-6 py-4.5 bg-slate-50/70 border-b border-slate-200/80 flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                Google Gemini API Key
+              </h2>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Required for AI PDF parsing & data extraction
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X className="w-5 h-5" />
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-5 space-y-4 text-xs">
+        {/* Form */}
+        <form onSubmit={handleSave} className="p-6 space-y-4 text-xs">
           <div>
-            <p className="text-slate-300 leading-relaxed mb-3">
-              Ekdant Logistics utilizes Google Gemini Vision to ingest multi-page commercial invoices and packing lists (SAP, Tally, scanned exports) directly into structured ICEGATE EDI records.
-            </p>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-              Google Gemini API Key
+            <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
+              Gemini API Key
             </label>
             <div className="relative">
               <input
                 type="password"
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  setError(null);
+                }}
                 placeholder="AIzaSy..."
-                className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-slate-100 font-mono text-xs focus:ring-1 focus:ring-sky-500 outline-none"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 pr-9 text-slate-900 font-mono text-xs focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
+                autoFocus
               />
-              <Key className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />
+              <Key className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
-            <p className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
-              <span>Saved locally in your secure browser session</span>
+
+            {error && (
+              <p className="text-[11px] text-rose-600 mt-1 font-medium">
+                {error}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1 text-slate-400">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                Saved in your browser
+              </span>
               <a
                 href="https://aistudio.google.com/app/apikey"
                 target="_blank"
                 rel="noreferrer"
-                className="text-sky-400 hover:underline flex items-center gap-1"
+                className="text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1 hover:underline"
               >
-                Get API Key <ExternalLink className="w-2.5 h-2.5" />
+                Get API key from Google <ExternalLink className="w-3 h-3" />
               </a>
-            </p>
+            </div>
           </div>
 
-          <div>
-            <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-              Vision Model
-            </label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-slate-100 text-xs focus:ring-1 focus:ring-sky-500 outline-none font-mono"
-            >
-              <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended - Fast & High Precision)</option>
-              <option value="gemini-1.5-flash">gemini-1.5-flash (High Availability Fallback)</option>
-            </select>
+          <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-[11px] text-slate-600 leading-relaxed">
+            <span className="font-semibold text-indigo-900 block mb-0.5">Where do I find this?</span>
+            Visit <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 font-semibold underline">Google AI Studio</a>, click <strong>Create API key</strong>, and paste the key here. It will be stored in your browser session.
           </div>
 
+          {/* Action buttons */}
           <div className="pt-2 flex items-center justify-end space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded text-xs text-slate-400 hover:text-white"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex items-center space-x-1.5 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2 rounded text-xs transition-colors shadow-sm"
+              className="flex items-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold px-4 py-2 rounded-xl text-xs transition-colors shadow-2xs cursor-pointer"
             >
               {isSaved ? (
                 <>
-                  <CheckCircle className="w-4 h-4 text-emerald-300" />
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
                   <span>Saved!</span>
                 </>
               ) : (
-                <span>Save Configuration</span>
+                <span>Save Key</span>
               )}
             </button>
           </div>

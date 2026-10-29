@@ -4,6 +4,7 @@ import type { NavTab } from './components/Sidebar';
 import { CenterColumn } from './components/CenterColumn';
 import { PreviewPane } from './components/PreviewPane';
 import { FilesView } from './components/FilesView';
+import { GeminiApiKeyModal } from './components/GeminiApiKeyModal';
 import type { ConvertedInvoice, CustomsPort, AppDocument } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 
@@ -16,6 +17,24 @@ const DEFAULT_PORT: CustomsPort = 'INNSA1';
 export function App() {
   // Navigation: 'converter' (working workspace) or 'files' (archived tiles library)
   const [activeTab, setActiveTab] = useState<NavTab>('converter');
+
+  // Gemini API Key Modal
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
+
+  // Gemini API Key (stored in localStorage or from Vercel env, ignoring deprecated placeholder)
+  const [apiKey, setApiKey] = useState<string>(() => {
+    try {
+      const savedKey = localStorage.getItem(LOCAL_STORAGE_KEY_KEY);
+      if (savedKey && savedKey.trim().length > 0 && !savedKey.startsWith('AQ.')) {
+        return savedKey.trim();
+      }
+    } catch {}
+    const envKey = (import.meta.env as any).PDF_Parser || import.meta.env.VITE_GEMINI_API_KEY || '';
+    if (envKey && typeof envKey === 'string' && !envKey.startsWith('AQ.')) {
+      return envKey.trim();
+    }
+    return '';
+  });
 
   // Saved Converted Files Repository (Persistent tiles view)
   const [savedFiles, setSavedFiles] = useState<ConvertedInvoice[]>(() => {
@@ -62,15 +81,18 @@ export function App() {
   // Bulk conversion state
   const [isBulkConverting, setIsBulkConverting] = useState<boolean>(false);
 
-  // Gemini API Key
-  const apiKey = 
-    (import.meta.env as any).PDF_Parser ||
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
-    'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA';
-
   // Active Selected Document in converter
   const activeDocument = documents.find(d => d.id === selectedDocumentId) || (documents.length > 0 ? documents[0] : null);
+
+  // Save new API Key
+  const handleSaveApiKey = (newKey: string) => {
+    setApiKey(newKey);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY_KEY, newKey);
+    } catch (err) {
+      console.warn('Failed to save API key to localStorage:', err);
+    }
+  };
 
   // Persist working documents whenever updated
   useEffect(() => {
@@ -134,6 +156,16 @@ export function App() {
       return;
     }
 
+    if (!apiKey || apiKey.startsWith('AQ.')) {
+      setIsKeyModalOpen(true);
+      setDocuments(prev => prev.map(d => d.id === docId ? {
+        ...d,
+        status: 'failed',
+        errorMessage: 'Gemini API key is required. Please enter a valid key from Google AI Studio (starting with AIzaSy).'
+      } : d));
+      return;
+    }
+
     setDocuments(prev => prev.map(d => d.id === docId ? { ...d, status: 'processing', errorMessage: undefined } : d));
 
     try {
@@ -151,6 +183,10 @@ export function App() {
 
       setSelectedDocumentId(docId);
     } catch (err: any) {
+      const isAuthError = err.message && (err.message.includes('401') || err.message.includes('API key'));
+      if (isAuthError) {
+        setIsKeyModalOpen(true);
+      }
       setDocuments(prev => prev.map(d => d.id === docId ? {
         ...d,
         status: 'failed',
@@ -163,6 +199,16 @@ export function App() {
   const handleConvertAll = async () => {
     const targets = documents.filter(d => d.status === 'pending' || d.status === 'failed');
     if (targets.length === 0 || isBulkConverting) return;
+
+    if (!apiKey || apiKey.startsWith('AQ.')) {
+      setIsKeyModalOpen(true);
+      setDocuments(prev => prev.map(d => targets.some(t => t.id === d.id) ? {
+        ...d,
+        status: 'failed',
+        errorMessage: 'Gemini API key is required. Please enter a valid key from Google AI Studio (starting with AIzaSy).'
+      } : d));
+      return;
+    }
 
     setIsBulkConverting(true);
 
@@ -193,6 +239,10 @@ export function App() {
           errorMessage: undefined
         } : d));
       } catch (err: any) {
+        const isAuthError = err.message && (err.message.includes('401') || err.message.includes('API key'));
+        if (isAuthError) {
+          setIsKeyModalOpen(true);
+        }
         setDocuments(prev => prev.map(d => d.id === target.id ? {
           ...d,
           status: 'failed',
@@ -325,6 +375,7 @@ export function App() {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         savedFilesCount={savedFiles.length}
+        onOpenKeyModal={() => setIsKeyModalOpen(true)}
       />
 
       {/* 2. Main Workspace: Document Converter or Saved Files Tiles */}
@@ -351,6 +402,7 @@ export function App() {
             onSave={handleSaveInvoiceEdit}
             onPortChange={handlePortChange}
             onConvert={handleConvertDocument}
+            onOpenKeyModal={() => setIsKeyModalOpen(true)}
           />
         </>
       ) : (
@@ -363,6 +415,14 @@ export function App() {
           onNavigateToConverter={() => setActiveTab('converter')}
         />
       )}
+
+      {/* 3. Google Gemini API Key Configuration Modal */}
+      <GeminiApiKeyModal
+        isOpen={isKeyModalOpen}
+        onClose={() => setIsKeyModalOpen(false)}
+        currentKey={apiKey}
+        onSaveKey={handleSaveApiKey}
+      />
     </div>
   );
 }
