@@ -1,39 +1,47 @@
 import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
+import type { NavTab } from './components/Sidebar';
 import { CenterColumn } from './components/CenterColumn';
 import { PreviewPane } from './components/PreviewPane';
+import { FilesView } from './components/FilesView';
 import type { ConvertedInvoice, CustomsPort, AppDocument } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 
 const LOCAL_STORAGE_DOCS_KEY = 'ekdant_customs_documents_v1';
+const LOCAL_STORAGE_SAVED_FILES_KEY = 'ekdant_saved_files_v1';
 const LOCAL_STORAGE_INVOICES_KEY = 'ekdant_customs_invoices_v4';
 const LOCAL_STORAGE_KEY_KEY = 'ekdant_gemini_key';
 const DEFAULT_PORT: CustomsPort = 'INNSA1';
 
 export function App() {
-  // All Uploaded Documents (both pending and processed)
+  // Navigation: 'converter' (working workspace) or 'files' (archived tiles library)
+  const [activeTab, setActiveTab] = useState<NavTab>('converter');
+
+  // Saved Converted Files Repository (Persistent tiles view)
+  const [savedFiles, setSavedFiles] = useState<ConvertedInvoice[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_SAVED_FILES_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+      // Migrate existing legacy converted invoices if any
+      const legacyInvoices = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
+      if (legacyInvoices) {
+        const parsed = JSON.parse(legacyInvoices);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  // Active Working Documents (upload queue & conversion board)
   const [documents, setDocuments] = useState<AppDocument[]>(() => {
     try {
       const savedDocs = localStorage.getItem(LOCAL_STORAGE_DOCS_KEY);
       if (savedDocs) {
         const parsed = JSON.parse(savedDocs);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-      // Backward compatibility migration from legacy invoices key
-      const legacyInvoices = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
-      if (legacyInvoices) {
-        const parsed = JSON.parse(legacyInvoices);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((inv: ConvertedInvoice) => ({
-            id: inv.id,
-            fileName: inv.fileName,
-            fileSize: inv.fileSize,
-            uploadedAt: inv.convertedAt,
-            status: 'processed' as const,
-            pdfUrl: inv.pdfUrl,
-            invoice: inv
-          }));
-        }
       }
     } catch {}
     return [];
@@ -61,13 +69,12 @@ export function App() {
     localStorage.getItem(LOCAL_STORAGE_KEY_KEY) ||
     'AQ.Ab8RN6IyREuG3Byw10B0La598MTc_8xAMNzQ2c6xs2mosvgfoA';
 
-  // Active Selected Document
+  // Active Selected Document in converter
   const activeDocument = documents.find(d => d.id === selectedDocumentId) || (documents.length > 0 ? documents[0] : null);
 
-  // Persist documents whenever updated
+  // Persist working documents whenever updated
   useEffect(() => {
     try {
-      // Serialize documents excluding ephemeral in-memory File objects
       const toSave = documents.map(d => ({
         id: d.id,
         fileName: d.fileName,
@@ -78,16 +85,21 @@ export function App() {
         invoice: d.invoice
       }));
       localStorage.setItem(LOCAL_STORAGE_DOCS_KEY, JSON.stringify(toSave));
-
-      // Keep legacy invoice cache updated
-      const processedInvoices = documents
-        .filter(d => d.status === 'processed' && d.invoice)
-        .map(d => d.invoice!);
-      localStorage.setItem(LOCAL_STORAGE_INVOICES_KEY, JSON.stringify(processedInvoices));
     } catch (err) {
       console.warn('Failed to save documents to localStorage:', err);
     }
   }, [documents]);
+
+  // Persist saved files library whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_SAVED_FILES_KEY, JSON.stringify(savedFiles));
+      // Keep legacy cache updated as well
+      localStorage.setItem(LOCAL_STORAGE_INVOICES_KEY, JSON.stringify(savedFiles));
+    } catch (err) {
+      console.warn('Failed to save files to localStorage:', err);
+    }
+  }, [savedFiles]);
 
   // Handle files selected (drag & drop or browse) - NO AUTO-PROCESSING
   const handleFilesSelected = (files: File[]) => {
@@ -211,20 +223,84 @@ export function App() {
     }));
   };
 
-  // Save edits from the Right Preview Pane
+  // Save converted invoice to Files and clear the active file list / board
   const handleSaveInvoiceEdit = (updated: ConvertedInvoice) => {
-    setDocuments(prev => prev.map(d => {
-      if (d.invoice && d.invoice.id === updated.id) {
-        return {
-          ...d,
-          invoice: updated
-        };
+    // 1. Store in savedFiles (update existing or prepend new)
+    setSavedFiles(prev => {
+      const idx = prev.findIndex(f => f.id === updated.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = updated;
+        return copy;
       }
-      return d;
-    }));
+      return [updated, ...prev];
+    });
+
+    // 2. Clear saved file from working board so the user can add more files
+    setDocuments(prev => {
+      const remaining = prev.filter(d => d.invoice?.id !== updated.id && d.id !== selectedDocumentId);
+      return remaining;
+    });
+    setSelectedDocumentId(null);
   };
 
-  // Delete document
+  // Save all processed documents to Files and clear the board
+  const handleSaveAllToFiles = () => {
+    const processedInvoices = documents
+      .filter(d => d.status === 'processed' && d.invoice)
+      .map(d => d.invoice!);
+
+    if (processedInvoices.length === 0) return;
+
+    setSavedFiles(prev => {
+      const existingIds = new Set(prev.map(f => f.id));
+      const newFiles = processedInvoices.filter(f => !existingIds.has(f.id));
+      const updatedExisting = prev.map(f => {
+        const match = processedInvoices.find(p => p.id === f.id);
+        return match || f;
+      });
+      return [...newFiles, ...updatedExisting];
+    });
+
+    // Clear saved documents from working board
+    setDocuments(prev => prev.filter(d => d.status !== 'processed'));
+    setSelectedDocumentId(null);
+  };
+
+  // Open a saved file in the Document Converter for editing
+  const handleOpenInConverter = (invoice: ConvertedInvoice) => {
+    // Check if already in documents
+    const existing = documents.find(d => d.invoice?.id === invoice.id);
+    if (existing) {
+      setSelectedDocumentId(existing.id);
+    } else {
+      const newDoc: AppDocument = {
+        id: `doc-saved-${invoice.id}-${Date.now()}`,
+        fileName: invoice.fileName,
+        fileSize: invoice.fileSize,
+        uploadedAt: invoice.convertedAt,
+        status: 'processed',
+        pdfUrl: invoice.pdfUrl,
+        invoice: invoice
+      };
+      setDocuments(prev => [newDoc, ...prev]);
+      setSelectedDocumentId(newDoc.id);
+    }
+    setActiveTab('converter');
+  };
+
+  // Delete a saved file from Files
+  const handleDeleteSavedFile = (fileId: string) => {
+    setSavedFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  // Clear all saved files
+  const handleClearAllSavedFiles = () => {
+    setSavedFiles([]);
+    localStorage.removeItem(LOCAL_STORAGE_SAVED_FILES_KEY);
+  };
+
+  // Delete working document from converter
   const handleDeleteDocument = (docId: string) => {
     setDocuments(prev => {
       const remaining = prev.filter(d => d.id !== docId);
@@ -235,40 +311,58 @@ export function App() {
     });
   };
 
-  // Clear all documents
+  // Clear all working documents
   const handleClearAllDocuments = () => {
     setDocuments([]);
     setSelectedDocumentId(null);
     localStorage.removeItem(LOCAL_STORAGE_DOCS_KEY);
-    localStorage.removeItem(LOCAL_STORAGE_INVOICES_KEY);
   };
 
   return (
     <div className="h-screen w-screen overflow-hidden flex bg-slate-50 text-slate-900 font-sans">
       {/* 1. Left Non-Collapsible Sidebar */}
-      <Sidebar />
-
-      {/* 2. Center Workspace (Upload Dropzone + Uploaded Documents List with Status & Bulk Convert) */}
-      <CenterColumn
-        documents={documents}
-        selectedDocumentId={activeDocument?.id || null}
-        onSelectDocument={(id) => setSelectedDocumentId(id)}
-        onFilesSelected={handleFilesSelected}
-        onConvertDocument={handleConvertDocument}
-        onConvertAll={handleConvertAll}
-        isBulkConverting={isBulkConverting}
-        onDeleteDocument={handleDeleteDocument}
-        onClearAllDocuments={handleClearAllDocuments}
-        onPortChange={handlePortChange}
+      <Sidebar 
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        savedFilesCount={savedFiles.length}
       />
 
-      {/* 3. Right Preview Pane (Active Editable Invoice or Pending Document Preview + PDF Carousel) */}
-      <PreviewPane
-        document={activeDocument}
-        onSave={handleSaveInvoiceEdit}
-        onPortChange={handlePortChange}
-        onConvert={handleConvertDocument}
-      />
+      {/* 2. Main Workspace: Document Converter or Saved Files Tiles */}
+      {activeTab === 'converter' ? (
+        <>
+          {/* Center Workspace (Upload Dropzone + Uploaded Documents List with Status & Bulk Convert) */}
+          <CenterColumn
+            documents={documents}
+            selectedDocumentId={activeDocument?.id || null}
+            onSelectDocument={(id) => setSelectedDocumentId(id)}
+            onFilesSelected={handleFilesSelected}
+            onConvertDocument={handleConvertDocument}
+            onConvertAll={handleConvertAll}
+            isBulkConverting={isBulkConverting}
+            onDeleteDocument={handleDeleteDocument}
+            onClearAllDocuments={handleClearAllDocuments}
+            onPortChange={handlePortChange}
+            onSaveAllToFiles={handleSaveAllToFiles}
+          />
+
+          {/* Right Preview Pane (Active Editable Invoice or Pending Document Preview + PDF Carousel) */}
+          <PreviewPane
+            document={activeDocument}
+            onSave={handleSaveInvoiceEdit}
+            onPortChange={handlePortChange}
+            onConvert={handleConvertDocument}
+          />
+        </>
+      ) : (
+        /* Saved Files View (Tiles with Firm Name, Invoice Number, and Exports) */
+        <FilesView
+          files={savedFiles}
+          onOpenInConverter={handleOpenInConverter}
+          onDeleteFile={handleDeleteSavedFile}
+          onClearAllFiles={handleClearAllSavedFiles}
+          onNavigateToConverter={() => setActiveTab('converter')}
+        />
+      )}
     </div>
   );
 }

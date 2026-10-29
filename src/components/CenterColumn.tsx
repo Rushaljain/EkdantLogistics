@@ -11,7 +11,8 @@ import {
   Loader2, 
   CheckCircle2, 
   RefreshCw, 
-  AlertCircle 
+  AlertCircle,
+  FolderArchive 
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
 import type { AppDocument, CustomsPort } from '../types';
@@ -29,6 +30,7 @@ interface CenterColumnProps {
   onDeleteDocument: (docId: string) => void;
   onClearAllDocuments: () => void;
   onPortChange: (docId: string, port: CustomsPort) => void;
+  onSaveAllToFiles?: () => void;
 }
 
 export const CenterColumn: React.FC<CenterColumnProps> = ({
@@ -41,9 +43,11 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
   isBulkConverting = false,
   onDeleteDocument,
   onClearAllDocuments,
-  onPortChange
+  onPortChange,
+  onSaveAllToFiles
 }) => {
   const pendingCount = documents.filter(d => d.status === 'pending' || d.status === 'failed').length;
+  const processedCount = documents.filter(d => d.status === 'processed' && d.invoice).length;
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -83,6 +87,19 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Save All to Files button for converted documents */}
+            {processedCount > 0 && onSaveAllToFiles && (
+              <button
+                type="button"
+                onClick={onSaveAllToFiles}
+                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer"
+                title="Save all converted invoices to Files and clear the board"
+              >
+                <FolderArchive className="w-3.5 h-3.5 text-emerald-100" />
+                <span>Save to Files ({processedCount})</span>
+              </button>
+            )}
+
             {/* Convert All Button for bulk processing */}
             {pendingCount > 0 && (
               <button

@@ -442,11 +442,12 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
           </button>
         </div>
 
-        {/* Right: Actions (Save Changes) */}
+        {/* Right: Actions (Save to Files) */}
         <div className="flex items-center space-x-2 shrink-0">
           <button
             type="button"
             onClick={handleSave}
+            title="Save converted invoice to Files and clear board for next document"
             className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
               isSaved
                 ? 'bg-emerald-600 text-white'
@@ -456,12 +457,12 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
             {isSaved ? (
               <>
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Saved!</span>
+                <span>Saved to Files!</span>
               </>
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>Save Changes</span>
+                <span>Save to Files</span>
               </>
             )}
           </button>
