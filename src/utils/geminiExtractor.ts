@@ -120,7 +120,12 @@ export async function extractInvoiceFromPdf(
         }
       });
 
-      const response = await model.generateContent([
+      // Race with 25-second timeout so model extraction never hangs indefinitely
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Extraction with ${modelName} timed out after 25s`)), 25000)
+      );
+
+      const generatePromise = model.generateContent([
         { text: EXTRACTION_PROMPT },
         {
           inlineData: {
@@ -129,6 +134,8 @@ export async function extractInvoiceFromPdf(
           }
         }
       ]);
+
+      const response = await Promise.race([generatePromise, timeoutPromise]);
 
       const responseText = response.response.text();
       if (responseText && responseText.trim().length > 0) {

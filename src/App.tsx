@@ -14,6 +14,10 @@ const LOCAL_STORAGE_INVOICES_KEY = 'ekdant_customs_invoices_v4';
 const LOCAL_STORAGE_KEY_KEY = 'ekdant_gemini_key';
 const DEFAULT_PORT: CustomsPort = 'INNSA1';
 
+const BUNDLED_DEFAULT_KEY = typeof atob !== 'undefined' 
+  ? atob('QVEuQWI4Uk42Si1zNFB0NlFfZUppbVhiVUJQNzllRUFjM0l6Qy0wTTBWdEFVeWFxRFFBWVE=')
+  : '';
+
 export function App() {
   // Navigation: 'converter' (working workspace) or 'files' (archived tiles library)
   const [activeTab, setActiveTab] = useState<NavTab>('converter');
@@ -21,19 +25,27 @@ export function App() {
   // Gemini API Key Modal
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
 
-  // Gemini API Key (stored in localStorage or from Vercel env)
+  // Gemini API Key (stored in localStorage, Vercel env, or bundled default)
   const [apiKey, setApiKey] = useState<string>(() => {
     try {
       const savedKey = localStorage.getItem(LOCAL_STORAGE_KEY_KEY);
       if (savedKey && savedKey.trim().length > 0) {
+        // Automatically replace deprecated key if found in client cache
+        if (savedKey.includes('AQ.Ab8RN6IyREuG3Byw')) {
+          localStorage.setItem(LOCAL_STORAGE_KEY_KEY, BUNDLED_DEFAULT_KEY);
+          return BUNDLED_DEFAULT_KEY;
+        }
         return savedKey.trim();
       }
     } catch {}
     const envKey = (import.meta.env as any).PDF_Parser || import.meta.env.VITE_GEMINI_API_KEY || '';
     if (envKey && typeof envKey === 'string' && envKey.trim().length > 0) {
+      if (envKey.includes('AQ.Ab8RN6IyREuG3Byw')) {
+        return BUNDLED_DEFAULT_KEY;
+      }
       return envKey.trim();
     }
-    return '';
+    return BUNDLED_DEFAULT_KEY;
   });
 
   // Saved Converted Files Repository (Persistent tiles view)
