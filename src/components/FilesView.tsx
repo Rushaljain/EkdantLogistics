@@ -17,7 +17,7 @@ interface FilesViewProps {
   files: ConvertedInvoice[];
   onOpenInConverter: (invoice: ConvertedInvoice) => void;
   onDeleteFile: (fileId: string) => void;
-  onClearAllFiles: () => void;
+  onClearAllFiles?: () => void;
   onNavigateToConverter: () => void;
 }
 
@@ -25,7 +25,6 @@ export const FilesView: React.FC<FilesViewProps> = ({
   files,
   onOpenInConverter,
   onDeleteFile,
-  onClearAllFiles,
   onNavigateToConverter
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,22 +145,6 @@ export const FilesView: React.FC<FilesViewProps> = ({
             <Plus className="w-3.5 h-3.5" />
             <span>Convert New File</span>
           </button>
-
-          {/* Clear All Button */}
-          {files.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm('Are you sure you want to clear all saved files? This cannot be undone.')) {
-                  onClearAllFiles();
-                }
-              }}
-              className="text-xs text-slate-400 hover:text-rose-600 px-2 py-1 transition-colors cursor-pointer"
-              title="Clear all saved files"
-            >
-              Clear All
-            </button>
-          )}
         </div>
       </div>
 

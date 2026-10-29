@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { FolderArchive } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import type { NavTab } from './components/Sidebar';
 import { CenterColumn } from './components/CenterColumn';
@@ -382,80 +381,73 @@ export function App() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col bg-slate-50 text-slate-900 font-sans">
-      {/* =========================================================================
-          GLOBAL UNIFIED TOP NAVIGATION PANEL (Spanning 100% full screen width)
-         ========================================================================= */}
-      <header className="h-16 w-full bg-white border-b border-slate-200/80 flex items-center justify-between px-6 shrink-0 z-20 select-none">
-        {/* Left: Brand Logo & Wordmark */}
-        <div className="flex items-center space-x-3.5 shrink-0">
-          <img 
-            src="/logo.png" 
-            alt="Ekdant Logistics Logo" 
-            className="h-9 w-auto object-contain rounded" 
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-          />
-          <div className="min-w-0">
-            <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
-              Ekdant Logistics
-            </h1>
-            <p className="text-[10px] text-slate-400 font-medium">
-              Customs Document Converter
-            </p>
-          </div>
-        </div>
-
-        {/* Right: Context Status / Active Document */}
-        <div className="flex items-center space-x-2 text-xs font-medium text-slate-500">
-          {activeTab === 'files' ? (
-            <div className="flex items-center space-x-2 text-slate-700 font-semibold">
-              <FolderArchive className="w-4 h-4 text-indigo-600" />
-              <span>Saved Files Repository ({savedFiles.length})</span>
+    <div className="h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 font-sans">
+      {activeTab === 'converter' ? (
+        /* =========================================================================
+            DOCUMENT CONVERTER WORKSPACE (With Extended Full-Width Top Panel)
+           ========================================================================= */
+        <div className="h-full w-full flex flex-col overflow-hidden">
+          {/* Extended Top Navigation Panel */}
+          <header className="h-16 w-full bg-white border-b border-slate-200/80 flex items-center justify-between px-6 shrink-0 z-20 select-none">
+            {/* Left: Brand Logo & Wordmark */}
+            <div className="flex items-center space-x-3.5 shrink-0">
+              <img 
+                src="/logo.png" 
+                alt="Ekdant Logistics Logo" 
+                className="h-9 w-auto object-contain rounded" 
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+              <div className="min-w-0">
+                <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
+                  Ekdant Logistics
+                </h1>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Customs Document Converter
+                </p>
+              </div>
             </div>
-          ) : activeDocument ? (
-            <div className="flex items-center space-x-2">
-              <span className="text-slate-400">Active Document:</span>
-              <span className="font-semibold text-slate-800 truncate max-w-[240px] lg:max-w-[380px]">
-                {activeDocument.invoice?.invoiceNumber || activeDocument.fileName}
-              </span>
-              {activeDocument.status === 'processed' && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Processed
-                </span>
-              )}
-              {activeDocument.status === 'pending' && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                  Pending
-                </span>
-              )}
-              {activeDocument.status === 'failed' && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                  Failed
-                </span>
+
+            {/* Right: Context Status / Active Document */}
+            <div className="flex items-center space-x-2 text-xs font-medium text-slate-500">
+              {activeDocument ? (
+                <div className="flex items-center space-x-2">
+                  <span className="text-slate-400">Active Document:</span>
+                  <span className="font-semibold text-slate-800 truncate max-w-[240px] lg:max-w-[380px]">
+                    {activeDocument.invoice?.invoiceNumber || activeDocument.fileName}
+                  </span>
+                  {activeDocument.status === 'processed' && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Processed
+                    </span>
+                  )}
+                  {activeDocument.status === 'pending' && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                      Pending
+                    </span>
+                  )}
+                  {activeDocument.status === 'failed' && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                      Failed
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="text-slate-400 font-medium">Multi-Page Customs Invoices & Packing Lists</span>
               )}
             </div>
-          ) : (
-            <span className="text-slate-400 font-medium">Multi-Page Customs Invoices & Packing Lists</span>
-          )}
-        </div>
-      </header>
+          </header>
 
-      {/* Main Workspace Body */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 1. Left Non-Collapsible Sidebar */}
-        <Sidebar 
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          savedFilesCount={savedFiles.length}
-          onOpenKeyModal={() => setIsKeyModalOpen(true)}
-        />
-
-        {/* 2. Main Workspace: Document Converter or Saved Files Tiles */}
-        {activeTab === 'converter' ? (
-          <>
-            {/* Center Workspace (Upload Dropzone + Uploaded Documents List with Status & Bulk Convert) */}
+          {/* Main Body */}
+          <div className="flex-1 flex overflow-hidden">
+            <Sidebar 
+              activeTab={activeTab}
+              onSelectTab={setActiveTab}
+              savedFilesCount={savedFiles.length}
+              onOpenKeyModal={() => setIsKeyModalOpen(true)}
+              showHeader={false}
+            />
             <CenterColumn
               documents={documents}
               selectedDocumentId={activeDocument?.id || null}
@@ -469,8 +461,6 @@ export function App() {
               onPortChange={handlePortChange}
               onSaveAllToFiles={handleSaveAllToFiles}
             />
-
-            {/* Right Preview Pane (Active Editable Invoice or Pending Document Preview + PDF Carousel) */}
             <PreviewPane
               document={activeDocument}
               onSave={handleSaveInvoiceEdit}
@@ -478,9 +468,20 @@ export function App() {
               onConvert={handleConvertDocument}
               onOpenKeyModal={() => setIsKeyModalOpen(true)}
             />
-          </>
-        ) : (
-          /* Saved Files View (Tiles with Firm Name, Invoice Number, and Exports) */
+          </div>
+        </div>
+      ) : (
+        /* =========================================================================
+            FILES SECTION (Original Layout with Sidebar Logo Header + Files Header)
+           ========================================================================= */
+        <div className="h-full w-full flex overflow-hidden">
+          <Sidebar 
+            activeTab={activeTab}
+            onSelectTab={setActiveTab}
+            savedFilesCount={savedFiles.length}
+            onOpenKeyModal={() => setIsKeyModalOpen(true)}
+            showHeader={true}
+          />
           <FilesView
             files={savedFiles}
             onOpenInConverter={handleOpenInConverter}
@@ -488,8 +489,8 @@ export function App() {
             onClearAllFiles={handleClearAllSavedFiles}
             onNavigateToConverter={() => setActiveTab('converter')}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 3. Google Gemini API Key Configuration Modal */}
       <GeminiApiKeyModal

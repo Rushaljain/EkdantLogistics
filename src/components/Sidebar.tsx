@@ -8,15 +8,39 @@ interface SidebarProps {
   onSelectTab?: (tab: NavTab) => void;
   savedFilesCount?: number;
   onOpenKeyModal?: () => void;
+  showHeader?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'converter',
   onSelectTab,
   savedFilesCount = 0,
+  showHeader = false,
 }) => {
   return (
     <aside className="w-64 h-full bg-white border-r border-slate-200/80 flex flex-col shrink-0 select-none">
+      {/* Top Brand Header: Logo & Wordmark (used when standalone in files view) */}
+      {showHeader && (
+        <div className="h-16 px-5 border-b border-slate-200/80 flex items-center space-x-3 shrink-0">
+          <img 
+            src="/logo.png" 
+            alt="Ekdant Logistics Logo" 
+            className="h-9 w-auto object-contain rounded" 
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+          />
+          <div className="min-w-0">
+            <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight truncate">
+              Ekdant Logistics
+            </h1>
+            <p className="text-[10px] text-slate-400 font-medium truncate">
+              Customs Document Converter
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Items */}
       <div className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto">
         {/* Document Converter */}
