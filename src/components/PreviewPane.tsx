@@ -7,7 +7,6 @@ import {
   Scale, 
   Plus, 
   Trash2, 
-  Wand2, 
   Columns, 
   Eye, 
   FileCheck, 
@@ -23,7 +22,6 @@ import {
 } from 'lucide-react';
 import type { ConvertedInvoice, LineItem, CustomsPort, AppDocument } from '../types';
 import { EXPORTER_PROFILES } from '../data/profiles';
-import { cleanHsn, generateMockIrn } from '../utils/geminiExtractor';
 
 interface PreviewPaneProps {
   document: AppDocument | null;
@@ -326,9 +324,6 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
   const [zoom, setZoom] = useState<number>(100);
   const [isSaved, setIsSaved] = useState<boolean>(false);
 
-  const isExport = formData.filingType === 'EXPORT';
-  const ediExt = isExport ? 'sb' : 'be';
-
   // Profile Autofill
   const handleSelectExporter = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const profile = EXPORTER_PROFILES.find(p => p.id === e.target.value);
@@ -386,37 +381,6 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
     }));
   };
 
-  // 1-Click Auto-Fix HSN & Totals with GST detection
-  const handleAutoFix = () => {
-    setFormData(prev => {
-      let sum = 0;
-      const fixedItems = prev.lineItems.map(it => {
-        const paddedHsn = cleanHsn(it.hsnCode);
-        const correctTotal = Number((it.quantity * it.unitPrice).toFixed(2));
-        sum += correctTotal;
-        return {
-          ...it,
-          hsnCode: paddedHsn,
-          total: correctTotal
-        };
-      });
-
-      let finalGst = prev.gstAmount || 0;
-      if (finalGst === 0 && prev.invoiceTotal > sum) {
-        finalGst = Number((prev.invoiceTotal - sum).toFixed(2));
-      }
-      const newHeaderTotal = Number((sum + finalGst).toFixed(2));
-
-      return {
-        ...prev,
-        lineItems: fixedItems,
-        gstAmount: finalGst,
-        invoiceTotal: newHeaderTotal,
-        status: 'converted'
-      };
-    });
-  };
-
   // Live Math calculations
   const itemsSum = Number(
     formData.lineItems.reduce((acc, it) => acc + (it.total || 0), 0).toFixed(2)
@@ -446,37 +410,17 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
   return (
     <div className="flex-1 h-screen flex flex-col bg-slate-50/50 overflow-hidden">
       {/* =========================================================================
-          TOP ACTION BAR OF PREVIEW PANE
+          TOP ACTION BAR OF PREVIEW PANE (Clean, well-spaced layout)
          ========================================================================= */}
       <div className="h-16 px-6 bg-white border-b border-slate-200/80 flex items-center justify-between shrink-0 gap-4">
-        {/* Left: Invoice Title & Port Selector */}
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-            <FileText className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center space-x-2">
-              <h2 className="text-sm font-bold text-slate-900 tracking-tight font-mono truncate">
-                {formData.invoiceNumber}
-              </h2>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200">
-                {formData.filingType} • .{ediExt.toUpperCase()}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 truncate">
-              {formData.fileName} • {formData.convertedAt}
-            </p>
-          </div>
-        </div>
-
-        {/* Center: View Mode Toggle (Extracted Data / PDF Carousel) */}
-        <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/70 text-xs font-semibold">
+        {/* Left: View Mode Toggle (Extracted Data / PDF Carousel) */}
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 text-xs font-semibold">
           <button
             type="button"
             onClick={() => setViewMode('data')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-all ${
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
               viewMode === 'data'
-                ? 'bg-white text-indigo-700 shadow-2xs'
+                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -487,9 +431,9 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
           <button
             type="button"
             onClick={() => setViewMode('pdf')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-all ${
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
               viewMode === 'pdf'
-                ? 'bg-white text-indigo-700 shadow-2xs'
+                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -498,25 +442,25 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
           </button>
         </div>
 
-        {/* Right: Actions (Save, Download EDI, Download Excel) */}
+        {/* Right: Actions (Save Changes) */}
         <div className="flex items-center space-x-2 shrink-0">
           <button
             type="button"
             onClick={handleSave}
-            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-all ${
+            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
               isSaved
                 ? 'bg-emerald-600 text-white'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800'
             }`}
           >
             {isSaved ? (
               <>
-                <CheckCircle2 className="w-3.5 h-3.5" />
+                <CheckCircle2 className="w-4 h-4" />
                 <span>Saved!</span>
               </>
             ) : (
               <>
-                <Save className="w-3.5 h-3.5" />
+                <Save className="w-4 h-4" />
                 <span>Save Changes</span>
               </>
             )}
@@ -566,68 +510,59 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Invoice Number */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Invoice Number
                   </label>
                   <input
                     type="text"
                     value={formData.invoiceNumber}
                     onChange={(e) => setFormData(p => ({ ...p, invoiceNumber: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
                     required
                   />
                 </div>
 
                 {/* Invoice Date */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Invoice Date
                   </label>
                   <input
                     type="date"
                     value={formData.invoiceDate}
                     onChange={(e) => setFormData(p => ({ ...p, invoiceDate: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                     required
                   />
                 </div>
 
                 {/* e-Sanchit IRN */}
                 <div className="md:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-medium text-slate-600">
-                      16-Digit e-Sanchit IRN
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setFormData(p => ({ ...p, esanchitIrn: generateMockIrn(formData.portOfLoading) }))}
-                      className="text-[10px] text-indigo-600 font-semibold hover:underline"
-                    >
-                      Generate Mock IRN
-                    </button>
-                  </div>
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
+                    16-Digit e-Sanchit IRN
+                  </label>
                   <input
                     type="text"
                     maxLength={16}
                     value={formData.esanchitIrn}
                     onChange={(e) => setFormData(p => ({ ...p, esanchitIrn: e.target.value.toUpperCase() }))}
                     placeholder="e.g. 2026102700948215"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                   />
                 </div>
 
                 {/* Exporter Name with Profile Dropdown */}
                 <div className="md:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-medium text-slate-600">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-semibold text-slate-700">
                       Exporter / Consignor Name
                     </label>
                     <select
                       onChange={handleSelectExporter}
-                      className="text-[10px] bg-slate-100 text-slate-700 rounded px-1.5 py-0.5 border border-slate-200 outline-none"
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200/70 text-slate-700 font-medium rounded-md px-2 py-0.5 border border-slate-200 outline-none cursor-pointer transition-colors"
                       defaultValue=""
                     >
                       <option value="" disabled>Auto-fill Profile...</option>
@@ -640,14 +575,14 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     type="text"
                     value={formData.exporterName}
                     onChange={(e) => setFormData(p => ({ ...p, exporterName: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-medium"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
                     required
                   />
                 </div>
 
                 {/* 10-Digit IEC */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     10-Digit IEC
                   </label>
                   <input
@@ -655,13 +590,13 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     maxLength={10}
                     value={formData.iec}
                     onChange={(e) => setFormData(p => ({ ...p, iec: e.target.value.toUpperCase() }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                   />
                 </div>
 
                 {/* 15-Digit GSTIN */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     15-Digit GSTIN
                   </label>
                   <input
@@ -669,13 +604,13 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     maxLength={15}
                     value={formData.gstin}
                     onChange={(e) => setFormData(p => ({ ...p, gstin: e.target.value.toUpperCase() }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
                   />
                 </div>
 
                 {/* Bank AD Code */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Bank AD Code (7 Digits)
                   </label>
                   <input
@@ -683,32 +618,32 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     maxLength={7}
                     value={formData.adCode}
                     onChange={(e) => setFormData(p => ({ ...p, adCode: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                   />
                 </div>
 
                 {/* Consignee Name */}
                 <div className="md:col-span-2">
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Consignee / Buyer (Overseas)
                   </label>
                   <input
                     type="text"
                     value={formData.consigneeName}
                     onChange={(e) => setFormData(p => ({ ...p, consigneeName: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-medium"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
                   />
                 </div>
 
                 {/* Port of Loading */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Port of Loading
                   </label>
                   <select
                     value={formData.portOfLoading}
                     onChange={(e) => onPortChange(formData.id, e.target.value as CustomsPort)}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors cursor-pointer"
                   >
                     <option value="INNSA1">Nhava Sheva (INNSA1)</option>
                     <option value="INBOM4">Mumbai Air (INBOM4)</option>
@@ -718,18 +653,18 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                 {/* Discharge Port & Country */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                       Discharge Port
                     </label>
                     <input
                       type="text"
                       value={formData.portOfDischarge}
                       onChange={(e) => setFormData(p => ({ ...p, portOfDischarge: e.target.value.toUpperCase() }))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                    <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                       Country
                     </label>
                     <input
@@ -737,20 +672,20 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                       maxLength={2}
                       value={formData.destinationCountry}
                       onChange={(e) => setFormData(p => ({ ...p, destinationCountry: e.target.value.toUpperCase() }))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                     />
                   </div>
                 </div>
 
                 {/* Currency, Exch Rate, Incoterm */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Currency
                   </label>
                   <select
                     value={formData.currency}
                     onChange={(e) => setFormData(p => ({ ...p, currency: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors cursor-pointer"
                   >
                     <option value="INR">INR (₹)</option>
                     <option value="USD">USD ($)</option>
@@ -761,7 +696,7 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Exchange Rate (₹)
                   </label>
                   <input
@@ -769,18 +704,18 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     step="0.01"
                     value={formData.exchangeRate}
                     onChange={(e) => setFormData(p => ({ ...p, exchangeRate: parseFloat(e.target.value) || 1 }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Incoterm
                   </label>
                   <select
                     value={formData.incoterm}
                     onChange={(e) => setFormData(p => ({ ...p, incoterm: e.target.value as any }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none font-semibold"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors cursor-pointer"
                   >
                     <option value="FOB">FOB</option>
                     <option value="CIF">CIF</option>
@@ -791,15 +726,15 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
 
                 {/* GST / Taxes Amount */}
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-medium text-slate-600">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-semibold text-slate-700">
                       GST / Taxes ({formData.currency})
                     </label>
                     {itemsSum > 0 && formData.invoiceTotal > itemsSum && (!formData.gstAmount || formData.gstAmount === 0) && (
                       <button
                         type="button"
                         onClick={() => setFormData(p => ({ ...p, gstAmount: Number((p.invoiceTotal - itemsSum).toFixed(2)) }))}
-                        className="text-[10px] text-indigo-600 font-semibold hover:underline"
+                        className="text-[10px] text-indigo-600 font-semibold hover:underline cursor-pointer"
                       >
                         Auto-Fill
                       </button>
@@ -811,13 +746,13 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     value={formData.gstAmount ?? ''}
                     placeholder="0.00"
                     onChange={(e) => setFormData(p => ({ ...p, gstAmount: parseFloat(e.target.value) || 0 }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono font-semibold text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                   />
                 </div>
 
                 {/* Total Invoice Value */}
                 <div>
-                  <label className="text-[11px] font-medium text-slate-600 block mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
                     Header Invoice Total
                   </label>
                   <input
@@ -825,14 +760,14 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     step="0.01"
                     value={formData.invoiceTotal}
                     onChange={(e) => setFormData(p => ({ ...p, invoiceTotal: parseFloat(e.target.value) || 0 }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono font-bold text-slate-900 focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
                   />
                 </div>
               </div>
             </div>
 
             {/* Section 2: Line Items & Tariff Codes */}
-            <div className="space-y-3">
+            <div className="space-y-3 pt-1">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                 <div className="flex items-center space-x-2">
                   <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -844,19 +779,10 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                 <div className="flex items-center space-x-2">
                   <button
                     type="button"
-                    onClick={handleAutoFix}
-                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200/50 transition-colors"
-                  >
-                    <Wand2 className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Auto-Fix HSN & Totals</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={handleAddItem}
-                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 transition-colors"
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 active:bg-slate-200 border border-slate-200/60 shadow-2xs transition-colors cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-3.5 h-3.5 text-slate-600" />
                     <span>Add Item</span>
                   </button>
                 </div>
@@ -866,15 +792,15 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
               <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50/90 text-slate-500 text-[11px] font-semibold border-b border-slate-200">
-                      <th className="py-2 px-3 w-10 text-center">#</th>
-                      <th className="py-2 px-3">Description</th>
-                      <th className="py-2 px-3 w-32">HSN (8-Digit)</th>
-                      <th className="py-2 px-3 w-16 text-right">Qty</th>
-                      <th className="py-2 px-3 w-20">Unit</th>
-                      <th className="py-2 px-3 w-24 text-right">Price</th>
-                      <th className="py-2 px-3 w-28 text-right">Total</th>
-                      <th className="py-2 px-2 w-10 text-center"></th>
+                    <tr className="bg-slate-50/90 text-slate-600 text-[11px] font-semibold border-b border-slate-200 uppercase tracking-wider">
+                      <th className="py-2.5 px-3 w-10 text-center">#</th>
+                      <th className="py-2.5 px-3">Description</th>
+                      <th className="py-2.5 px-3 w-32">HSN (8-Digit)</th>
+                      <th className="py-2.5 px-3 w-20 text-right">Qty</th>
+                      <th className="py-2.5 px-3 w-24">Unit</th>
+                      <th className="py-2.5 px-3 w-28 text-right">Price</th>
+                      <th className="py-2.5 px-3 w-32 text-right">Total</th>
+                      <th className="py-2.5 px-2 w-10 text-center"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -884,51 +810,51 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                       const isMathValid = Math.abs(calculated - item.total) < 0.05;
 
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px]">
+                        <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
                             {idx + 1}
                           </td>
 
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <input
                               type="text"
                               value={item.description}
                               onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
-                              className="w-full bg-transparent border-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 rounded px-1.5 py-1 text-slate-800 outline-none"
+                              className="w-full bg-slate-50/50 border border-slate-200/60 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none transition-colors"
                             />
                           </td>
 
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="relative">
                               <input
                                 type="text"
                                 maxLength={8}
                                 value={item.hsnCode}
                                 onChange={(e) => handleItemChange(idx, 'hsnCode', e.target.value.replace(/[^0-9]/g, ''))}
-                                className={`w-full font-mono text-xs px-2 py-1 rounded border outline-none ${
+                                className={`w-full font-mono text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-colors ${
                                   isHsnValid
-                                    ? 'border-slate-200 bg-slate-50/50 text-slate-900 focus:bg-white focus:border-indigo-500'
+                                    ? 'border-slate-200/80 bg-slate-50/50 text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
                                     : 'border-amber-400 bg-amber-50/60 text-amber-900 focus:border-amber-500'
                                 }`}
                               />
                             </div>
                           </td>
 
-                          <td className="py-2 px-3 text-right">
+                          <td className="py-2.5 px-3 text-right">
                             <input
                               type="number"
                               step="any"
                               value={item.quantity}
                               onChange={(e) => handleItemChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                              className="w-full text-right font-mono bg-transparent border-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 rounded px-1 py-1 text-slate-900 outline-none"
+                              className="w-full text-right font-mono bg-slate-50/50 border border-slate-200/60 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs text-slate-900 outline-none transition-colors"
                             />
                           </td>
 
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             <select
                               value={item.uqc}
                               onChange={(e) => handleItemChange(idx, 'uqc', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-1 font-mono text-[11px] text-slate-700 outline-none cursor-pointer"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 font-mono text-xs text-slate-700 outline-none cursor-pointer transition-colors"
                             >
                               <option value="NOS">NOS</option>
                               <option value="PCS">PCS</option>
@@ -940,36 +866,36 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                             </select>
                           </td>
 
-                          <td className="py-2 px-3 text-right">
+                          <td className="py-2.5 px-3 text-right">
                             <input
                               type="number"
                               step="0.01"
                               value={item.unitPrice}
                               onChange={(e) => handleItemChange(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
-                              className="w-full text-right font-mono bg-transparent border-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 rounded px-1 py-1 text-slate-900 outline-none"
+                              className="w-full text-right font-mono bg-slate-50/50 border border-slate-200/60 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs text-slate-900 outline-none transition-colors"
                             />
                           </td>
 
-                          <td className="py-2 px-3 text-right">
+                          <td className="py-2.5 px-3 text-right">
                             <input
                               type="number"
                               step="0.01"
                               value={item.total}
                               onChange={(e) => handleItemChange(idx, 'total', parseFloat(e.target.value) || 0)}
-                              className={`w-full font-mono font-bold text-right px-1.5 py-1 rounded border outline-none ${
+                              className={`w-full font-mono font-bold text-right px-2.5 py-1.5 rounded-lg border outline-none transition-colors ${
                                 isMathValid
-                                  ? 'border-transparent bg-transparent hover:border-slate-200 focus:bg-white focus:border-indigo-500 text-slate-900'
+                                  ? 'border-slate-200/60 bg-slate-50/50 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-900'
                                   : 'border-rose-400 bg-rose-50/60 text-rose-900'
                               }`}
                             />
                           </td>
 
-                          <td className="py-2 px-2 text-center">
+                          <td className="py-2.5 px-2 text-center">
                             <button
                               type="button"
                               onClick={() => handleDeleteItem(idx)}
                               disabled={formData.lineItems.length <= 1}
-                              className="p-1 text-slate-300 hover:text-rose-600 rounded disabled:opacity-30 transition-colors"
+                              className="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg disabled:opacity-30 transition-colors cursor-pointer"
                               title="Delete Item"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

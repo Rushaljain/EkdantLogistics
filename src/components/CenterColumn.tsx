@@ -11,7 +11,6 @@ import {
   Loader2, 
   CheckCircle2, 
   RefreshCw, 
-  FileText, 
   AlertCircle 
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
@@ -58,16 +57,13 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           TOP: COMPACT UPLOAD DOCUMENTS DROPZONE
          ========================================================================= */}
       <div className="shrink-0 p-4 border-b border-slate-200/80 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
-            <span>Upload Documents</span>
+        <div className="flex items-center justify-between pb-0.5">
+          <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
+            Upload Documents
           </h2>
-          <span className="text-[10px] text-slate-400 font-medium">
-            Commercial Invoice & Packing List
-          </span>
         </div>
 
-        {/* Upload Drop Zone (Direct, no auto-processing) */}
+        {/* Upload Drop Zone */}
         <UploadZone onFilesSelected={onFilesSelected} />
       </div>
 
@@ -93,7 +89,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 type="button"
                 onClick={onConvertAll}
                 disabled={isBulkConverting}
-                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-2xs transition-all disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-2xs transition-all disabled:opacity-50 cursor-pointer"
                 title="Convert all pending documents at once"
               >
                 {isBulkConverting ? (
@@ -127,7 +123,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Document List / Unboxed Clean Empty State */}
+        {/* Scrollable Document List / Clean Unboxed Empty State */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
           {documents.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
@@ -163,7 +159,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                   }`}
                 >
                   {/* ========================================================
-                      1. PROCESSED INVOICE
+                      1. PROCESSED INVOICE (Lean 2-Row Layout)
                      ======================================================== */}
                   {isProcessed && inv ? (
                     <>
@@ -205,13 +201,13 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         </div>
                       </div>
 
-                      {/* Row 2: Exporter Name on left + Direct Action Buttons shifted to right */}
-                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100/80 text-[11px] gap-2">
+                      {/* Row 2: Exporter Name on left + Direct Action Buttons on right */}
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100/80 text-[11px] gap-2">
                         <span className="font-medium text-slate-700 truncate min-w-0" title={inv.exporterName}>
                           {inv.exporterName}
                         </span>
 
-                        {/* Direct Action Buttons (Shifted from bottom) */}
+                        {/* Direct Action Buttons */}
                         <div 
                           className="flex items-center space-x-1 shrink-0"
                           onClick={(e) => e.stopPropagation()}
@@ -248,19 +244,16 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                        ======================================================== */
                     <>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center space-x-2 min-w-0">
-                          <FileText className="w-4 h-4 text-indigo-500 shrink-0" />
-                          <span className="font-medium text-slate-900 text-xs truncate" title={doc.fileName}>
-                            {doc.fileName}
-                          </span>
-                        </div>
+                        <span className="font-medium text-slate-900 text-xs truncate" title={doc.fileName}>
+                          {doc.fileName}
+                        </span>
                         <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/50 shrink-0">
                           <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-600" />
                           <span>Processing...</span>
                         </span>
                       </div>
 
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                      <div className="mt-2.5 pt-2 border-t border-slate-100/80 flex items-center justify-between text-[11px] text-slate-400">
                         <span className="font-mono">{formatFileSize(doc.fileSize)}</span>
                         <span className="text-indigo-600 text-[10px] animate-pulse">Extracting customs data...</span>
                       </div>
@@ -271,8 +264,8 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                        ======================================================== */
                     <>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center space-x-2 min-w-0">
-                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                        <div className="flex items-center space-x-1.5 min-w-0">
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                           <span className="font-medium text-slate-900 text-xs truncate" title={doc.fileName}>
                             {doc.fileName}
                           </span>
@@ -282,13 +275,9 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-rose-500 mt-1 truncate" title={doc.errorMessage}>
-                        {doc.errorMessage || 'Conversion failed'}
-                      </p>
-
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100 text-[11px]">
                         <span className="text-slate-400 font-mono">{formatFileSize(doc.fileSize)}</span>
-                        <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => onConvertDocument(doc.id)}
@@ -310,32 +299,24 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                     </>
                   ) : (
                     /* ========================================================
-                        4. PENDING INVOICE (Ready to Convert)
+                        4. PENDING INVOICE (Lean Symmetric 2-Row Layout)
                        ======================================================== */
                     <>
+                      {/* Top Line: File Name on left + Pending Badge on right */}
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center space-x-2 min-w-0">
-                          <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                            <FileText className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-800 text-xs truncate" title={doc.fileName}>
-                              {doc.fileName}
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-mono">
-                              {formatFileSize(doc.fileSize)}
-                            </p>
-                          </div>
-                        </div>
+                        <span className="font-semibold text-slate-800 text-xs truncate min-w-0" title={doc.fileName}>
+                          {doc.fileName}
+                        </span>
 
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60 shrink-0">
                           Pending
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100 text-[11px]">
-                        <span className="text-[10px] text-slate-400">
-                          Ready to convert
+                      {/* Row 2: File Size on left + Convert Button & Delete on right */}
+                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100/80 text-[11px]">
+                        <span className="text-slate-400 font-mono text-[11px]">
+                          {formatFileSize(doc.fileSize)}
                         </span>
 
                         <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
