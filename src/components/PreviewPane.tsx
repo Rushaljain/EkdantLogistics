@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { 
   FileText, 
-  FileSpreadsheet, 
-  FileCode, 
   CheckCircle2, 
   AlertTriangle, 
   Building2, 
@@ -26,8 +24,6 @@ import {
 import type { ConvertedInvoice, LineItem, CustomsPort, AppDocument } from '../types';
 import { EXPORTER_PROFILES } from '../data/profiles';
 import { cleanHsn, generateMockIrn } from '../utils/geminiExtractor';
-import { downloadEdi } from '../utils/ediCompiler';
-import { downloadExcel } from '../utils/excelCompiler';
 
 interface PreviewPaneProps {
   document: AppDocument | null;
@@ -524,26 +520,6 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                 <span>Save Changes</span>
               </>
             )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => downloadEdi(formData)}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200/60 shadow-2xs transition-colors"
-            title="Download ICES 1.5 EDI Flat File"
-          >
-            <FileCode className="w-3.5 h-3.5 text-indigo-600" />
-            <span>.{ediExt}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => downloadExcel(formData)}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200/60 shadow-2xs transition-colors"
-            title="Download Excel Spreadsheet"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>.xlsx</span>
           </button>
         </div>
       </div>
