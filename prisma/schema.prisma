@@ -1,5 +1,5 @@
-// Prisma Schema for Ekdant Logistics - ICEGATE EDI Accelerator
-// Optimized for Supabase PostgreSQL and Indian Customs Compliance
+// Prisma Schema for Ekdant Logistics - Multi-Container & HazMat Document System
+// Supports Multi-Invoice Ingestion, Container/Pallet Allocation, #DG & Master BOL Generation
 
 datasource db {
   provider = "postgresql"
@@ -10,142 +10,155 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum ShipmentType {
-  EXPORT // Shipping Bill (.sb)
-  IMPORT // Bill of Entry (.be)
-}
-
 enum ShipmentStatus {
   DRAFT
   EXTRACTED
-  AUDIT_PENDING
-  AUDIT_PASSED
-  EXPORTED_EDI
-  FILED_ICEGATE
-}
-
-enum UserRole {
-  OPERATOR
-  SENIOR_CHA_ADMIN
-}
-
-model ExporterMaster {
-  id              String     @id @default(uuid())
-  companyName     String
-  iec             String     @unique // 10-digit statutory IEC
-  gstin           String     @unique // 15-digit statutory GSTIN
-  adCode          String     // 7-digit RBI Authorized Dealer Code
-  bankName        String?
-  branchCode      String?
-  address         String?
-  defaultPortCode String     @default("INNSA1") // Nhava Sheva JNPT default
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  shipments       Shipment[]
+  ALLOCATED
+  DOCUMENTS_GENERATED
+  COMPLETED
 }
 
 model Shipment {
-  id              String         @id @default(uuid())
-  jobNo           String         @unique // Internal CHA Job Number e.g. EKD-2026-0042
-  shipmentType    ShipmentType   @default(EXPORT)
-  portCode        String         @default("INNSA1") // INNSA1 (Nhava Sheva) or INBOM4 (Air Cargo Mumbai)
-  customsHouse    String         @default("JNPT / Nhava Sheva")
-  status          ShipmentStatus @default(DRAFT)
+  id                  String         @id @default(uuid())
+  shipmentNumber      String         @unique // Internal Job e.g. EKD-2026-0089
+  shipperName         String
+  shipperAddress      String?
+  consigneeName       String
+  consigneeAddress    String?
+  notifyParty         String?
+  vesselName          String?
+  voyageNumber        String?
+  portOfLoading       String         @default("Nhava Sheva (INNSA1)")
+  portOfDischarge     String         @default("Rotterdam (NLRTM)")
+  placeOfDelivery     String?
+  bookingNumber       String?
+  masterBolNumber     String?
+  hasDangerousGoods   Boolean        @default(false)
+  status              ShipmentStatus @default(DRAFT)
   
-  // Exporter / Importer reference
-  exporterId      String?
-  exporter        ExporterMaster? @relation(fields: [exporterId], references: [id])
-  exporterName    String
-  iec             String         // 10 digits
-  gstin           String         // 15 digits
-  adCode          String         // 7 digits
+  totalGrossWeightKg  Float          @default(0.0)
+  totalNetWeightKg    Float          @default(0.0)
+  totalPallets        Int            @default(0)
+  totalPackages       Int            @default(0)
   
-  // Consignee details
-  consigneeName   String
-  consigneeAddress String?
-  destinationCountry String?     @default("US")
-  portOfDischarge String?
+  invoices            Invoice[]
+  containers          Container[]
+  pallets             Pallet[]
+  lineItems           LineItem[]
+  documents           DocumentOutput[]
   
-  // Packages and Weight (Strict: Gross >= Net)
-  totalPackages   Int            @default(1)
-  packageType     String         @default("BOX")
-  grossWeightKg   Float
-  netWeightKg     Float
-  
-  // e-Sanchit Digital Signature Attribution
-  eSanchitIrn     String?        // 16-character e-Sanchit IRN signed via Class-3 DSC
-  
-  // Source PDF storage reference
-  pdfStoragePath  String?
-  pdfFileName     String?
-  pdfFileSize     Int?
-  
-  // Operator & Review
-  operatorRole    UserRole       @default(OPERATOR)
-  operatorNotes   String?
-  
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  
-  invoices        Invoice[]
-  auditLogs       AuditLog[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 }
 
 model Invoice {
-  id              String     @id @default(uuid())
-  shipmentId      String
-  shipment        Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  invoiceNo       String
-  invoiceDate     DateTime
-  currency        String     @default("USD")
-  exchangeRate    Float      @default(86.50)
-  incoterm        String     @default("FOB") // FOB, CIF, CFR, etc.
-  
-  invoiceTotal    Float      // Total on header
-  freightAmount   Float?     @default(0.0)
-  insuranceAmount Float?     @default(0.0)
-  miscCharges     Float?     @default(0.0)
-  
-  itemsTotalCalc  Float      @default(0.0) // Sum of line items
-  isMathBalanced  Boolean    @default(false)
-  mathDifference  Float      @default(0.0)
-  
-  items           LineItem[]
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  id           String     @id @default(uuid())
+  shipmentId   String
+  shipment     Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  invoiceNumber String
+  invoiceDate  DateTime?
+  currency     String     @default("USD")
+  invoiceTotal Float      @default(0.0)
+  subtotal     Float      @default(0.0)
+  pdfFileName  String?
+  lineItems    LineItem[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Container {
+  id                 String     @id @default(uuid())
+  shipmentId         String
+  shipment           Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  containerNumber    String     // e.g. MSCU7829104
+  sealNumber         String     // e.g. EMC883921
+  containerType      String     @default("40HC") // 20GP, 40GP, 40HC, 45HC
+  maxPayloadKg       Float      @default(26500.0)
+  tareWeightKg       Float      @default(3900.0)
+  totalGrossWeightKg Float      @default(0.0)
+  totalNetWeightKg   Float      @default(0.0)
+  totalPallets       Int        @default(0)
+  totalPackages      Int        @default(0)
+  isOverweight       Boolean    @default(false)
+  hasDangerousGoods  Boolean    @default(false)
+  pallets            Pallet[]
+  lineItems          LineItem[]
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+}
+
+model Pallet {
+  id               String     @id @default(uuid())
+  shipmentId       String
+  shipment         Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  containerId      String?
+  container        Container? @relation(fields: [containerId], references: [id], onDelete: SetNull)
+  palletNumber     String     // e.g. PLT-5644
+  packageCount     Int        @default(1)
+  packageType      String     @default("BOX") // CARTON, DRUM, CYLINDER, CRATE
+  grossWeightKg    Float      @default(0.0)
+  netWeightKg      Float      @default(0.0)
+  dimensions       String?    // e.g. "120x80x160 cm"
+  isDangerousGoods Boolean    @default(false)
+  lineItems        LineItem[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
 
 model LineItem {
-  id              String   @id @default(uuid())
-  invoiceId       String
-  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  itemNumber      Int
-  description     String
+  id                 String     @id @default(uuid())
+  shipmentId         String
+  shipment           Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  invoiceId          String?
+  invoice            Invoice?   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  containerId        String?
+  container          Container? @relation(fields: [containerId], references: [id], onDelete: SetNull)
+  palletId           String?
+  pallet             Pallet?    @relation(fields: [palletId], references: [id], onDelete: SetNull)
   
-  // Strict 8-digit Indian Customs Tariff Code (HSN/RITC)
-  hsnCode         String   // Exactly 8 digits
-  isHsnValid      Boolean  @default(false)
+  itemNumber         Int
+  description        String
+  hsnCode            String?
+  quantity           Float
+  uqc                String     @default("PCS")
+  unitPrice          Float      @default(0.0)
+  total              Float      @default(0.0)
+  netWeightKg        Float      @default(0.0)
+  grossWeightKg      Float      @default(0.0)
   
-  quantity        Float
-  uqc             String   // ICEGATE standard: PCS, BOX, MTR, NOS, KGS, etc.
-  unitPrice       Float
-  itemTotalValue  Float    // Quantity * UnitPrice
+  // Dangerous Goods attributes
+  isDangerousGood    Boolean    @default(false)
+  imoClass           String?    // e.g. "Class 3", "Class 8", "Class 9"
+  unNumber           String?    // e.g. "UN 1993", "UN 1263"
+  packingGroup       String?    // "I", "II", "III"
+  properShippingName String?    // e.g. "FLAMMABLE LIQUID, N.O.S."
+  flashPoint         String?    // e.g. "23°C c.c."
+  marinePollutant    Boolean    @default(false)
+  emergencyContact   String?
   
-  // Line level math check (|qty * rate - total| <= 0.5)
-  isLineMathValid Boolean  @default(true)
-  
-  schemeCode      String?  @default("00") // Drawback / RoDTEP export scheme code
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 }
 
-model AuditLog {
-  id         String   @id @default(uuid())
-  shipmentId String
-  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
-  ruleName   String   // e.g. "HSN_LENGTH_CHECK", "ARITHMETIC_RECONCILIATION", "WEIGHT_LOGIC"
-  severity   String   // "ERROR", "WARNING", "INFO"
-  message    String
-  resolved   Boolean  @default(false)
-  timestamp  DateTime @default(now())
+model Template {
+  id               String     @id @default(uuid())
+  name             String     // e.g. "Standard Ocean BOL", "IMO Dangerous Goods Declaration"
+  type             String     // "BOL", "DG"
+  carrierOrClient  String     @default("Standard")
+  isDefault        Boolean    @default(false)
+  contentLayout    String?    // JSON metadata or layout config
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model DocumentOutput {
+  id                 String     @id @default(uuid())
+  shipmentId         String
+  shipment           Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  documentType       String     // "BOL", "DG"
+  documentNumber     String     // e.g. "BOL-EKD-2026-089"
+  templateName       String
+  containersSummary  String?
+  generatedContent   String
+  generatedAt        DateTime   @default(now())
 }

@@ -4,25 +4,39 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   Building2, 
-  Scale, 
   Plus, 
   Trash2, 
   Columns, 
   Eye, 
   FileCheck, 
-  ChevronLeft, 
-  ChevronRight, 
   ZoomIn, 
   ZoomOut, 
-  Save,
-  Sparkles,
-  Loader2,
-  RefreshCw,
-  AlertCircle,
-  Key
+  Save, 
+  Sparkles, 
+  Loader2, 
+  RefreshCw, 
+  AlertCircle, 
+  Key, 
+  Boxes, 
+  Flame, 
+  Printer, 
+  Download, 
+  Ship 
 } from 'lucide-react';
-import type { ConvertedInvoice, LineItem, CustomsPort, AppDocument } from '../types';
+import type { 
+  ConvertedInvoice, 
+  LineItem, 
+  CustomsPort, 
+  AppDocument, 
+  ContainerType, 
+  DocumentOutput 
+} from '../types';
+import { CONTAINER_SPECS } from '../types';
 import { EXPORTER_PROFILES } from '../data/profiles';
+import { DOCUMENT_TEMPLATES } from '../data/templates';
+import { allocateContainers, createEmptyContainer, recalculateContainer } from '../utils/containerAllocator';
+import { generateMasterBol, printDocument, downloadDocumentHtml } from '../utils/bolGenerator';
+import { generateDgDeclaration } from '../utils/dgGenerator';
 
 interface PreviewPaneProps {
   document: AppDocument | null;
@@ -32,7 +46,7 @@ interface PreviewPaneProps {
   onOpenKeyModal?: () => void;
 }
 
-type ViewMode = 'data' | 'pdf';
+type ViewMode = 'allocation' | 'data' | 'documents' | 'pdf';
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
   document,
@@ -41,7 +55,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onConvert,
   onOpenKeyModal
 }) => {
-  // If no document is selected
   if (!document) {
     return (
       <div className="flex-1 h-full flex flex-col items-center justify-center p-8 bg-slate-50/40 text-center select-none">
@@ -49,16 +62,15 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           <Columns className="w-8 h-8 text-indigo-500/80" />
         </div>
         <h3 className="text-sm font-bold text-slate-800 tracking-tight">
-          Document Preview & Extraction Pane
+          Shipment Workspace & Container Allocator
         </h3>
         <p className="text-xs text-slate-500 mt-1.5 max-w-sm leading-relaxed">
-          Select an uploaded document from the list on the left or drop a new PDF to inspect extracted statutory data and compare side-by-side with the source document.
+          Select an uploaded invoice from the queue on the left or drop a new PDF to inspect extracted weights, allocate multi-container pallets, and generate Master BOL & #DG forms.
         </p>
       </div>
     );
   }
 
-  // If document is processed and has converted invoice
   if (document.status === 'processed' && document.invoice) {
     return (
       <ActivePreviewPaneContent
@@ -70,7 +82,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     );
   }
 
-  // If document is pending, processing, or failed
   return (
     <PendingPreviewPaneContent
       document={document}
@@ -91,8 +102,6 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
   onConvert,
   onOpenKeyModal
 }) => {
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages] = useState<number>(2);
   const [zoom, setZoom] = useState<number>(100);
 
   const formatFileSize = (bytes: number): string => {
@@ -126,13 +135,12 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
                   ? 'bg-rose-50 text-rose-700 border border-rose-200'
                   : 'bg-amber-50 text-amber-700 border border-amber-200'
               }`}>
-                {isProcessing ? 'Processing' : isFailed ? 'Failed' : 'Pending Processing'}
+                {isProcessing ? 'Processing...' : isFailed ? 'Failed' : 'Ready to Convert'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Action Button */}
         {onConvert && (
           <button
             type="button"
@@ -143,17 +151,17 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
             {isProcessing ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Converting...</span>
+                <span>Extracting...</span>
               </>
             ) : isFailed ? (
               <>
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry Conversion</span>
+                <span>Retry Extraction</span>
               </>
             ) : (
               <>
                 <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
-                <span>Convert Invoice</span>
+                <span>Extract Weights & Pallets</span>
               </>
             )}
           </button>
@@ -162,7 +170,6 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
 
       {/* Main Workspace (Split: Left Info Card, Right PDF Viewer) */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Side: Conversion Status & Instructions */}
         <div className="w-1/2 h-full p-8 flex flex-col justify-center items-center text-center bg-slate-50/50 border-r border-slate-200/80 overflow-y-auto">
           {isProcessing ? (
             <div className="max-w-md space-y-4">
@@ -170,10 +177,10 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
                 <Loader2 className="w-8 h-8 animate-spin" />
               </div>
               <h3 className="text-base font-bold text-slate-800">
-                Processing Document
+                Extracting Multi-Container Cargo Data
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Gemini AI is analyzing document tables, extracting statutory exporter & consignee details, validating 8-digit HSN codes, and calculating GST totals.
+                Gemini Vision AI is scanning multi-page commercial invoice tables, gross/net weights, pallet distributions, and checking hazardous material classes (IMO/UN #).
               </p>
             </div>
           ) : isFailed ? (
@@ -187,131 +194,66 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
               <p className="text-xs text-rose-600 leading-relaxed bg-rose-50 p-3 rounded-xl border border-rose-200">
                 {document.errorMessage || 'Unable to extract data from this PDF.'}
               </p>
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                {onOpenKeyModal && (
-                  <button
-                    type="button"
-                    onClick={onOpenKeyModal}
-                    className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-2xs transition-colors cursor-pointer"
-                  >
-                    <Key className="w-3.5 h-3.5" />
-                    <span>Enter Gemini API Key</span>
-                  </button>
-                )}
-                {onConvert && (
-                  <button
-                    type="button"
-                    onClick={() => onConvert(document.id)}
-                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 transition-colors cursor-pointer"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Retry Conversion</span>
-                  </button>
-                )}
-              </div>
+              {onOpenKeyModal && (
+                <button
+                  type="button"
+                  onClick={onOpenKeyModal}
+                  className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Configure Gemini API Key</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="max-w-md space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
-                <Sparkles className="w-8 h-8" />
+              <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
+                <FileText className="w-8 h-8 text-indigo-500" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">
-                Ready to Convert
+              <h3 className="text-base font-bold text-slate-800">
+                Ready for Extraction
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                This document is uploaded and ready for extraction. Click <strong>Convert Invoice</strong> to extract vendor information, line items, and generate Indian Customs ICES 1.5 EDI output.
+                Click <strong>Extract Weights & Pallets</strong> to parse line items, gross/net weights, auto-segregate pallets into containers, and generate #DG and Master BOL forms.
               </p>
-              {onConvert && (
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => onConvert(document.id)}
-                    className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4 text-indigo-200" />
-                    <span>Convert Invoice Now</span>
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
 
-        {/* Right Side: PDF Viewer */}
-        <div className="w-1/2 h-full flex flex-col bg-slate-900 select-none overflow-hidden">
-          <div className="h-11 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
-            <div className="flex items-center space-x-2 truncate">
-              <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span className="font-medium truncate max-w-[180px]" title={document.fileName}>
-                {document.fileName}
-              </span>
-              <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">
-                PDF
-              </span>
-            </div>
-
+        {/* Right Side: PDF Preview */}
+        <div className="w-1/2 h-full flex flex-col bg-slate-900 overflow-hidden">
+          <div className="h-10 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
+            <span className="truncate">{document.fileName}</span>
             <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1 bg-slate-700/80 px-1.5 py-0.5 rounded">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                  disabled={currentPage <= 1}
-                  className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
-                  title="Previous Page"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-[11px] font-mono px-1 text-white">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                  disabled={currentPage >= totalPages}
-                  className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
-                  title="Next Page"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="flex items-center space-x-1 bg-slate-700/80 px-1.5 py-0.5 rounded">
-                <button
-                  type="button"
-                  onClick={() => setZoom(z => Math.max(z - 15, 60))}
-                  className="p-1 text-slate-300 hover:text-white transition-colors"
-                  title="Zoom Out"
-                >
-                  <ZoomOut className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-[11px] font-mono px-1 text-white">
-                  {zoom}%
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setZoom(z => Math.min(z + 15, 180))}
-                  className="p-1 text-slate-300 hover:text-white transition-colors"
-                  title="Zoom In"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setZoom(z => Math.max(z - 15, 60))}
+                className="p-1 hover:text-white"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="font-mono">{zoom}%</span>
+              <button
+                type="button"
+                onClick={() => setZoom(z => Math.min(z + 15, 180))}
+                className="p-1 hover:text-white"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
-
-          <div className="flex-1 bg-slate-900 overflow-auto p-4 flex items-center justify-center">
+          <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
             {document.pdfUrl ? (
               <iframe
-                src={`${document.pdfUrl}#toolbar=0&navpanes=0`}
+                src={`${document.pdfUrl}#toolbar=0`}
                 className="w-full h-full rounded shadow-md border-0 bg-white"
                 style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
                 title={document.fileName}
               />
             ) : (
-              <div className="text-center text-slate-400 p-8 space-y-2">
-                <FileText className="w-12 h-12 mx-auto text-slate-600" />
-                <p className="text-xs">PDF preview not available for this session.</p>
-              </div>
+              <div className="text-slate-400 text-xs">PDF preview not loaded.</div>
             )}
           </div>
         </div>
@@ -323,26 +265,28 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
 interface ActiveContentProps {
   invoice: ConvertedInvoice;
   onSave: (updated: ConvertedInvoice) => void;
-  onPortChange: (invoiceId: string, port: CustomsPort) => void;
+  onPortChange?: (invoiceId: string, port: CustomsPort) => void;
 }
 
 const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
   invoice,
   onSave,
-  onPortChange
+  onPortChange: _onPortChange
 }) => {
   const [formData, setFormData] = useState<ConvertedInvoice>(() => ({
     ...invoice,
+    containers: invoice.containers && invoice.containers.length > 0 
+      ? invoice.containers.map(c => ({ ...c, pallets: c.pallets.map(p => ({ ...p })) }))
+      : allocateContainers(invoice.lineItems, '40HC', invoice.totalPallets).containers,
     lineItems: invoice.lineItems.map(it => ({ ...it }))
   }));
 
-  const [viewMode, setViewMode] = useState<ViewMode>('data');
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages] = useState<number>(2);
+  const [viewMode, setViewMode] = useState<ViewMode>('allocation');
   const [zoom, setZoom] = useState<number>(100);
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [activeGeneratedDoc, setActiveGeneratedDoc] = useState<DocumentOutput | null>(null);
 
-  // Profile Autofill
+  // Exporter Profile Autofill
   const handleSelectExporter = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const profile = EXPORTER_PROFILES.find(p => p.id === e.target.value);
     if (profile) {
@@ -355,6 +299,64 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
         portOfLoading: profile.defaultPort
       }));
     }
+  };
+
+  // Container Allocation Handlers
+  const handleAddContainer = (type: ContainerType = '40HC') => {
+    setFormData(prev => {
+      const newCont = createEmptyContainer(type, prev.containers.length);
+      return {
+        ...prev,
+        containers: [...prev.containers, newCont]
+      };
+    });
+  };
+
+  const handleDeleteContainer = (contId: string) => {
+    setFormData(prev => {
+      if (prev.containers.length <= 1) return prev;
+      const target = prev.containers.find(c => c.id === contId);
+      const remaining = prev.containers.filter(c => c.id !== contId);
+
+      // Reassign orphan pallets to first remaining container
+      if (target && target.pallets.length > 0 && remaining.length > 0) {
+        remaining[0].pallets = [...remaining[0].pallets, ...target.pallets];
+        remaining[0].assignedPalletIds = remaining[0].pallets.map(p => p.id);
+        remaining[0] = recalculateContainer(remaining[0]);
+      }
+
+      return {
+        ...prev,
+        containers: remaining
+      };
+    });
+  };
+
+  const handleContainerTypeChange = (contId: string, newType: ContainerType) => {
+    setFormData(prev => ({
+      ...prev,
+      containers: prev.containers.map(c => {
+        if (c.id !== contId) return c;
+        const updated = { ...c, containerType: newType };
+        return recalculateContainer(updated);
+      })
+    }));
+  };
+
+  const handleContainerFieldChange = (contId: string, field: 'containerNumber' | 'sealNumber', val: string) => {
+    setFormData(prev => ({
+      ...prev,
+      containers: prev.containers.map(c => c.id === contId ? { ...c, [field]: val.toUpperCase() } : c)
+    }));
+  };
+
+  const handleAutoReallocate = () => {
+    const { containers, pallets } = allocateContainers(formData.lineItems, '40HC', formData.totalPallets);
+    setFormData(prev => ({
+      ...prev,
+      containers,
+      pallets
+    }));
   };
 
   // Line item updates
@@ -374,112 +376,142 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
     });
   };
 
-  const handleAddItem = () => {
-    const newItem: LineItem = {
-      id: `item-${Date.now()}`,
-      itemNumber: formData.lineItems.length + 1,
-      description: 'NEW COMMERCIAL ITEM LINE',
-      hsnCode: '84818090',
-      quantity: 1,
-      uqc: 'NOS',
-      unitPrice: 100.0,
-      total: 100.0
-    };
-    setFormData(prev => ({
-      ...prev,
-      lineItems: [...prev.lineItems, newItem]
-    }));
-  };
-
-  const handleDeleteItem = (index: number) => {
-    if (formData.lineItems.length <= 1) return;
-    setFormData(prev => ({
-      ...prev,
-      lineItems: prev.lineItems.filter((_, idx) => idx !== index)
-    }));
-  };
-
-  // Live Math calculations
-  const itemsSum = Number(
-    formData.lineItems.reduce((acc, it) => acc + (it.total || 0), 0).toFixed(2)
-  );
-  const gstAmount = Number((formData.gstAmount || 0).toFixed(2));
-  const effectiveTotal = Number((itemsSum + gstAmount).toFixed(2));
-  const headerTotal = Number(formData.invoiceTotal.toFixed(2));
-
-  const isDirectMatch = Math.abs(itemsSum - headerTotal) <= 0.5;
-  const isGstMatch = Math.abs(effectiveTotal - headerTotal) <= 0.5;
-  const isBalanced = isDirectMatch || isGstMatch;
-  const mathDiff = isGstMatch ? 0 : (isDirectMatch ? 0 : Number(Math.abs(effectiveTotal - headerTotal).toFixed(2)));
-  const unallocatedGst = (!formData.gstAmount || formData.gstAmount === 0) && headerTotal > itemsSum 
-    ? Number((headerTotal - itemsSum).toFixed(2)) 
-    : 0;
-
   const handleSave = () => {
-    const updated: ConvertedInvoice = {
-      ...formData,
-      status: isBalanced && formData.lineItems.every(i => i.hsnCode.length === 8) ? 'converted' : 'review_suggested'
-    };
-    onSave(updated);
+    onSave(formData);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
 
+  // Document Generation Triggers
+  const handleGenerateBol = () => {
+    const bolDoc = generateMasterBol(formData, formData.selectedBolTemplateId);
+    setActiveGeneratedDoc(bolDoc);
+    setViewMode('documents');
+  };
+
+  const handleGenerateDg = () => {
+    const dgDoc = generateDgDeclaration(formData, formData.selectedDgTemplateId);
+    setActiveGeneratedDoc(dgDoc);
+    setViewMode('documents');
+  };
+
+  const totalGrossCalculated = formData.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || formData.grossWeightKg;
+  const totalNetCalculated = formData.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || formData.netWeightKg;
+  const anyOverweight = formData.containers.some(c => c.isOverweight);
+
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-50/50 overflow-hidden">
       {/* =========================================================================
-          TOP ACTION BAR OF PREVIEW PANE (Clean, well-spaced layout)
+          TOP ACTION BAR OF PREVIEW PANE
          ========================================================================= */}
       <div className="h-16 px-6 bg-white border-b border-slate-200/80 flex items-center justify-between shrink-0 gap-4">
-        {/* Left: View Mode Toggle (Extracted Data / PDF Carousel) */}
+        {/* Left: View Mode Toggle */}
         <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 text-xs font-semibold">
           <button
             type="button"
+            onClick={() => setViewMode('allocation')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              viewMode === 'allocation'
+                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Boxes className="w-3.5 h-3.5" />
+            <span>Containers & Pallets</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-50 text-indigo-700 font-mono">
+              {formData.containers.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setViewMode('data')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
               viewMode === 'data'
                 ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FileCheck className="w-3.5 h-3.5" />
-            <span>Extracted Data</span>
+            <span>Cargo & HazMat</span>
+            {formData.hasDangerousGoods && (
+              <Flame className="w-3 h-3 text-rose-600" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!activeGeneratedDoc) {
+                setActiveGeneratedDoc(generateMasterBol(formData, formData.selectedBolTemplateId));
+              }
+              setViewMode('documents');
+            }}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+              viewMode === 'documents'
+                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>#DG & BOL Forms</span>
           </button>
 
           <button
             type="button"
             onClick={() => setViewMode('pdf')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
               viewMode === 'pdf'
                 ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            <span>PDF Carousel</span>
+            <span>PDF Source</span>
           </button>
         </div>
 
-        {/* Right: Actions (Save to Files) */}
+        {/* Right: Fast Generator Actions + Save to Files */}
         <div className="flex items-center space-x-2 shrink-0">
           <button
             type="button"
+            onClick={handleGenerateBol}
+            className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
+            title="Generate Master Bill of Lading"
+          >
+            <Ship className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Master BOL</span>
+          </button>
+
+          {formData.hasDangerousGoods && (
+            <button
+              type="button"
+              onClick={handleGenerateDg}
+              className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer"
+              title="Generate IMO Multimodal Dangerous Goods Declaration"
+            >
+              <Flame className="w-3.5 h-3.5 text-rose-600" />
+              <span>#DG Declaration</span>
+            </button>
+          )}
+
+          <button
+            type="button"
             onClick={handleSave}
-            title="Save converted invoice to Files and clear board for next document"
-            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
               isSaved
                 ? 'bg-emerald-600 text-white'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700'
             }`}
           >
             {isSaved ? (
               <>
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Saved to Files!</span>
               </>
             ) : (
               <>
-                <Save className="w-4 h-4" />
+                <Save className="w-3.5 h-3.5" />
                 <span>Save to Files</span>
               </>
             )}
@@ -488,665 +520,551 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
       </div>
 
       {/* =========================================================================
-          MAIN WORKSPACE: SPLIT VIEW / DATA VIEW / PDF CAROUSEL VIEW
+          PANEL A: CONTAINER & PALLET SEGREGATION
          ========================================================================= */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* PANEL A: EXTRACTED TEXT ("Preview & Edit Invoice" Section) */}
-        {viewMode === 'data' && (
-          <div className="w-full h-full flex flex-col bg-white overflow-y-auto p-6 space-y-6 text-xs">
-            {/* Section 1: Shipment & Statutory Grid */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                  Shipment & Statutory Information
-                </h3>
-
-                {/* Filing Type Toggle: Export vs Import */}
-                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setFormData(p => ({ ...p, filingType: 'EXPORT' }))}
-                    className={`px-2 py-0.5 rounded font-semibold transition-all ${
-                      formData.filingType === 'EXPORT'
-                        ? 'bg-white text-indigo-700 shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Export (.sb)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData(p => ({ ...p, filingType: 'IMPORT' }))}
-                    className={`px-2 py-0.5 rounded font-semibold transition-all ${
-                      formData.filingType === 'IMPORT'
-                        ? 'bg-white text-indigo-700 shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Import (.be)
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Invoice Number */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Invoice Number
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.invoiceNumber}
-                    onChange={(e) => setFormData(p => ({ ...p, invoiceNumber: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
-                    required
-                  />
-                </div>
-
-                {/* Invoice Date */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Invoice Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.invoiceDate}
-                    onChange={(e) => setFormData(p => ({ ...p, invoiceDate: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                    required
-                  />
-                </div>
-
-                {/* e-Sanchit IRN */}
-                <div className="md:col-span-2">
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    16-Digit e-Sanchit IRN
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={16}
-                    value={formData.esanchitIrn}
-                    onChange={(e) => setFormData(p => ({ ...p, esanchitIrn: e.target.value.toUpperCase() }))}
-                    placeholder="e.g. 2026102700948215"
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Exporter Name with Profile Dropdown */}
-                <div className="md:col-span-2">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-semibold text-slate-700">
-                      Exporter / Consignor Name
-                    </label>
-                    <select
-                      onChange={handleSelectExporter}
-                      className="text-[10px] bg-slate-100 hover:bg-slate-200/70 text-slate-700 font-medium rounded-md px-2 py-0.5 border border-slate-200 outline-none cursor-pointer transition-colors"
-                      defaultValue=""
-                    >
-                      <option value="" disabled>Auto-fill Profile...</option>
-                      {EXPORTER_PROFILES.map(p => (
-                        <option key={p.id} value={p.id}>{p.companyName.slice(0, 28)}...</option>
-                      ))}
-                    </select>
-                  </div>
-                  <input
-                    type="text"
-                    value={formData.exporterName}
-                    onChange={(e) => setFormData(p => ({ ...p, exporterName: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
-                    required
-                  />
-                </div>
-
-                {/* 10-Digit IEC */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    10-Digit IEC
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={10}
-                    value={formData.iec}
-                    onChange={(e) => setFormData(p => ({ ...p, iec: e.target.value.toUpperCase() }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                  />
-                </div>
-
-                {/* 15-Digit GSTIN */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    15-Digit GSTIN
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={15}
-                    value={formData.gstin}
-                    onChange={(e) => setFormData(p => ({ ...p, gstin: e.target.value.toUpperCase() }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
-                  />
-                </div>
-
-                {/* Bank AD Code */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Bank AD Code (7 Digits)
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={7}
-                    value={formData.adCode}
-                    onChange={(e) => setFormData(p => ({ ...p, adCode: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Consignee Name */}
-                <div className="md:col-span-2">
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Consignee / Buyer (Overseas)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.consigneeName}
-                    onChange={(e) => setFormData(p => ({ ...p, consigneeName: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors"
-                  />
-                </div>
-
-                {/* Port of Loading */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Port of Loading
-                  </label>
-                  <select
-                    value={formData.portOfLoading}
-                    onChange={(e) => onPortChange(formData.id, e.target.value as CustomsPort)}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors cursor-pointer"
-                  >
-                    <option value="INNSA1">Nhava Sheva (INNSA1)</option>
-                    <option value="INBOM4">Mumbai Air (INBOM4)</option>
-                  </select>
-                </div>
-
-                {/* Discharge Port & Country */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                      Discharge Port
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.portOfDischarge}
-                      onChange={(e) => setFormData(p => ({ ...p, portOfDischarge: e.target.value.toUpperCase() }))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                      Country
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={2}
-                      value={formData.destinationCountry}
-                      onChange={(e) => setFormData(p => ({ ...p, destinationCountry: e.target.value.toUpperCase() }))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                    />
-                  </div>
-                </div>
-
-                {/* Currency, Exch Rate, Incoterm */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Currency
-                  </label>
-                  <select
-                    value={formData.currency}
-                    onChange={(e) => setFormData(p => ({ ...p, currency: e.target.value }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors cursor-pointer"
-                  >
-                    <option value="INR">INR (₹)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="EUR">EUR (€)</option>
-                    <option value="GBP">GBP (£)</option>
-                    <option value="AED">AED</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Exchange Rate (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.exchangeRate}
-                    onChange={(e) => setFormData(p => ({ ...p, exchangeRate: parseFloat(e.target.value) || 1 }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Incoterm
-                  </label>
-                  <select
-                    value={formData.incoterm}
-                    onChange={(e) => setFormData(p => ({ ...p, incoterm: e.target.value as any }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none font-semibold transition-colors cursor-pointer"
-                  >
-                    <option value="FOB">FOB</option>
-                    <option value="CIF">CIF</option>
-                    <option value="CFR">CFR</option>
-                    <option value="EXW">EXW</option>
-                  </select>
-                </div>
-
-                {/* GST / Taxes Amount */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-semibold text-slate-700">
-                      GST / Taxes ({formData.currency})
-                    </label>
-                    {itemsSum > 0 && formData.invoiceTotal > itemsSum && (!formData.gstAmount || formData.gstAmount === 0) && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData(p => ({ ...p, gstAmount: Number((p.invoiceTotal - itemsSum).toFixed(2)) }))}
-                        className="text-[10px] text-indigo-600 font-semibold hover:underline cursor-pointer"
-                      >
-                        Auto-Fill
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.gstAmount ?? ''}
-                    placeholder="0.00"
-                    onChange={(e) => setFormData(p => ({ ...p, gstAmount: parseFloat(e.target.value) || 0 }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Total Invoice Value */}
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-700 block mb-1.5">
-                    Header Invoice Total
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.invoiceTotal}
-                    onChange={(e) => setFormData(p => ({ ...p, invoiceTotal: parseFloat(e.target.value) || 0 }))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
-                  />
-                </div>
-              </div>
+      {viewMode === 'allocation' && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* Header & Quick Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200/80">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <Boxes className="w-4 h-4 text-indigo-600" />
+                <span>Multi-Container Segregation & Pallet Breakdown</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Total Manifest: <strong>{totalGrossCalculated.toLocaleString()} kg Gross</strong> • <strong>{totalNetCalculated.toLocaleString()} kg Net</strong> across {formData.containers.length} container(s)
+              </p>
             </div>
 
-            {/* Section 2: Line Items & Tariff Codes */}
-            <div className="space-y-3 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="flex items-center space-x-2">
-                  <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Scale className="w-3.5 h-3.5 text-indigo-600" />
-                    Line Items & Tariff Codes ({formData.lineItems.length} items)
-                  </h3>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <button
-                    type="button"
-                    onClick={handleAddItem}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/80 active:bg-slate-200 border border-slate-200/60 shadow-2xs transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Add Item</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Items Table */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-50/90 text-slate-600 text-[11px] font-semibold border-b border-slate-200 uppercase tracking-wider">
-                      <th className="py-2.5 px-3 w-10 text-center">#</th>
-                      <th className="py-2.5 px-3">Description</th>
-                      <th className="py-2.5 px-3 w-32">HSN (8-Digit)</th>
-                      <th className="py-2.5 px-3 w-20 text-right">Qty</th>
-                      <th className="py-2.5 px-3 w-24">Unit</th>
-                      <th className="py-2.5 px-3 w-28 text-right">Price</th>
-                      <th className="py-2.5 px-3 w-32 text-right">Total</th>
-                      <th className="py-2.5 px-2 w-10 text-center"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {formData.lineItems.map((item, idx) => {
-                      const isHsnValid = item.hsnCode && item.hsnCode.length === 8 && /^\d+$/.test(item.hsnCode);
-                      const calculated = Number((item.quantity * item.unitPrice).toFixed(2));
-                      const isMathValid = Math.abs(calculated - item.total) < 0.05;
-
-                      return (
-                        <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
-                            {idx + 1}
-                          </td>
-
-                          <td className="py-2.5 px-3">
-                            <input
-                              type="text"
-                              value={item.description}
-                              onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
-                              className="w-full bg-slate-50/50 border border-slate-200/60 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none transition-colors"
-                            />
-                          </td>
-
-                          <td className="py-2.5 px-3">
-                            <div className="relative">
-                              <input
-                                type="text"
-                                maxLength={8}
-                                value={item.hsnCode}
-                                onChange={(e) => handleItemChange(idx, 'hsnCode', e.target.value.replace(/[^0-9]/g, ''))}
-                                className={`w-full font-mono text-xs px-2.5 py-1.5 rounded-lg border outline-none transition-colors ${
-                                  isHsnValid
-                                    ? 'border-slate-200/80 bg-slate-50/50 text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
-                                    : 'border-amber-400 bg-amber-50/60 text-amber-900 focus:border-amber-500'
-                                }`}
-                              />
-                            </div>
-                          </td>
-
-                          <td className="py-2.5 px-3 text-right">
-                            <input
-                              type="number"
-                              step="any"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                              className="w-full text-right font-mono bg-slate-50/50 border border-slate-200/60 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs text-slate-900 outline-none transition-colors"
-                            />
-                          </td>
-
-                          <td className="py-2.5 px-3">
-                            <select
-                              value={item.uqc}
-                              onChange={(e) => handleItemChange(idx, 'uqc', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 font-mono text-xs text-slate-700 outline-none cursor-pointer transition-colors"
-                            >
-                              <option value="NOS">NOS</option>
-                              <option value="PCS">PCS</option>
-                              <option value="KGS">KGS</option>
-                              <option value="MTR">MTR</option>
-                              <option value="BOX">BOX</option>
-                              <option value="SET">SET</option>
-                              <option value="CTN">CTN</option>
-                            </select>
-                          </td>
-
-                          <td className="py-2.5 px-3 text-right">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.unitPrice}
-                              onChange={(e) => handleItemChange(idx, 'unitPrice', parseFloat(e.target.value) || 0)}
-                              className="w-full text-right font-mono bg-slate-50/50 border border-slate-200/60 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2 py-1.5 text-xs text-slate-900 outline-none transition-colors"
-                            />
-                          </td>
-
-                          <td className="py-2.5 px-3 text-right">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.total}
-                              onChange={(e) => handleItemChange(idx, 'total', parseFloat(e.target.value) || 0)}
-                              className={`w-full font-mono font-bold text-right px-2.5 py-1.5 rounded-lg border outline-none transition-colors ${
-                                isMathValid
-                                  ? 'border-slate-200/60 bg-slate-50/50 hover:border-slate-300 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-900'
-                                  : 'border-rose-400 bg-rose-50/60 text-rose-900'
-                              }`}
-                            />
-                          </td>
-
-                          <td className="py-2.5 px-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteItem(idx)}
-                              disabled={formData.lineItems.length <= 1}
-                              className="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg disabled:opacity-30 transition-colors cursor-pointer"
-                              title="Delete Item"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={handleAutoReallocate}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
+              >
+                Auto-Reallocate Pallets
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddContainer('40HC')}
+                className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Container</span>
+              </button>
             </div>
+          </div>
 
-            {/* Section 3: Math Audit Footer Indicator */}
-            <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${
-                  isBalanced
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-200'
-                }`}>
-                  {isBalanced ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>
-                        Totals Reconciled
-                        {gstAmount > 0 ? ` (Items: ${itemsSum.toFixed(2)} + GST: ${gstAmount.toFixed(2)})` : ''}
+          {anyOverweight && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center space-x-2.5 text-xs text-amber-800">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Warning:</strong> One or more containers exceed maximum ISO road/vessel payload limits. Re-balance pallets to prevent port terminal gate-in rejection.
+              </span>
+            </div>
+          )}
+
+          {/* Containers Matrix */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            {formData.containers.map((cont, cIdx) => {
+              const spec = CONTAINER_SPECS[cont.containerType] || CONTAINER_SPECS['40HC'];
+              const weightPct = Math.min(100, Math.round((cont.totalGrossWeightKg / spec.maxPayloadKg) * 100));
+              const isOver = cont.totalGrossWeightKg > spec.maxPayloadKg;
+
+              return (
+                <div 
+                  key={cont.id}
+                  className={`bg-white border rounded-2xl p-4.5 shadow-2xs transition-all ${
+                    isOver ? 'border-amber-400 ring-1 ring-amber-400' : 'border-slate-200/90'
+                  }`}
+                >
+                  {/* Container Header */}
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <span className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold font-mono flex items-center justify-center shrink-0">
+                        {cIdx + 1}
                       </span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertTriangle className="w-4 h-4 text-amber-600" />
-                      <span>Variance: {mathDiff.toFixed(2)} {formData.currency}</span>
-                      {unallocatedGst > 0 && (
+                      <div className="min-w-0">
+                        <input
+                          type="text"
+                          value={cont.containerNumber}
+                          onChange={(e) => handleContainerFieldChange(cont.id, 'containerNumber', e.target.value)}
+                          className="font-bold font-mono text-xs text-slate-900 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded border border-slate-200 outline-none w-32"
+                          placeholder="Container No"
+                        />
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          Seal: 
+                          <input
+                            type="text"
+                            value={cont.sealNumber}
+                            onChange={(e) => handleContainerFieldChange(cont.id, 'sealNumber', e.target.value)}
+                            className="ml-1 bg-transparent hover:bg-slate-100 px-1 py-0.2 rounded border border-transparent hover:border-slate-200 outline-none w-24 text-slate-700 font-semibold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-1.5 shrink-0">
+                      <select
+                        value={cont.containerType}
+                        onChange={(e) => handleContainerTypeChange(cont.id, e.target.value as ContainerType)}
+                        className="text-[11px] font-semibold bg-slate-100 text-slate-800 rounded-lg px-2 py-1 border border-slate-200 outline-none cursor-pointer"
+                      >
+                        <option value="20GP">20' GP (Max 21,700 kg)</option>
+                        <option value="40GP">40' GP (Max 26,500 kg)</option>
+                        <option value="40HC">40' HC (Max 26,500 kg)</option>
+                        <option value="45HC">45' HC (Max 27,800 kg)</option>
+                      </select>
+
+                      {formData.containers.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => setFormData(p => ({ ...p, gstAmount: unallocatedGst }))}
-                          className="ml-2 px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-2xs"
+                          onClick={() => handleDeleteContainer(cont.id)}
+                          className="p-1 text-slate-300 hover:text-rose-600 rounded transition-colors"
+                          title="Remove Container"
                         >
-                          + Add GST ({unallocatedGst.toFixed(2)} {formData.currency})
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
-                    </>
-                  )}
-                </div>
+                    </div>
+                  </div>
 
-                <div className="text-xs text-slate-500 font-mono">
-                  Items Sum: <strong className="text-slate-800">{itemsSum.toFixed(2)}</strong>
-                  {gstAmount > 0 && (
-                    <> + GST: <strong className="text-indigo-600">{gstAmount.toFixed(2)}</strong></>
-                  )}
-                  {' '}| Header Total: <strong className="text-slate-800">{headerTotal.toFixed(2)}</strong>
+                  {/* Weight Utilization Meter */}
+                  <div className="py-3">
+                    <div className="flex items-center justify-between text-[11px] mb-1">
+                      <span className="font-semibold text-slate-700">Payload Weight</span>
+                      <span className="font-mono text-slate-600">
+                        <strong className={isOver ? 'text-amber-600' : 'text-slate-900'}>
+                          {cont.totalGrossWeightKg.toLocaleString()} kg
+                        </strong> / {spec.maxPayloadKg.toLocaleString()} kg ({weightPct}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all ${
+                          isOver ? 'bg-amber-500' : 'bg-indigo-600'
+                        }`}
+                        style={{ width: `${Math.min(100, weightPct)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1">
+                      <span>Tare: {spec.tareWeightKg.toLocaleString()} kg</span>
+                      <span>{cont.pallets.length} Pallets ({cont.totalPackages} pkgs)</span>
+                      {cont.hasDangerousGoods && (
+                        <span className="text-rose-600 font-bold">⚠ Contains HazMat</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Pallets Breakdown Inside This Container */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                      Assigned Pallets ({cont.pallets.length})
+                    </div>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {cont.pallets.length === 0 ? (
+                        <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/60 rounded-lg">
+                          No pallets currently in this container.
+                        </div>
+                      ) : (
+                        cont.pallets.map((p, pIdx) => (
+                          <div 
+                            key={p.id || pIdx}
+                            className="flex items-center justify-between p-2 bg-slate-50 hover:bg-slate-100/70 rounded-lg text-xs border border-slate-200/50"
+                          >
+                            <div className="flex items-center space-x-2 min-w-0">
+                              <span className="font-mono font-bold text-slate-800 text-[11px]">
+                                {p.palletNumber}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                {p.packageCount} {p.packageType}
+                              </span>
+                              {p.isDangerousGoods && (
+                                <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700">
+                                  DG
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-right font-mono text-[11px] text-slate-700 shrink-0">
+                              <strong>{p.grossWeightKg.toLocaleString()} kg</strong>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          PANEL B: CARGO & DANGEROUS GOODS (HAZMAT) DATA
+         ========================================================================= */}
+      {viewMode === 'data' && (
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
+          {/* Section 1: Header / Shipping Information */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Shipment & Booking Information</span>
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Invoice / Reference No
+                </label>
+                <input
+                  type="text"
+                  value={formData.invoiceNumber}
+                  onChange={(e) => setFormData(p => ({ ...p, invoiceNumber: e.target.value }))}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-slate-900 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Booking Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.bookingNumber || ''}
+                  onChange={(e) => setFormData(p => ({ ...p, bookingNumber: e.target.value }))}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-900 outline-none"
+                  placeholder="e.g. BKG-MSC-99201"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Vessel & Voyage
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={formData.vesselName || ''}
+                    onChange={(e) => setFormData(p => ({ ...p, vesselName: e.target.value.toUpperCase() }))}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                    placeholder="Vessel"
+                  />
+                  <input
+                    type="text"
+                    value={formData.voyageNumber || ''}
+                    onChange={(e) => setFormData(p => ({ ...p, voyageNumber: e.target.value.toUpperCase() }))}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 outline-none"
+                    placeholder="Voyage"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Port of Loading
+                </label>
+                <input
+                  type="text"
+                  value={formData.portOfLoading}
+                  onChange={(e) => setFormData(p => ({ ...p, portOfLoading: e.target.value }))}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700">
+                    Shipper / Exporter
+                  </label>
+                  <select
+                    onChange={handleSelectExporter}
+                    className="text-[10px] bg-slate-100 text-slate-700 rounded px-2 py-0.5 border border-slate-200 outline-none cursor-pointer"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Auto-fill Profile...</option>
+                    {EXPORTER_PROFILES.map(p => (
+                      <option key={p.id} value={p.id}>{p.companyName}</option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  value={formData.exporterName}
+                  onChange={(e) => setFormData(p => ({ ...p, exporterName: e.target.value }))}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                  Consignee / Buyer
+                </label>
+                <input
+                  type="text"
+                  value={formData.consigneeName}
+                  onChange={(e) => setFormData(p => ({ ...p, consigneeName: e.target.value }))}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                />
               </div>
             </div>
           </div>
-        )}
 
-        {/* PANEL B: PDF DOCUMENT VIEWER & CAROUSEL */}
-        {viewMode === 'pdf' && (
-          <div className="w-full h-full flex flex-col bg-slate-900 select-none overflow-hidden">
-            {/* Carousel Toolbar */}
-            <div className="h-11 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
-              <div className="flex items-center space-x-2 truncate">
-                <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
-                <span className="font-medium truncate max-w-[180px]" title={formData.fileName}>
-                  {formData.fileName}
-                </span>
-                <span className="text-[10px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono">
-                  PDF
-                </span>
-              </div>
-
-              {/* Carousel Page Controls */}
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1 bg-slate-700/80 px-1.5 py-0.5 rounded">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                    disabled={currentPage <= 1}
-                    className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
-                    title="Previous Page"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="text-[11px] font-mono px-1 text-white">
-                    {currentPage} / {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                    disabled={currentPage >= totalPages}
-                    className="p-1 text-slate-300 hover:text-white disabled:opacity-30 transition-colors"
-                    title="Next Page"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* Zoom Controls */}
-                <div className="flex items-center space-x-1 bg-slate-700/80 px-1 py-0.5 rounded">
-                  <button
-                    type="button"
-                    onClick={() => setZoom(z => Math.max(z - 15, 60))}
-                    className="p-1 text-slate-300 hover:text-white transition-colors"
-                    title="Zoom Out"
-                  >
-                    <ZoomOut className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="text-[11px] font-mono px-1 text-slate-300">
-                    {zoom}%
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setZoom(z => Math.min(z + 15, 160))}
-                    className="p-1 text-slate-300 hover:text-white transition-colors"
-                    title="Zoom In"
-                  >
-                    <ZoomIn className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
+          {/* Section 2: Line Items & HazMat Flags */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <span>Cargo Line Items & Dangerous Goods Flags</span>
+              </h3>
             </div>
 
-            {/* Document Display Canvas */}
-            <div className="flex-1 overflow-auto p-4 flex justify-center items-start bg-slate-950/60">
-              {formData.pdfUrl ? (
-                <div 
-                  className="w-full h-full min-h-[500px] bg-white rounded-lg shadow-2xl overflow-hidden transition-transform origin-top"
-                  style={{ transform: `scale(${zoom / 100})` }}
-                >
-                  <iframe
-                    src={`${formData.pdfUrl}#page=${currentPage}&toolbar=0&navpanes=0`}
-                    title="Document PDF Preview"
-                    className="w-full h-full min-h-[650px] border-none"
-                  />
-                </div>
-              ) : (
-                /* High-Fidelity Mock PDF Visualizer if direct Blob URL expired across reload */
-                <div 
-                  className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-xl text-slate-900 font-sans text-xs transition-transform origin-top select-text"
-                  style={{ transform: `scale(${zoom / 100})` }}
-                >
-                  {/* Document Header */}
-                  <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4 mb-4">
-                    <div>
-                      <h4 className="text-sm font-bold uppercase tracking-wider text-slate-900">
-                        {formData.exporterName}
-                      </h4>
-                      <p className="text-[10px] text-slate-500 mt-0.5">
-                        GSTIN: {formData.gstin || '27AABCS8891D1Z1'} | IEC: {formData.iec || '0399003418'}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs font-bold font-mono text-indigo-700 block">
-                        COMMERCIAL INVOICE
-                      </span>
-                      <span className="font-mono text-[11px] font-bold text-slate-800">
-                        #{formData.invoiceNumber}
-                      </span>
-                      <p className="text-[10px] text-slate-500 font-mono">
-                        Date: {formData.invoiceDate}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Consignee */}
-                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4 text-[11px]">
-                    <span className="font-bold uppercase tracking-wider text-slate-400 block text-[9px]">
-                      Buyer / Consignee:
-                    </span>
-                    <span className="font-semibold text-slate-800 block mt-0.5">
-                      {formData.consigneeName}
-                    </span>
-                    <span className="text-slate-500 block">
-                      Destination: {formData.portOfDischarge} ({formData.destinationCountry}) | Terms: {formData.incoterm}
-                    </span>
-                  </div>
-
-                  {/* Document Items Table */}
-                  <div className="mb-4">
-                    <table className="w-full text-left border-collapse text-[11px]">
-                      <thead>
-                        <tr className="border-b border-slate-300 text-slate-600 font-semibold">
-                          <th className="py-1">Description</th>
-                          <th className="py-1 text-center">HSN</th>
-                          <th className="py-1 text-right">Qty</th>
-                          <th className="py-1 text-right">Rate</th>
-                          <th className="py-1 text-right">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {formData.lineItems.map((it, i) => (
-                          <tr key={i}>
-                            <td className="py-1.5 font-medium text-slate-800">{it.description}</td>
-                            <td className="py-1.5 text-center font-mono text-slate-600">{it.hsnCode}</td>
-                            <td className="py-1.5 text-right font-mono">{it.quantity} {it.uqc}</td>
-                            <td className="py-1.5 text-right font-mono">{it.unitPrice.toFixed(2)}</td>
-                            <td className="py-1.5 text-right font-mono font-semibold">{it.total.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Document Totals */}
-                  <div className="border-t-2 border-slate-800 pt-3 flex justify-between items-center text-xs">
-                    <div className="text-[10px] text-slate-400 font-mono">
-                      <span>Source File: {formData.fileName}</span>
-                    </div>
-                    <div className="text-right space-y-0.5 font-mono">
-                      {formData.gstAmount && formData.gstAmount > 0 ? (
-                        <>
-                          <div className="text-[10px] text-slate-500">
-                            Subtotal: {formData.currency} {itemsSum.toFixed(2)}
+            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-600 text-[11px] font-semibold border-b border-slate-200 uppercase">
+                    <th className="py-2.5 px-3 w-8">#</th>
+                    <th className="py-2.5 px-3">Description & DG Attributes</th>
+                    <th className="py-2.5 px-3 w-28">HSN Code</th>
+                    <th className="py-2.5 px-3 w-20 text-right">Qty</th>
+                    <th className="py-2.5 px-3 w-28 text-right">Gross Wt</th>
+                    <th className="py-2.5 px-3 w-32 text-center">HazMat (#DG)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {formData.lineItems.map((item, idx) => (
+                    <tr key={item.id} className="hover:bg-slate-50/60">
+                      <td className="py-2.5 px-3 text-slate-400 font-mono text-center">
+                        {idx + 1}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 font-medium outline-none"
+                        />
+                        {item.isDangerousGood && (
+                          <div className="mt-1 flex flex-wrap gap-2 text-[10px]">
+                            <input
+                              type="text"
+                              value={item.unNumber || 'UN 1993'}
+                              onChange={(e) => handleItemChange(idx, 'unNumber', e.target.value)}
+                              placeholder="UN Number"
+                              className="font-mono text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 outline-none w-20"
+                            />
+                            <input
+                              type="text"
+                              value={item.imoClass || 'Class 3'}
+                              onChange={(e) => handleItemChange(idx, 'imoClass', e.target.value)}
+                              placeholder="IMO Class"
+                              className="font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 outline-none w-24"
+                            />
+                            <input
+                              type="text"
+                              value={item.flashPoint || ''}
+                              onChange={(e) => handleItemChange(idx, 'flashPoint', e.target.value)}
+                              placeholder="Flash Point (e.g. 23C)"
+                              className="text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 outline-none w-28"
+                            />
                           </div>
-                          <div className="text-[10px] text-indigo-600">
-                            GST (18%): {formData.currency} {formData.gstAmount.toFixed(2)}
-                          </div>
-                        </>
-                      ) : null}
-                      <div className="text-sm font-bold text-slate-900">
-                        Grand Total: {formData.currency} {formData.invoiceTotal.toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <input
+                          type="text"
+                          value={item.hsnCode}
+                          onChange={(e) => handleItemChange(idx, 'hsnCode', e.target.value.replace(/[^0-9]/g, ''))}
+                          className="w-full font-mono text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                          className="w-full font-mono text-right bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <input
+                          type="number"
+                          value={item.grossWeightKg}
+                          onChange={(e) => handleItemChange(idx, 'grossWeightKg', parseFloat(e.target.value) || 0)}
+                          className="w-full font-mono text-right bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                        />
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newDg = !item.isDangerousGood;
+                            handleItemChange(idx, 'isDangerousGood', newDg);
+                            if (newDg) {
+                              setFormData(p => ({ ...p, hasDangerousGoods: true }));
+                            }
+                          }}
+                          className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                            item.isDangerousGood
+                              ? 'bg-rose-100 text-rose-700 border border-rose-300'
+                              : 'bg-slate-100 text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          {item.isDangerousGood ? 'HazMat (DG)' : 'Non-Hazardous'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          PANEL C: GENERATED #DG & BOL DOCUMENTS (WITH TEMPLATE SELECTOR)
+         ========================================================================= */}
+      {viewMode === 'documents' && (
+        <div className="flex-1 flex flex-col overflow-hidden bg-slate-100/70">
+          {/* Template Bar */}
+          <div className="h-14 px-6 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 gap-4">
+            <div className="flex items-center space-x-3">
+              <span className="text-xs font-bold text-slate-700">Template Layout:</span>
+              <select
+                value={activeGeneratedDoc?.documentType === 'DG' ? formData.selectedDgTemplateId : formData.selectedBolTemplateId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (activeGeneratedDoc?.documentType === 'DG') {
+                    setFormData(p => ({ ...p, selectedDgTemplateId: val }));
+                    setActiveGeneratedDoc(generateDgDeclaration(formData, val));
+                  } else {
+                    setFormData(p => ({ ...p, selectedBolTemplateId: val }));
+                    setActiveGeneratedDoc(generateMasterBol(formData, val));
+                  }
+                }}
+                className="text-xs font-semibold bg-slate-50 text-slate-900 border border-slate-200 rounded-lg px-3 py-1.5 outline-none cursor-pointer"
+              >
+                {activeGeneratedDoc?.documentType === 'DG'
+                  ? DOCUMENT_TEMPLATES.filter(t => t.type === 'DG').map(t => (
+                      <option key={t.id} value={t.id}>{t.name} ({t.carrierOrClient})</option>
+                    ))
+                  : DOCUMENT_TEMPLATES.filter(t => t.type === 'BOL').map(t => (
+                      <option key={t.id} value={t.id}>{t.name} ({t.carrierOrClient})</option>
+                    ))
+                }
+              </select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => handleGenerateBol()}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activeGeneratedDoc?.documentType === 'BOL'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                Master BOL
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleGenerateDg()}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activeGeneratedDoc?.documentType === 'DG'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                #DG Declaration
+              </button>
+
+              {activeGeneratedDoc && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => printDocument(activeGeneratedDoc.formattedHtml)}
+                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                    title="Print Document"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => downloadDocumentHtml(activeGeneratedDoc)}
+                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                    title="Download HTML"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </>
               )}
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Rendered Document View */}
+          <div className="flex-1 overflow-auto p-6 flex justify-center">
+            {activeGeneratedDoc ? (
+              <div 
+                className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden w-full max-w-4xl"
+                dangerouslySetInnerHTML={{ __html: activeGeneratedDoc.formattedHtml }}
+              />
+            ) : (
+              <div className="text-center py-20 text-slate-400 text-xs">
+                Select Master BOL or #DG Declaration above to render.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          PANEL D: PDF SOURCE VIEWER
+         ========================================================================= */}
+      {viewMode === 'pdf' && (
+        <div className="flex-1 flex flex-col bg-slate-900 overflow-hidden select-none">
+          <div className="h-10 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
+            <span className="truncate">{formData.fileName}</span>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setZoom(z => Math.max(z - 15, 60))}
+                className="p-1 hover:text-white"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="font-mono">{zoom}%</span>
+              <button
+                type="button"
+                onClick={() => setZoom(z => Math.min(z + 15, 180))}
+                className="p-1 hover:text-white"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
+            {formData.pdfUrl ? (
+              <iframe
+                src={`${formData.pdfUrl}#toolbar=0`}
+                className="w-full h-full rounded shadow-md border-0 bg-white"
+                style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
+                title={formData.fileName}
+              />
+            ) : (
+              <div className="text-slate-400 text-xs">Original PDF document not attached to this session.</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

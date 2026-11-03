@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, FolderArchive } from 'lucide-react';
+import { Layers, FolderArchive } from 'lucide-react';
 
 export type NavTab = 'converter' | 'files';
 
@@ -35,7 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Ekdant Logistics
             </h1>
             <p className="text-[10px] text-slate-400 font-medium truncate">
-              Customs Document Converter
+              Multi-Container & HazMat Dispatch
             </p>
           </div>
         </div>
@@ -43,7 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Navigation Items */}
       <div className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto">
-        {/* Document Converter */}
+        {/* Document Workspace */}
         <button
           type="button"
           onClick={() => onSelectTab?.('converter')}
@@ -53,11 +53,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
           }`}
         >
-          <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
-          <span className="flex-1 truncate">Document Converter</span>
+          <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
+          <span className="flex-1 truncate">Document Workspace</span>
         </button>
 
-        {/* Files */}
+        {/* Files Repository */}
         <button
           type="button"
           onClick={() => onSelectTab?.('files')}
@@ -68,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
         >
           <FolderArchive className="w-4 h-4 text-indigo-600 shrink-0" />
-          <span className="flex-1 truncate">Files</span>
+          <span className="flex-1 truncate">Files Repository</span>
           {savedFilesCount > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 font-mono">
               {savedFilesCount}
@@ -77,16 +77,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* Bottom System & Port Indicator */}
+      {/* Bottom System & Container Status Indicator */}
       <div className="p-3.5 border-t border-slate-200/80 bg-slate-50/40 shrink-0 flex items-center justify-between text-[11px]">
         <div className="text-slate-500 font-semibold tracking-tight truncate">
-          Ekdant EDI System
+          Ekdant Dispatch
         </div>
         <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-200/60 text-slate-700">
-          INNSA1 / INBOM4
+          20GP • 40HC • #DG
         </span>
       </div>
     </aside>
   );
 };
-

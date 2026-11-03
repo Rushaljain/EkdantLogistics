@@ -1,54 +1,52 @@
-# Ekdant Logistics — ICEGATE EDI Accelerator MVP
+# Ekdant Logistics — Multi-Container Dispatch & HazMat Logistics System
 
-An AI-powered split-screen **Human-in-the-Loop (HITL)** web application and customs technology accelerator built for **Ekdant Logistics** (Licensed Customs Broker CHA Lic: `11/1892`), operating out of **Jawaharlal Nehru Port Trust / Nhava Sheva (`INNSA1`)** and **Mumbai Air Cargo (`INBOM4`)**.
-
----
-
-## 1. Core Problem & Solution
-
-* **The Problem:** CHA punching operators manually transcribe 30 to 100+ line items per commercial invoice into legacy customs software (Visual Impex, Softlink Logi-Sys), taking 35–45 minutes per shipment and causing costly human errors (HSN mismatches, math drift, ICEGATE queries, demurrage/detention fees).
-* **The Solution:** A high-speed HITL workspace that ingests PDF commercial invoices and packing lists, extracts line items with **Google Gemini Vision**, runs deterministic **Indian Customs compliance audits**, enables instant inline corrections, and exports:
-  1. **CHA Bulk-Import Spreadsheet (`.xlsx`)** mapped for 1-click import into **Softlink Logi-Sys** and **Visual Impex**.
-  2. **Official ICEGATE Remote EDI Flat File (`.sb` / `.be`)** following the **ICES 1.5 standard** with ASCII `0x1D` (Group Separator) delimiters.
+An AI-powered split-screen **Human-in-the-Loop (HITL)** logistics workspace built for **Ekdant Logistics** (Licensed Freight Forwarder & Customs Broker, CHA Lic: `11/1892`), operating out of **Jawaharlal Nehru Port Trust / Nhava Sheva (`INNSA1`)** and **Mumbai Air Cargo (`INBOM4`)**.
 
 ---
 
-## 2. Key Customs Compliance Engines
+## 1. Core Workflow & Capabilities
 
-1. **Strict 8-Digit HSN/RITC Validator & Auto-Padder**
-   - Detects truncated 2, 4, or 6-digit codes that trigger ICEGATE rejection.
-   - Provides 1-click auto-padding to 8 digits with trailing zeros.
-2. **Deterministic Arithmetic Reconciliation**
-   - **Line Level:** `| (Quantity * Unit Price) - Item Total Value | <= 0.50`
-   - **Header Level:** `| Sum(Item Total Values) - Extracted Invoice Total | <= 0.50`
-   - **Sticky Math Footer:** Visual indicator that turns vivid green only when values balance, with a 1-click "Auto-Balance Header Total" reconciliation action.
-3. **UQC Normalization Engine**
-   - Normalizes informal unit strings (`Pieces`, `Boxes`, `Nos`, `Meters`, `Kgs`) into official ICEGATE 3-letter Unit Quantity Codes (`PCS`, `BOX`, `NOS`, `MTR`, `KGS`).
-4. **Physical Weight Logic**
-   - Validates that `Gross Weight >= Net Weight`. Flags physical customs discrepancies where net weight exceeds container gross weight.
-5. **e-Sanchit IRN Attribution**
-   - Binds the 16-character e-Sanchit Image Reference Number (generated via Class-3 DSC USB dongle signing) into the `<TABLE>SUPPORTING_DOC` record.
-6. **Statutory Exporter Master**
-   - Auto-fills statutory company details including 10-digit IEC, 15-digit GSTIN, 7-digit RBI Bank AD Code, and Port of Loading (`INNSA1` vs `INBOM4`).
+The platform automates the end-to-end freight dispatch journey:
+**Multi-Invoice Ingestion ➔ Weight & Pallet Segregation across Multiple Containers ➔ #DG (Dangerous Goods) Document Generation ➔ Master Bill of Lading (BOL) Generation using Custom Templates.**
 
----
-
-## 3. Technology Stack
-
-* **Frontend:** Vite + React (TypeScript) + Tailwind CSS + Lucide Icons
-* **Database & ORM:** Supabase PostgreSQL with Prisma ORM schema
-* **AI Vision Engine:** Google Gemini Flash (`gemini-2.5-flash` / `gemini-1.5-flash`) via `@google/generative-ai`
-* **Exporters:** SheetJS (`xlsx`) and custom ASCII `0x1D` ICES 1.5 compiler
+1. **Multi-Invoice Ingestion & AI Vision Extraction**
+   - Ingests multiple PDF commercial invoices and packing lists.
+   - Extracts quantities, gross/net weights, pallet distributions, and hazardous material flags using **Google Gemini Vision AI** (`gemini-3.5-flash`) with a 25-second timeout and fallback safeguard.
+2. **Automated & Interactive Multi-Container Pallet Allocation**
+   - Automatically segregates line items into pallets (e.g. `PLT-5644` to `PLT-5655`) and allocates them across standard ISO ocean containers (`20GP`, `40GP`, `40HC`, `45HC`).
+   - Validates tare weights and maximum payload capacities (e.g., 26,500 kg for 40HC, 21,700 kg for 20GP), highlighting any overweight conditions.
+   - Full drag-and-drop / selector capability to adjust container types, seal numbers, and pallet assignments.
+3. **#DG (Dangerous Goods) Document Generation**
+   - Automatically detects HazMat cargo (IMO Class, UN Number, Packing Group, Proper Shipping Name, Flash Point, Marine Pollutant).
+   - Generates official, printable **IMO Multimodal Dangerous Goods Declarations** complying with SOLAS Chapter VII and IMDG Code Chapter 5.4.
+4. **Master Bill of Lading (BOL) Generation with Custom Templates**
+   - Generates corporate, print-ready Master BOL documents with container matrix, seal numbers, marks & numbers, weights, and CBM estimates.
+   - Supports client and carrier template selection (e.g., Standard Ocean B/L, Maersk Style, MSC Intermodal, Hapag-Lloyd).
+5. **Split-Screen HITL Verification & Persistent Archive**
+   - Side-by-side zoomable PDF viewer and interactive structured editor.
+   - Dedicated **Files Repository** archiving saved shipments with 1-click BOL & #DG downloads and round-trip workspace editing.
 
 ---
 
-## 4. Getting Started
+## 2. Technology Stack
 
-### 4.1 Prerequisites
-* Node.js v18+ (tested on Node v24)
+* **Frontend:** React 19 + TypeScript + Vite + Tailwind CSS + Lucide Icons
+* **Data Model & ORM:** Prisma ORM schema (`Shipment`, `Container`, `Pallet`, `LineItem`, `Template`, `DocumentOutput`)
+* **AI Vision Engine:** Google Gemini API (`gemini-3.5-flash`) via `@google/generative-ai`
+* **Allocation Engine:** Custom ISO Container Allocation & Pallet Segregation Engine (`src/utils/containerAllocator.ts`)
+* **Document Generators:** Custom Master BOL Generator (`src/utils/bolGenerator.ts`) and IMO DG Generator (`src/utils/dgGenerator.ts`)
+* **Linter & Quality:** Oxlint (Rust-based ultra-fast linter)
+
+---
+
+## 3. Getting Started
+
+### 3.1 Prerequisites
+* Node.js v18+ (tested on Node v20/v24)
 * npm or pnpm
+* Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/)
 
-### 4.2 Installation
+### 3.2 Installation & Running Locally
 ```bash
 # Clone the repository
 git clone https://github.com/Rushaljain/EkdantLogistics.git
@@ -56,25 +54,13 @@ cd EkdantLogistics
 
 # Install dependencies
 npm install
-```
 
-### 4.3 Environment Configuration
-Copy `.env.example` to `.env`:
-```env
-VITE_GEMINI_API_KEY="your-gemini-api-key"
-VITE_SUPABASE_URL="https://your-project.supabase.co"
-VITE_SUPABASE_ANON_KEY="your-anon-key"
-DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres"
-```
-*(Note: You can also enter and test your Gemini API Key directly inside the app's Operator Settings UI, or test out-of-the-box using the preloaded Nhava Sheva and Air Cargo sample invoices).*
-
-### 4.4 Running Locally
-```bash
+# Start development server
 npm run dev
 ```
 Open `http://localhost:5173` in your browser.
 
-### 4.5 Production Build
+### 3.3 Production Build
 ```bash
 npm run build
 npm run preview
@@ -82,11 +68,7 @@ npm run preview
 
 ---
 
-## 5. Repository & Branch Information
+## 4. Repository & Deployment
 * **Remote Origin:** `https://github.com/Rushaljain/EkdantLogistics.git`
-* **Default Branch:** `main`
-
----
-
-## 6. License
-Authorized for use by **Ekdant Logistics** customs brokerage operations.
+* **Branch:** `main`
+* **Production Deployment:** [ekdant-logistics.vercel.app](https://ekdant-logistics.vercel.app)

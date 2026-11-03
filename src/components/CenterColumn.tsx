@@ -2,8 +2,6 @@ import React from 'react';
 import { 
   Inbox, 
   Trash2, 
-  FileCode, 
-  FileSpreadsheet, 
   Ship, 
   Plane, 
   ChevronDown, 
@@ -12,12 +10,14 @@ import {
   CheckCircle2, 
   RefreshCw, 
   AlertCircle,
-  FolderArchive 
+  FolderArchive,
+  Layers,
+  Flame
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
 import type { AppDocument, CustomsPort } from '../types';
-import { downloadEdi } from '../utils/ediCompiler';
-import { downloadExcel } from '../utils/excelCompiler';
+import { generateMasterBol, downloadDocumentHtml } from '../utils/bolGenerator';
+import { generateDgDeclaration } from '../utils/dgGenerator';
 
 interface CenterColumnProps {
   documents: AppDocument[];
@@ -62,9 +62,11 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
          ========================================================================= */}
       <div className="shrink-0 p-4 border-b border-slate-200/80 space-y-3">
         <div className="flex items-center justify-between pb-0.5">
-          <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-            Upload Documents
+          <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Multi-Invoice Ingestion</span>
           </h2>
+          <span className="text-[10px] text-slate-400 font-mono">PDF Commercial & Packing Lists</span>
         </div>
 
         {/* Upload Drop Zone */}
@@ -72,15 +74,20 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
       </div>
 
       {/* =========================================================================
-          BOTTOM: UPLOADED DOCUMENTS QUEUE & CONVERTED LIST (flex-1)
+          BOTTOM: UPLOADED DOCUMENTS QUEUE & CONVERTED LIST
          ========================================================================= */}
       <div className="flex-1 flex flex-col p-4 overflow-hidden">
         {/* Header: Title + Convert All Button + Clear */}
         <div className="flex items-center justify-between pb-3 shrink-0">
           <div className="flex items-center space-x-2">
             <h2 className="text-xs font-bold text-slate-900 tracking-tight uppercase">
-              Uploaded Documents
+              Shipment Invoices
             </h2>
+            {documents.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 text-slate-700 font-mono">
+                {documents.length}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
@@ -89,8 +96,8 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
               <button
                 type="button"
                 onClick={onSaveAllToFiles}
-                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer"
-                title="Save all converted invoices to Files and clear the board"
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-2xs transition-all cursor-pointer"
+                title="Save all allocated shipments to Files archive and clear board"
               >
                 <FolderArchive className="w-3.5 h-3.5 text-emerald-100" />
                 <span>Save to Files</span>
@@ -104,17 +111,17 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 onClick={onConvertAll}
                 disabled={isBulkConverting}
                 className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-2xs transition-all disabled:opacity-50 cursor-pointer"
-                title="Convert all pending documents at once"
+                title="Extract weights, pallets, and HazMat attributes for all documents"
               >
                 {isBulkConverting ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin text-white" />
-                    <span>Converting...</span>
+                    <span>Extracting...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
-                    <span>Convert All</span>
+                    <span>Convert All ({pendingCount})</span>
                   </>
                 )}
               </button>
@@ -123,7 +130,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             {documents.length > 0 && (
               <button
                 onClick={() => {
-                  if (window.confirm('Clear all uploaded documents and history?')) {
+                  if (window.confirm('Clear all uploaded documents and queue?')) {
                     onClearAllDocuments();
                   }
                 }}
@@ -137,7 +144,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Document List / Clean Unboxed Empty State */}
+        {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
           {documents.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
@@ -145,10 +152,10 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 <Inbox className="w-6 h-6" />
               </div>
               <h3 className="text-xs font-semibold text-slate-700">
-                No documents uploaded yet
+                No invoices in workspace
               </h3>
-              <p className="text-[11px] text-slate-400 mt-1 max-w-[220px] leading-relaxed">
-                Drop PDF documents above. They will appear here ready to convert individually or in bulk.
+              <p className="text-[11px] text-slate-400 mt-1 max-w-[240px] leading-relaxed">
+                Drop multiple commercial invoice & packing list PDFs above to extract weights, allocate pallets, and generate BOL & #DG forms.
               </p>
             </div>
           ) : (
@@ -157,24 +164,18 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
               const isProcessing = doc.status === 'processing';
               const isProcessed = doc.status === 'processed' && Boolean(doc.invoice);
               const isFailed = doc.status === 'failed';
-
               const inv = doc.invoice;
-              const isExport = inv ? inv.filingType === 'EXPORT' : true;
-              const ediExt = isExport ? 'sb' : 'be';
 
               return (
                 <div
                   key={doc.id}
                   onClick={() => onSelectDocument(doc.id)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer text-left relative ${
+                  className={`p-3 rounded-xl border transition-all cursor-pointer ${
                     isSelected
-                      ? 'bg-white border-indigo-500 shadow-sm ring-2 ring-indigo-500/20'
-                      : 'bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-2xs'
+                      ? 'bg-white border-indigo-400 shadow-sm ring-1 ring-indigo-400'
+                      : 'bg-white/80 hover:bg-white border-slate-200/90 hover:border-slate-300 shadow-2xs'
                   }`}
                 >
-                  {/* ========================================================
-                      1. PROCESSED INVOICE (Lean 2-Row Layout)
-                     ======================================================== */}
                   {isProcessed && inv ? (
                     <>
                       {/* Top Line: Invoice Number + Processed Badge + Port Selector */}
@@ -185,8 +186,14 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                           </span>
                           <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/50 shrink-0">
                             <CheckCircle2 className="w-2.5 h-2.5" />
-                            <span>Processed</span>
+                            <span>Allocated</span>
                           </span>
+                          {inv.hasDangerousGoods && (
+                            <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0" title="Contains Dangerous Goods">
+                              <Flame className="w-2.5 h-2.5 text-rose-600" />
+                              <span>#DG</span>
+                            </span>
+                          )}
                         </div>
 
                         {/* Port Selector Dropdown */}
@@ -195,7 +202,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <select
-                            value={inv.portOfLoading || 'INNSA1'}
+                            value={inv.portOfLoading?.includes('INBOM4') ? 'INBOM4' : 'INNSA1'}
                             onChange={(e) => onPortChange(doc.id, e.target.value as CustomsPort)}
                             className="appearance-none bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-semibold pl-5 pr-5 py-0.5 rounded-md border border-slate-200 focus:outline-none cursor-pointer"
                           >
@@ -203,7 +210,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                             <option value="INBOM4">INBOM4</option>
                           </select>
                           <div className="absolute left-1 pointer-events-none text-indigo-600">
-                            {inv.portOfLoading === 'INBOM4' ? (
+                            {inv.portOfLoading?.includes('INBOM4') ? (
                               <Plane className="w-3 h-3" />
                             ) : (
                               <Ship className="w-3 h-3" />
@@ -215,32 +222,49 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         </div>
                       </div>
 
-                      {/* Row 2: Exporter Name on left + Direct Action Buttons on right */}
-                      <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100/80 text-[11px] gap-2">
-                        <span className="font-medium text-slate-700 truncate min-w-0" title={inv.exporterName}>
-                          {inv.exporterName}
-                        </span>
+                      {/* Row 2: Shipper / Weights & Pallets Breakdown */}
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100/80 text-[11px] gap-2">
+                        <div className="truncate min-w-0">
+                          <span className="font-semibold text-slate-700 block truncate" title={inv.exporterName}>
+                            {inv.exporterName}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {inv.containers?.length || 1} Cont ({inv.containers?.[0]?.containerType || '40HC'}) • {Math.round(inv.grossWeightKg || 0).toLocaleString()} kg
+                          </span>
+                        </div>
 
-                        {/* Direct Action Buttons */}
+                        {/* Direct Document Generation Actions */}
                         <div 
                           className="flex items-center space-x-1 shrink-0"
                           onClick={(e) => e.stopPropagation()}
                         >
+                          {/* 1-Click Master BOL Download */}
                           <button
-                            onClick={() => downloadEdi(inv)}
-                            className="p-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
-                            title={`Download EDI (.${ediExt})`}
+                            type="button"
+                            onClick={() => {
+                              const bol = generateMasterBol(inv);
+                              downloadDocumentHtml(bol);
+                            }}
+                            className="px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:text-white bg-indigo-50 hover:bg-indigo-600 rounded transition-colors"
+                            title="Generate & Download Master BOL"
                           >
-                            <FileCode className="w-3.5 h-3.5" />
+                            BOL
                           </button>
 
-                          <button
-                            onClick={() => downloadExcel(inv)}
-                            className="p-1 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                            title="Download Excel (.xlsx)"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5" />
-                          </button>
+                          {/* 1-Click #DG Document Download (if hazmat) */}
+                          {inv.hasDangerousGoods && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const dg = generateDgDeclaration(inv);
+                                downloadDocumentHtml(dg);
+                              }}
+                              className="px-2 py-0.5 text-[10px] font-semibold text-rose-700 hover:text-white bg-rose-50 hover:bg-rose-600 rounded transition-colors"
+                              title="Generate & Download #DG Document"
+                            >
+                              #DG
+                            </button>
+                          )}
 
                           <button
                             onClick={() => onDeleteDocument(doc.id)}
@@ -253,9 +277,6 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                       </div>
                     </>
                   ) : isProcessing ? (
-                    /* ========================================================
-                        2. PROCESSING INVOICE
-                       ======================================================== */
                     <>
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-slate-900 text-xs truncate" title={doc.fileName}>
@@ -263,19 +284,16 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         </span>
                         <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/50 shrink-0">
                           <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-600" />
-                          <span>Processing...</span>
+                          <span>Extracting...</span>
                         </span>
                       </div>
 
                       <div className="mt-2.5 pt-2 border-t border-slate-100/80 flex items-center justify-between text-[11px] text-slate-400">
                         <span className="font-mono">{formatFileSize(doc.fileSize)}</span>
-                        <span className="text-indigo-600 text-[10px] animate-pulse">Extracting customs data...</span>
+                        <span className="text-indigo-600 text-[10px] animate-pulse">Parsing weights & pallets...</span>
                       </div>
                     </>
                   ) : isFailed ? (
-                    /* ========================================================
-                        3. FAILED INVOICE
-                       ======================================================== */
                     <>
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center space-x-1.5 min-w-0">
@@ -296,7 +314,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                             type="button"
                             onClick={() => onConvertDocument(doc.id)}
                             className="inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
-                            title="Retry conversion"
+                            title="Retry extraction"
                           >
                             <RefreshCw className="w-3 h-3" />
                             <span>Retry</span>
@@ -312,22 +330,16 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                       </div>
                     </>
                   ) : (
-                    /* ========================================================
-                        4. PENDING INVOICE (Lean Symmetric 2-Row Layout)
-                       ======================================================== */
                     <>
-                      {/* Top Line: File Name on left + Pending Badge on right */}
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-slate-800 text-xs truncate min-w-0" title={doc.fileName}>
                           {doc.fileName}
                         </span>
-
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60 shrink-0">
                           Pending
                         </span>
                       </div>
 
-                      {/* Row 2: File Size on left + Convert Button & Delete on right */}
                       <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-100/80 text-[11px]">
                         <span className="text-slate-400 font-mono text-[11px]">
                           {formatFileSize(doc.fileSize)}
@@ -338,7 +350,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                             type="button"
                             onClick={() => onConvertDocument(doc.id)}
                             className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
-                            title="Convert this document"
+                            title="Extract weights, pallets, and HazMat attributes"
                           >
                             <Sparkles className="w-3 h-3 text-indigo-200" />
                             <span>Convert</span>

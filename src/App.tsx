@@ -404,7 +404,7 @@ export function App() {
                   Ekdant Logistics
                 </h1>
                 <p className="text-[10px] text-slate-400 font-medium">
-                  Customs Document Converter
+                  Multi-Container & HazMat Dispatch
                 </p>
               </div>
             </div>
@@ -413,13 +413,23 @@ export function App() {
             <div className="flex items-center space-x-2 text-xs font-medium text-slate-500">
               {activeDocument ? (
                 <div className="flex items-center space-x-2">
-                  <span className="text-slate-400">Active Document:</span>
+                  <span className="text-slate-400">Active Shipment:</span>
                   <span className="font-semibold text-slate-800 truncate max-w-[240px] lg:max-w-[380px]">
                     {activeDocument.invoice?.invoiceNumber || activeDocument.fileName}
                   </span>
+                  {activeDocument.invoice && (
+                    <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                      {activeDocument.invoice.containers?.length || 1} Cont • {Math.round(activeDocument.invoice.grossWeightKg || 0).toLocaleString()} kg
+                    </span>
+                  )}
+                  {activeDocument.invoice?.hasDangerousGoods && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                      #DG HazMat
+                    </span>
+                  )}
                   {activeDocument.status === 'processed' && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Processed
+                      Allocated
                     </span>
                   )}
                   {activeDocument.status === 'pending' && (
@@ -434,7 +444,7 @@ export function App() {
                   )}
                 </div>
               ) : (
-                <span className="text-slate-400 font-medium">Multi-Page Customs Invoices & Packing Lists</span>
+                <span className="text-slate-400 font-medium">Multi-Invoice Ingestion • Container Segregation • BOL & #DG Generation</span>
               )}
             </div>
           </header>

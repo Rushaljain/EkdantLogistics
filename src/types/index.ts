@@ -1,66 +1,156 @@
-// Ekdant Logistics - Customs Document Converter Domain Types
+// Ekdant Logistics - Multi-Container & HazMat Document System Types
+// Supports Multi-Invoice Ingestion, Weight/Pallet Segregation, #DG & Master BOL Generation
 
-export type FilingType = 'EXPORT' | 'IMPORT';
+export type ContainerType = '20GP' | '40GP' | '40HC' | '45HC';
 
-export type CustomsPort = 'INNSA1' | 'INBOM4';
+export const CONTAINER_SPECS: Record<ContainerType, { name: string; maxPayloadKg: number; tareWeightKg: number; cbm: number }> = {
+  '20GP': { name: "20' General Purpose", maxPayloadKg: 21700, tareWeightKg: 2300, cbm: 33.2 },
+  '40GP': { name: "40' General Purpose", maxPayloadKg: 26500, tareWeightKg: 3750, cbm: 67.7 },
+  '40HC': { name: "40' High Cube", maxPayloadKg: 26500, tareWeightKg: 3900, cbm: 76.4 },
+  '45HC': { name: "45' High Cube", maxPayloadKg: 27800, tareWeightKg: 4800, cbm: 86.0 }
+};
 
-export interface LineItem {
+export interface DangerousGoodsInfo {
+  isDangerousGood: boolean;
+  imoClass?: string;          // e.g. "Class 3 - Flammable Liquid", "Class 8 - Corrosives"
+  unNumber?: string;          // e.g. "UN 1993", "UN 1263", "UN 3082"
+  packingGroup?: 'I' | 'II' | 'III';
+  properShippingName?: string; // e.g. "FLAMMABLE LIQUID, N.O.S."
+  flashPoint?: string;        // e.g. "23°C c.c."
+  marinePollutant?: boolean;
+  emergencyContact?: string;
+  emsNumber?: string;         // e.g. "F-E, S-E"
+}
+
+export interface LineItem extends DangerousGoodsInfo {
   id: string;
   itemNumber: number;
   description: string;
-  hsnCode: string; // Strictly 8-digits for ICEGATE
+  hsnCode: string;
   quantity: number;
-  uqc: string;     // Standard 3-letter ICEGATE Unit Quantity Code (NOS, PCS, KGS, etc.)
+  uqc: string;                // NOS, PCS, KGS, BOX, etc.
   unitPrice: number;
   total: number;
+  netWeightKg: number;
+  grossWeightKg: number;
+  palletNumber?: string;      // e.g. "PLT-5644"
+  containerNumber?: string;   // e.g. "MSCU7829104"
 }
+
+export interface Pallet {
+  id: string;
+  palletNumber: string;       // e.g. "PLT-5644"
+  packageCount: number;
+  packageType: string;        // BOX, DRUM, CARTON, CRATE
+  grossWeightKg: number;
+  netWeightKg: number;
+  dimensions?: string;        // e.g. "120 x 80 x 165 cm"
+  isDangerousGoods: boolean;
+  assignedContainerId?: string;
+  lineItemIds: string[];
+}
+
+export interface ContainerAllocation {
+  id: string;
+  containerNumber: string;    // e.g. "MSCU7829104"
+  sealNumber: string;         // e.g. "EMC883921"
+  containerType: ContainerType;
+  maxPayloadKg: number;
+  tareWeightKg: number;
+  pallets: Pallet[];
+  assignedPalletIds: string[];
+  totalGrossWeightKg: number;
+  totalNetWeightKg: number;
+  totalPackages: number;
+  totalPallets?: number;
+  isOverweight: boolean;
+  hasDangerousGoods: boolean;
+}
+
+export interface DocumentTemplate {
+  id: string;
+  name: string;
+  type: 'BOL' | 'DG';
+  carrierOrClient: string;    // "Standard Ocean", "Maersk Style", "MSC Intermodal", "IMO Dangerous Goods"
+  isDefault?: boolean;
+  description?: string;
+}
+
+export interface DocumentOutput {
+  id: string;
+  shipmentId: string;
+  documentType: 'BOL' | 'DG';
+  documentNumber: string;     // e.g. "BOL-EKD-2026-089" or "DG-2026-089"
+  templateName: string;
+  title: string;
+  generatedAt: string;
+  containersSummary: string;
+  formattedHtml: string;
+}
+
+export type CustomsPort = 'INNSA1' | 'INBOM4';
 
 export interface ConvertedInvoice {
   id: string;
   fileName: string;
   fileSize: number;
-  convertedAt: string; // Human-friendly display string, e.g., "Today, 01:05 PM"
+  convertedAt: string;
   rawTimestamp: number;
   status: 'converted' | 'review_suggested';
-  filingType: FilingType;
   
-  // Header / Statutory Details
+  // Header / Commercial Info
   invoiceNumber: string;
-  invoiceDate: string; // YYYY-MM-DD
-  esanchitIrn: string; // 16-digit e-Sanchit Image Reference Number
+  invoiceDate: string;        // YYYY-MM-DD
+  bookingNumber?: string;
+  masterBolNumber?: string;
   
-  // Exporter Master
-  exporterName: string;
-  iec: string;        // 10-digit statutory IEC
-  gstin: string;      // 15-digit statutory GSTIN
-  adCode: string;     // 7-digit RBI Authorized Dealer Code
-  
-  // Consignee & Shipping Route
+  // Parties
+  exporterName: string;       // Shipper
+  shipperAddress?: string;
+  iec?: string;
+  gstin?: string;
+  adCode?: string;
   consigneeName: string;
-  portOfLoading: CustomsPort;
-  portOfDischarge: string;
-  destinationCountry: string; // 2-letter ISO (US, DE, AE, etc.)
+  consigneeAddress?: string;
+  notifyParty?: string;
   
-  // Financial & Commercial Terms
-  currency: string;    // USD, EUR, GBP, INR, AED, etc.
+  // Routing
+  portOfLoading: string;      // e.g. "Nhava Sheva (INNSA1)"
+  portOfDischarge: string;    // e.g. "Rotterdam (NLRTM)"
+  destinationCountry: string; // 2-letter ISO (DE, US, NL, etc.)
+  vesselName?: string;
+  voyageNumber?: string;
+  
+  // Financial
+  currency: string;
   exchangeRate: number;
   incoterm: 'FOB' | 'CIF' | 'CFR' | 'EXW';
-  subtotal?: number;   // Taxable amount of line items
-  gstAmount?: number;  // GST / Tax amount (CGST + SGST or IGST)
-  gstRate?: number;    // GST % (e.g. 18)
+  subtotal?: number;
+  gstAmount?: number;
   invoiceTotal: number;
   
-  // Physical Manifest
+  // Manifest Totals
   grossWeightKg: number;
   netWeightKg: number;
   totalPackages: number;
-  packageType: string; // BOX, CTN, CRATE, PLT
+  packageType: string;
+  totalPallets: number;
+  hasDangerousGoods: boolean;
   
-  // Document Source
-  pdfUrl?: string;     // Object URL for live PDF preview
+  // Template Selections
+  selectedBolTemplateId: string;
+  selectedDgTemplateId: string;
   
-  // Line Items
+  // Multi-Container & Pallet Allocations
+  containers: ContainerAllocation[];
+  pallets: Pallet[];
   lineItems: LineItem[];
+  
+  // Generated Documents Cache
+  generatedDocuments?: DocumentOutput[];
+  
+  // PDF Preview
+  pdfUrl?: string;
 }
 
 export type DocumentStatus = 'pending' | 'processing' | 'processed' | 'failed';
@@ -77,20 +167,11 @@ export interface AppDocument {
   invoice?: ConvertedInvoice;
 }
 
-export interface QueueFile {
-  id: string;
-  name: string;
-  size: number;
-  status: 'processing' | 'converted' | 'failed';
-  errorMessage?: string;
-  file?: File;
-}
-
 export interface ExporterProfile {
   id: string;
   companyName: string;
   iec: string;
   gstin: string;
   adCode: string;
-  defaultPort: CustomsPort;
+  defaultPort: string;
 }

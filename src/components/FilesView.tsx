@@ -5,13 +5,14 @@ import {
   Search, 
   Trash2, 
   ExternalLink, 
-  FileCode, 
-  FileSpreadsheet, 
-  Plus 
+  Plus,
+  Ship,
+  Boxes,
+  Flame
 } from 'lucide-react';
-import type { ConvertedInvoice, CustomsPort } from '../types';
-import { downloadEdi } from '../utils/ediCompiler';
-import { downloadExcel } from '../utils/excelCompiler';
+import type { ConvertedInvoice } from '../types';
+import { generateMasterBol, downloadDocumentHtml } from '../utils/bolGenerator';
+import { generateDgDeclaration } from '../utils/dgGenerator';
 
 interface FilesViewProps {
   files: ConvertedInvoice[];
@@ -28,7 +29,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   onNavigateToConverter
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [portFilter, setPortFilter] = useState<'ALL' | CustomsPort>('ALL');
+  const [portFilter, setPortFilter] = useState<'ALL' | string>('ALL');
 
   // Filtered files based on search query & port
   const filteredFiles = useMemo(() => {
@@ -41,23 +42,11 @@ export const FilesView: React.FC<FilesViewProps> = ({
         file.consigneeName.toLowerCase().includes(query) ||
         file.fileName.toLowerCase().includes(query);
 
-      const matchesPort = portFilter === 'ALL' || file.portOfLoading === portFilter;
+      const matchesPort = portFilter === 'ALL' || file.portOfLoading.includes(portFilter);
 
       return matchesQuery && matchesPort;
     });
   }, [files, searchQuery, portFilter]);
-
-  const formatCurrency = (amount: number, currency: string) => {
-    try {
-      return new Intl.NumberFormat('en-IN', {
-        style: 'currency',
-        currency: currency === 'INR' ? 'INR' : currency,
-        maximumFractionDigits: 2
-      }).format(amount);
-    } catch {
-      return `${currency} ${amount.toFixed(2)}`;
-    }
-  };
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-50/50 overflow-hidden select-none">
@@ -73,34 +62,34 @@ export const FilesView: React.FC<FilesViewProps> = ({
           <div>
             <div className="flex items-center space-x-2">
               <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                Saved Files
+                Saved Shipments Repository
               </h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 font-mono">
-                {files.length} {files.length === 1 ? 'file' : 'files'}
+                {files.length} {files.length === 1 ? 'shipment' : 'shipments'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium">
-              Archived converted invoices ready for ICEGATE filing and export
+            <p className="text-[11px] text-slate-400">
+              Allocated containers, pallet breakdowns, #DG declarations & Master BOLs
             </p>
           </div>
         </div>
 
-        {/* Right: Search, Filter, & Actions */}
+        {/* Center/Right: Search & Filter Toolbar */}
         <div className="flex items-center space-x-3">
-          {/* Search Input */}
-          <div className="relative w-64">
+          {/* Search Box */}
+          <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search firm or invoice..."
-              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
+              placeholder="Search shipper, consignee, or invoice..."
+              className="w-56 lg:w-72 pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
             />
           </div>
 
           {/* Port Filter */}
-          <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-medium">
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 text-xs">
             <button
               type="button"
               onClick={() => setPortFilter('ALL')}
@@ -143,178 +132,167 @@ export const FilesView: React.FC<FilesViewProps> = ({
             className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Convert New File</span>
+            <span>New Shipment</span>
           </button>
         </div>
       </div>
 
       {/* =========================================================================
-          MAIN WORKSPACE: TILES GRID / EMPTY STATE
+          MAIN TILES GRID
          ========================================================================= */}
       <div className="flex-1 overflow-y-auto p-8">
-        {files.length === 0 ? (
-          /* Empty State: No Files Saved Yet */
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 max-w-md mx-auto select-none">
-            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center text-indigo-500 mb-4">
-              <FolderArchive className="w-8 h-8 text-indigo-500/80" />
+        {filteredFiles.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-12">
+            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-400 mb-4">
+              <Boxes className="w-8 h-8 text-indigo-400" />
             </div>
-            <h3 className="text-base font-bold text-slate-800 tracking-tight">
-              No Saved Files Yet
+            <h3 className="text-sm font-bold text-slate-800">
+              No shipments found in repository
             </h3>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              When you convert and save commercial invoices in the <strong>Document Converter</strong>, they will be archived here as tiles with the firm's name, invoice number, and 1-click export actions.
+            <p className="text-xs text-slate-400 mt-1.5 max-w-sm leading-relaxed">
+              {searchQuery || portFilter !== 'ALL'
+                ? 'No saved files match your current search or port filter.'
+                : 'Process and allocate shipments in the Document Workspace, then click "Save to Files" to archive them here.'}
             </p>
-            <button
-              type="button"
-              onClick={onNavigateToConverter}
-              className="mt-6 inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white shadow-xs transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Go to Document Converter</span>
-            </button>
-          </div>
-        ) : filteredFiles.length === 0 ? (
-          /* Empty State: No Matches */
-          <div className="h-64 flex flex-col items-center justify-center text-center p-8 select-none">
-            <Search className="w-8 h-8 text-slate-300 mb-2" />
-            <p className="text-xs font-semibold text-slate-700">No matching files found</p>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Try adjusting your search query or port filter.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                setPortFilter('ALL');
-              }}
-              className="mt-3 text-xs text-indigo-600 font-semibold hover:underline cursor-pointer"
-            >
-              Reset Filters
-            </button>
+            {files.length === 0 && (
+              <button
+                type="button"
+                onClick={onNavigateToConverter}
+                className="mt-4 inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Go to Workspace</span>
+              </button>
+            )}
           </div>
         ) : (
-          /* Tiles Grid */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-5">
-            {filteredFiles.map((file) => {
-              const isExport = file.filingType === 'EXPORT';
-              const ediExt = isExport ? 'sb' : 'be';
+            {filteredFiles.map(file => {
+              const contCount = file.containers?.length || 1;
+              const palletCount = file.containers?.reduce((s, c) => s + c.pallets.length, 0) || file.totalPallets || 1;
+              const grossKg = file.containers?.reduce((s, c) => s + c.totalGrossWeightKg, 0) || file.grossWeightKg || 0;
 
               return (
                 <div
                   key={file.id}
-                  className="bg-white rounded-xl border border-slate-200/80 shadow-2xs hover:shadow-xs hover:border-indigo-200 transition-all p-5 flex flex-col justify-between group"
+                  className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm hover:border-indigo-300 transition-all p-5 flex flex-col justify-between"
                 >
-                  {/* Tile Top: Firm Name & Saved Status */}
                   <div>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center space-x-1.5 text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">
-                          <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                          <span>Firm / Exporter</span>
+                    {/* Top Header: Shipper & Badges */}
+                    <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
+                      <div className="min-w-0">
+                        <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 uppercase font-semibold">
+                          <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>Shipper / Exporter</span>
                         </div>
-                        <h3 
-                          className="font-bold text-slate-900 text-sm leading-snug truncate" 
-                          title={file.exporterName}
-                        >
+                        <h3 className="text-xs font-bold text-slate-900 truncate mt-0.5" title={file.exporterName}>
                           {file.exporterName}
                         </h3>
-                        {file.consigneeName && (
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5" title={file.consigneeName}>
-                            To: <span className="text-slate-700 font-medium">{file.consigneeName}</span>
-                          </p>
-                        )}
+                        <p className="text-[11px] text-slate-500 truncate" title={file.consigneeName}>
+                          To: <span className="font-semibold text-slate-700">{file.consigneeName}</span>
+                        </p>
                       </div>
 
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 shrink-0">
-                        Saved
-                      </span>
+                      <div className="flex flex-col items-end space-y-1 shrink-0">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 font-mono">
+                          Saved
+                        </span>
+                        {file.hasDangerousGoods && (
+                          <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <Flame className="w-2.5 h-2.5 text-rose-600" />
+                            <span>#DG HazMat</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Invoice Number Box */}
-                    <div className="mt-4 p-3 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
-                      <div className="min-w-0">
-                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">
-                          Invoice Number
-                        </span>
-                        <span className="font-mono font-bold text-xs text-indigo-950 truncate block mt-0.5">
+                    {/* Middle Details Grid */}
+                    <div className="grid grid-cols-2 gap-3 py-3 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-medium">INVOICE NUMBER</span>
+                        <span className="font-mono font-bold text-slate-800 truncate block">
                           {file.invoiceNumber}
                         </span>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">
-                          Filing Type
-                        </span>
-                        <span className="inline-block mt-0.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200">
-                          {file.filingType} • .{ediExt.toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Metadata Specs (Amount, Line Items, Port, Date) */}
-                    <div className="mt-3.5 grid grid-cols-2 gap-2.5 text-[11px] text-slate-600 pt-2 border-t border-slate-100">
                       <div>
-                        <span className="text-slate-400 block text-[10px]">Invoice Total</span>
-                        <span className="font-mono font-bold text-slate-900 text-xs">
-                          {formatCurrency(file.invoiceTotal, file.currency)}
+                        <span className="text-slate-400 block text-[10px] font-medium">CONTAINER BREAKDOWN</span>
+                        <span className="font-mono font-semibold text-indigo-700 block truncate">
+                          {contCount} Cont ({file.containers?.[0]?.containerType || '40HC'})
                         </span>
                       </div>
 
                       <div>
-                        <span className="text-slate-400 block text-[10px]">Line Items</span>
-                        <span className="font-medium text-slate-800">
-                          {file.lineItems.length} {file.lineItems.length === 1 ? 'item' : 'items'}
+                        <span className="text-slate-400 block text-[10px] font-medium">TOTAL GROSS WEIGHT</span>
+                        <span className="font-mono font-bold text-slate-900">
+                          {Math.round(grossKg).toLocaleString()} kg
                         </span>
                       </div>
 
                       <div>
-                        <span className="text-slate-400 block text-[10px]">Customs Port</span>
-                        <span className="font-mono font-semibold text-slate-800">
+                        <span className="text-slate-400 block text-[10px] font-medium">PALLET COUNT</span>
+                        <span className="font-mono text-slate-700">
+                          {palletCount} Pallets ({file.lineItems.length} lines)
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-medium">PORT OF LOADING</span>
+                        <span className="font-semibold text-slate-700 truncate block">
                           {file.portOfLoading}
                         </span>
                       </div>
 
                       <div>
-                        <span className="text-slate-400 block text-[10px]">Invoice Date</span>
-                        <span className="font-medium text-slate-800">
-                          {file.invoiceDate || 'N/A'}
+                        <span className="text-slate-400 block text-[10px] font-medium">DISCHARGE PORT</span>
+                        <span className="font-semibold text-slate-700 truncate block">
+                          {file.portOfDischarge}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Tile Bottom: Download Actions & Open in Converter */}
-                  <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    {/* Direct Downloads (.sb / .be and .xlsx) */}
+                  {/* Tile Bottom: Download Actions & Open in Workspace */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                     <div className="flex items-center space-x-1.5">
+                      {/* Master BOL Download */}
                       <button
                         type="button"
-                        onClick={() => downloadEdi(file)}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 text-slate-700 border border-slate-200/80 shadow-2xs transition-colors cursor-pointer"
-                        title={`Download ICEGATE EDI Flat File (.${ediExt})`}
+                        onClick={() => {
+                          const bol = generateMasterBol(file);
+                          downloadDocumentHtml(bol);
+                        }}
+                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 border border-indigo-200/80 shadow-2xs transition-colors cursor-pointer"
+                        title="Generate & Download Master BOL"
                       >
-                        <FileCode className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>.{ediExt}</span>
+                        <Ship className="w-3.5 h-3.5" />
+                        <span>BOL</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => downloadExcel(file)}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-slate-700 border border-slate-200/80 shadow-2xs transition-colors cursor-pointer"
-                        title="Download Excel Spreadsheet (.xlsx)"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>.xlsx</span>
-                      </button>
+                      {/* #DG Document Download */}
+                      {file.hasDangerousGoods && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const dg = generateDgDeclaration(file);
+                            downloadDocumentHtml(dg);
+                          }}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200/80 shadow-2xs transition-colors cursor-pointer"
+                          title="Generate & Download IMO Dangerous Goods Declaration"
+                        >
+                          <Flame className="w-3.5 h-3.5 text-rose-500" />
+                          <span>#DG Dec</span>
+                        </button>
+                      )}
                     </div>
 
-                    {/* Open in Converter & Delete */}
+                    {/* Open in Workspace & Delete */}
                     <div className="flex items-center space-x-1">
                       <button
                         type="button"
                         onClick={() => onOpenInConverter(file)}
-                        className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100/80 active:bg-indigo-100 text-indigo-700 border border-indigo-200/60 shadow-2xs transition-colors cursor-pointer"
-                        title="Open file in Document Converter to edit"
+                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/70 shadow-2xs transition-colors cursor-pointer"
+                        title="Open file in Workspace to edit containers & allocations"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                         <span>Open</span>
@@ -323,12 +301,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm(`Delete saved file "${file.invoiceNumber}" for ${file.exporterName}?`)) {
+                          if (window.confirm(`Delete shipment "${file.invoiceNumber}" for ${file.exporterName}?`)) {
                             onDeleteFile(file.id);
                           }
                         }}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete from saved files"
+                        title="Delete from saved shipments"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
