@@ -132,6 +132,7 @@ export function clusterLineItemsIntoPallets(
         netWeightKg: Number(currentNet.toFixed(2)),
         dimensions: DEFAULT_PALLET_DIMENSIONS,
         footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
+        modelOrDescription: currentItems[0]?.description || 'EFB70-S95-D26L - Lead Acid Batteries',
         isDangerousGoods: isDg,
         imoClass: dgItem?.imoClass,
         unNumber: dgItem?.unNumber,

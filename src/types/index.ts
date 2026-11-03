@@ -46,6 +46,7 @@ export interface Pallet {
   netWeightKg: number;
   dimensions?: string;        // e.g. "1200 x 1000 x 1650 mm"
   footprintAreaMm2?: number;  // Footprint tier area (e.g. 1200 * 1000)
+  modelOrDescription?: string;// e.g. "EFB70-S95-D26L - Lead Acid Batteries"
   isDangerousGoods: boolean;
   imoClass?: string;
   unNumber?: string;

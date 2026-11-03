@@ -2,10 +2,7 @@ import React, { useState } from 'react';
 import { 
   FileText, 
   CheckCircle2, 
-  AlertTriangle, 
   Building2, 
-  Plus, 
-  Trash2, 
   Columns, 
   Eye, 
   FileCheck, 
@@ -31,16 +28,13 @@ import type {
   ContainerType, 
   DocumentOutput 
 } from '../types';
-import { CONTAINER_SPECS } from '../types';
 import { EXPORTER_PROFILES } from '../data/profiles';
 import { DOCUMENT_TEMPLATES } from '../data/templates';
 import { allocateContainers, createEmptyContainer, recalculateContainer } from '../utils/containerAllocator';
-import { 
-  optimizeContainerAllocation, 
-  DEFAULT_PALLET_DIMENSIONS 
-} from '../utils/containerOptimizer';
+import { optimizeContainerAllocation } from '../utils/containerOptimizer';
 import { generateMasterBol, printDocument, downloadDocumentHtml } from '../utils/bolGenerator';
 import { generateDgDeclaration } from '../utils/dgGenerator';
+import { ContainerQcBoard } from './ContainerQcBoard';
 
 interface PreviewPaneProps {
   document: AppDocument | null;
@@ -413,9 +407,13 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
     downloadDocumentHtml(dgDoc);
   };
 
-  const totalGrossCalculated = formData.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || formData.grossWeightKg;
-  const totalNetCalculated = formData.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || formData.netWeightKg;
-  const anyOverweight = formData.containers.some(c => c.isOverweight);
+  const handleLockAndGenerate = () => {
+    onSave(formData);
+    const bolDoc = generateMasterBol(formData, formData.selectedBolTemplateId);
+    const dgDoc = formData.hasDangerousGoods ? generateDgDeclaration(formData, formData.selectedDgTemplateId) : null;
+    setActiveGeneratedDoc(dgDoc || bolDoc);
+    setViewMode('documents');
+  };
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-50/50 overflow-hidden">
@@ -558,358 +556,30 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
       </div>
 
       {/* =========================================================================
-          PANEL A: CONTAINER & PALLET SEGREGATION (LAFF SOLVER & VISUAL BREAKDOWN)
+          PANEL A: VISUAL CONTAINER QC BOARD (KANBAN COLUMNS & DRAG-AND-DROP)
          ========================================================================= */}
       {viewMode === 'allocation' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Top Summary Card: Container Breakdown Card */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-5 text-white shadow-md border border-slate-800">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
-              <div>
-                <div className="flex items-center space-x-2">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-300 border border-indigo-400/30">
-                    LAFF Solver Active
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                    25T Cap / 11-Pallet Cap
-                  </span>
-                  {formData.hasDangerousGoods && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/30 text-rose-300 border border-rose-400/30 flex items-center gap-1">
-                      <Flame className="w-3 h-3 text-rose-400" />
-                      <span>IMO HazMat (#DG)</span>
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-base font-extrabold tracking-tight mt-2 flex items-center gap-2">
-                  <Boxes className="w-5 h-5 text-indigo-400" />
-                  <span>Automated Container Distribution Summary</span>
-                </h3>
-                <p className="text-xs text-slate-300 mt-1">
-                  Sorted by Largest Weight / Area Fit First (LAFF). Total Manifest: <strong>{totalGrossCalculated.toLocaleString()} kg Gross</strong> • <strong>{totalNetCalculated.toLocaleString()} kg Net</strong> across <strong>{formData.pallets.length} Pallets</strong> in <strong>{formData.containers.length} Container(s)</strong>.
-                </p>
-              </div>
-
-              {/* Direct Quick Actions */}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleAutoReallocate('20GP')}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
-                  title="Run LAFF Optimizer (20' GP, 25T cap, 11 pallets cap)"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Run 20' LAFF Solver</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleQuickDownloadBol}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5 text-indigo-300" />
-                  <span>Master BOL</span>
-                </button>
-                {formData.hasDangerousGoods && (
-                  <button
-                    type="button"
-                    onClick={handleQuickDownloadDg}
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-600/80 hover:bg-rose-600 text-white border border-rose-400/40 transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Download className="w-3.5 h-3.5 text-rose-200" />
-                    <span>#DG Document</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Container Breakdown Cards Strip */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
-              {formData.containers.map((c, idx) => {
-                const spec = CONTAINER_SPECS[c.containerType] || CONTAINER_SPECS['20GP'];
-                const isOver = c.totalGrossWeightKg > spec.maxPayloadKg;
-                const isFloorOver = c.pallets.length > spec.maxPallets;
-                const isSpillover = c.isSpillover || idx > 0;
-
-                return (
-                  <div
-                    key={c.id}
-                    className={`p-3 rounded-xl border backdrop-blur-xs transition-all ${
-                      isSpillover
-                        ? 'bg-amber-950/20 border-amber-500/40 text-amber-100'
-                        : 'bg-white/5 border-white/10 text-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-xs font-mono font-bold">
-                      <span className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${isSpillover ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                        <span>Container #{idx + 1}: {c.pallets.length} Pallet{c.pallets.length === 1 ? '' : 's'}</span>
-                      </span>
-                      <span className="text-[11px] font-semibold opacity-80">
-                        {c.totalGrossWeightKg.toLocaleString()} kg
-                      </span>
-                    </div>
-
-                    <div className="mt-2 text-[11px] flex items-center justify-between opacity-80 font-mono">
-                      <span>{c.containerNumber}</span>
-                      <span className={`px-1.5 py-0.2 rounded text-[10px] uppercase font-bold ${
-                        isSpillover ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/20 text-indigo-300'
-                      }`}>
-                        {isSpillover ? 'Spillover' : 'Primary Tier'}
-                      </span>
-                    </div>
-
-                    {/* Compact Weight & Pallet Metrics */}
-                    <div className="mt-2.5 pt-2 border-t border-white/10 text-[10px] space-y-1">
-                      <div className="flex justify-between">
-                        <span className="opacity-70">Payload:</span>
-                        <span className={`font-mono font-bold ${isOver ? 'text-amber-400' : 'text-slate-200'}`}>
-                          {c.totalGrossWeightKg.toLocaleString()} / {spec.maxPayloadKg.toLocaleString()} kg
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="opacity-70">Footprint:</span>
-                        <span className={`font-mono font-bold ${isFloorOver ? 'text-amber-400' : 'text-slate-200'}`}>
-                          {c.pallets.length} / {spec.maxPallets} Pallets (Max 11)
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Action Header & Manual Overrides */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <div>
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Boxes className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Detailed Container Payload & Pallet Floor Matrix</span>
-              </h4>
-              <p className="text-[11px] text-slate-500">
-                Inspect seal numbers, container types, and assign line items/pallets.
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={() => handleAutoReallocate('20GP')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
-              >
-                Re-apply LAFF (20' GP)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAutoReallocate('40HC')}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
-              >
-                Re-apply LAFF (40' HC)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAddContainer('20GP')}
-                className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Container</span>
-              </button>
-            </div>
-          </div>
-
-          {anyOverweight && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center space-x-2.5 text-xs text-amber-800">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                <strong>Warning:</strong> One or more containers exceed the statutory 25,000 kg payload limit or floor footprint capacity. Spillover pallets should be allocated to an additional container to prevent port terminal gate-in rejection.
-              </span>
-            </div>
-          )}
-
-          {/* Containers Matrix */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {formData.containers.map((cont, cIdx) => {
-              const spec = CONTAINER_SPECS[cont.containerType] || CONTAINER_SPECS['20GP'];
-              const weightPct = Math.min(100, Math.round((cont.totalGrossWeightKg / spec.maxPayloadKg) * 100));
-              const palletPct = Math.min(100, Math.round((cont.pallets.length / spec.maxPallets) * 100));
-              const isOver = cont.totalGrossWeightKg > spec.maxPayloadKg;
-              const isFloorOver = cont.pallets.length > spec.maxPallets;
-              const isSpillover = cont.isSpillover || cIdx > 0;
-
-              return (
-                <div 
-                  key={cont.id}
-                  className={`bg-white border rounded-2xl p-5 shadow-2xs transition-all ${
-                    isOver || isFloorOver 
-                      ? 'border-amber-400 ring-1 ring-amber-400' 
-                      : isSpillover
-                      ? 'border-amber-200 bg-amber-50/20'
-                      : 'border-slate-200/90'
-                  }`}
-                >
-                  {/* Container Header */}
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div className="flex items-center space-x-2.5 min-w-0">
-                      <span className={`w-7 h-7 rounded-lg text-xs font-bold font-mono flex items-center justify-center shrink-0 ${
-                        isSpillover 
-                          ? 'bg-amber-100 text-amber-800 border border-amber-200' 
-                          : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                      }`}>
-                        {cIdx + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={cont.containerNumber}
-                            onChange={(e) => handleContainerFieldChange(cont.id, 'containerNumber', e.target.value)}
-                            className="font-bold font-mono text-xs text-slate-900 bg-slate-50 hover:bg-slate-100 px-2 py-0.5 rounded border border-slate-200 outline-none w-36"
-                            placeholder="Container No"
-                          />
-                          {isSpillover && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                              Spillover
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          Seal: 
-                          <input
-                            type="text"
-                            value={cont.sealNumber}
-                            onChange={(e) => handleContainerFieldChange(cont.id, 'sealNumber', e.target.value)}
-                            className="ml-1 bg-transparent hover:bg-slate-100 px-1 py-0.2 rounded border border-transparent hover:border-slate-200 outline-none w-28 text-slate-700 font-semibold"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-1.5 shrink-0">
-                      <select
-                        value={cont.containerType}
-                        onChange={(e) => handleContainerTypeChange(cont.id, e.target.value as ContainerType)}
-                        className="text-[11px] font-semibold bg-slate-100 text-slate-800 rounded-lg px-2 py-1 border border-slate-200 outline-none cursor-pointer"
-                      >
-                        <option value="20GP">20' GP (Max 25T / 11 Plt)</option>
-                        <option value="40GP">40' GP (Max 26.5T / 24 Plt)</option>
-                        <option value="40HC">40' HC (Max 26.5T / 24 Plt)</option>
-                        <option value="45HC">45' HC (Max 27.8T / 26 Plt)</option>
-                      </select>
-
-                      {formData.containers.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteContainer(cont.id)}
-                          className="p-1 text-slate-300 hover:text-rose-600 rounded transition-colors"
-                          title="Remove Container"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Dual Meters: Weight & Floor Footprint */}
-                  <div className="py-3.5 space-y-3">
-                    {/* Weight Meter */}
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] mb-1">
-                        <span className="font-semibold text-slate-700">Payload Weight</span>
-                        <span className="font-mono text-slate-600">
-                          <strong className={isOver ? 'text-amber-600' : 'text-slate-900'}>
-                            {cont.totalGrossWeightKg.toLocaleString()} kg
-                          </strong> / {spec.maxPayloadKg.toLocaleString()} kg ({weightPct}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all ${
-                            isOver ? 'bg-amber-500' : 'bg-indigo-600'
-                          }`}
-                          style={{ width: `${Math.min(100, weightPct)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Floor Footprint Meter */}
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] mb-1">
-                        <span className="font-semibold text-slate-700">Floor Footprint Capacity</span>
-                        <span className="font-mono text-slate-600">
-                          <strong className={isFloorOver ? 'text-amber-600' : 'text-slate-900'}>
-                            {cont.pallets.length}
-                          </strong> / {spec.maxPallets} Pallets ({palletPct}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div 
-                          className={`h-full rounded-full transition-all ${
-                            isFloorOver ? 'bg-amber-500' : 'bg-emerald-600'
-                          }`}
-                          style={{ width: `${Math.min(100, palletPct)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1">
-                      <span>Tare: {spec.tareWeightKg.toLocaleString()} kg</span>
-                      <span>Total Pkgs: {cont.totalPackages}</span>
-                      {cont.hasDangerousGoods && (
-                        <span className="text-rose-600 font-bold flex items-center gap-1">
-                          <Flame className="w-3 h-3 text-rose-600" />
-                          <span>HazMat / #DG</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Pallets Breakdown Inside This Container */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                      <span>Assigned Pallets ({cont.pallets.length})</span>
-                      <span>ISO 1200x1000mm Tier</span>
-                    </div>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {cont.pallets.length === 0 ? (
-                        <div className="text-center py-4 text-xs text-slate-400 bg-slate-50/60 rounded-lg">
-                          No pallets currently in this container.
-                        </div>
-                      ) : (
-                        cont.pallets.map((p, pIdx) => (
-                          <div 
-                            key={p.id || pIdx}
-                            className="flex items-center justify-between p-2 bg-slate-50 hover:bg-slate-100/70 rounded-lg text-xs border border-slate-200/50"
-                          >
-                            <div className="flex items-center space-x-2 min-w-0">
-                              <span className="font-mono font-bold text-slate-800 text-[11px]">
-                                {p.palletNumber}
-                              </span>
-                              <span className="text-[10px] text-slate-500">
-                                {p.packageCount} {p.packageType}
-                              </span>
-                              <span className="text-[9px] text-slate-400 font-mono">
-                                {p.dimensions || DEFAULT_PALLET_DIMENSIONS}
-                              </span>
-                              {p.isDangerousGoods && (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 flex items-center gap-0.5">
-                                  <Flame className="w-2.5 h-2.5 text-rose-600" />
-                                  <span>{p.unNumber || 'DG'}</span>
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="text-right font-mono text-[11px] text-slate-700 shrink-0">
-                              <strong>{p.grossWeightKg.toLocaleString()} kg</strong>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ContainerQcBoard
+          containers={formData.containers}
+          pallets={formData.pallets}
+          lineItems={formData.lineItems}
+          hasDangerousGoods={formData.hasDangerousGoods}
+          onUpdateContainers={(updatedContainers, updatedPallets) => {
+            setFormData(prev => ({
+              ...prev,
+              containers: updatedContainers,
+              pallets: updatedPallets
+            }));
+          }}
+          onAutoReallocate={(type) => handleAutoReallocate(type || '20GP')}
+          onAddContainer={handleAddContainer}
+          onDeleteContainer={handleDeleteContainer}
+          onContainerTypeChange={handleContainerTypeChange}
+          onContainerFieldChange={handleContainerFieldChange}
+          onLockAndGenerate={handleLockAndGenerate}
+          onQuickDownloadBol={handleQuickDownloadBol}
+          onQuickDownloadDg={handleQuickDownloadDg}
+        />
       )}
 
       {/* =========================================================================
