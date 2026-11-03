@@ -74,7 +74,8 @@ export function parseFootprintAreaMm2(dimensions?: string): number {
 }
 
 /**
- * Clusters raw line items into standard industrial pallets (1200 x 1000 mm footprint)
+ * Clusters raw line items into standard industrial pallets (1200 x 1000 mm footprint).
+ * Detects pallet ranges (e.g. 5644-5655) and expands multi-pallet cargo into individual pallet entities.
  */
 export function clusterLineItemsIntoPallets(
   lineItems: LineItem[],
@@ -82,69 +83,133 @@ export function clusterLineItemsIntoPallets(
 ): Pallet[] {
   if (!lineItems || lineItems.length === 0) return [];
 
-  // Determine target pallet count: user explicit or derived from weight (~1,800 - 2,000 kg per battery/heavy pallet)
-  const totalWeight = lineItems.reduce((acc, it) => acc + (it.grossWeightKg || it.quantity * 20), 0);
+  // 1. Detect if any line item description or reference has an explicit pallet sequence (e.g. 5644 - 5655)
+  let basePalletNumber = 5644;
+  let detectedRangeCount = 0;
+
+  for (const it of lineItems) {
+    const desc = `${it.description || ''} ${it.palletNumber || ''}`;
+    const rangeMatch = desc.match(/(\d{4})\s*[-–to]+\s*(\d{4})/i);
+    if (rangeMatch) {
+      const startNum = parseInt(rangeMatch[1], 10);
+      const endNum = parseInt(rangeMatch[2], 10);
+      if (endNum >= startNum && startNum >= 1000) {
+        basePalletNumber = startNum;
+        detectedRangeCount = endNum - startNum + 1;
+        break;
+      }
+    }
+  }
+
+  const totalGrossWeight = lineItems.reduce((acc, it) => acc + (it.grossWeightKg || it.quantity * 20), 0);
+  const totalNetWeight = lineItems.reduce((acc, it) => acc + (it.netWeightKg || (it.grossWeightKg ? it.grossWeightKg * 0.92 : it.quantity * 18)), 0);
+  const totalPackages = lineItems.reduce((acc, it) => acc + Math.max(1, Math.round(it.quantity || 1)), 0);
+
+  // Target count: explicit pallet count, range count, or derived from total weight (~1,885 kg per heavy battery pallet)
   const targetPallets = Math.max(
     explicitPalletCount || 0,
-    Math.ceil(totalWeight / 1900),
+    detectedRangeCount || 0,
+    Math.round(totalGrossWeight / 1885) || 0,
     1
   );
 
   const pallets: Pallet[] = [];
-  const basePalletNumber = 5644; // Standard commercial pallet sequence (e.g. 5644-5655)
-  let palletIdx = 1;
+  const primaryItem = lineItems[0];
+  const isBattery = lineItems.some(it => 
+    /(battery|batteries|lead[\s-]*acid|electric storage|un\s*2794)/i.test(it.description || '') ||
+    it.unNumber === 'UN 2794'
+  );
 
-  let currentItems: LineItem[] = [];
-  let currentGross = 0;
-  let currentNet = 0;
-  let currentPkgs = 0;
+  // Case A: Multi-pallet expansion from single/few aggregated line items
+  // If line items count is less than targetPallets (e.g. 1 line item representing 12 pallets of 22,620 kg)
+  if (lineItems.length < targetPallets) {
+    const perPalletGross = Number((totalGrossWeight / targetPallets).toFixed(2));
+    const perPalletNet = Number((totalNetWeight / targetPallets).toFixed(2));
+    const perPalletPkgs = Math.max(1, Math.round(totalPackages / targetPallets));
 
+    for (let i = 0; i < targetPallets; i++) {
+      const palletSerial = basePalletNumber + i;
+      const palletNo = `PLT-${palletSerial}`;
+      const dgItem = lineItems.find(it => it.isDangerousGood) || (isBattery ? primaryItem : undefined);
+
+      pallets.push({
+        id: `plt-${Date.now()}-${palletSerial}-${i + 1}`,
+        palletNumber: palletNo,
+        packageCount: perPalletPkgs,
+        packageType: primaryItem?.uqc === 'DRUM' ? 'DRUM' : 'BOX',
+        grossWeightKg: perPalletGross,
+        netWeightKg: perPalletNet,
+        dimensions: DEFAULT_PALLET_DIMENSIONS,
+        footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
+        modelOrDescription: primaryItem?.description || (isBattery ? 'EFB70-S95-D26L - Lead Acid Batteries' : 'Industrial Cargo Unit'),
+        isDangerousGoods: Boolean(dgItem || isBattery),
+        imoClass: dgItem?.imoClass || (isBattery ? 'Class 8 (Corrosive)' : undefined),
+        unNumber: dgItem?.unNumber || (isBattery ? 'UN 2794' : undefined),
+        packingGroup: dgItem?.packingGroup || (isBattery ? 'III' : undefined),
+        lineItemIds: lineItems.map(it => it.id)
+      });
+    }
+
+    return pallets;
+  }
+
+  // Case B: Individual line items or pre-segregated items
   for (let i = 0; i < lineItems.length; i++) {
     const item = lineItems[i];
     const itemGross = item.grossWeightKg > 0 ? item.grossWeightKg : Number((item.quantity * 18.5).toFixed(2));
     const itemNet = item.netWeightKg > 0 ? item.netWeightKg : Number((itemGross * 0.92).toFixed(2));
     const pkgs = Math.max(1, Math.round(item.quantity));
 
-    currentItems.push(item);
-    currentGross += itemGross;
-    currentNet += itemNet;
-    currentPkgs += pkgs;
+    // If an individual item itself represents multiple pallets (weight > 2500 kg)
+    const itemPalletCount = Math.max(1, Math.round(itemGross / 1885));
+    if (itemPalletCount > 1) {
+      const subGross = Number((itemGross / itemPalletCount).toFixed(2));
+      const subNet = Number((itemNet / itemPalletCount).toFixed(2));
+      const subPkgs = Math.max(1, Math.round(pkgs / itemPalletCount));
 
-    const isLast = i === lineItems.length - 1;
-    // Typical industrial battery pallet weighs ~1,800 to 2,000 kg
-    const shouldClose = currentGross >= 1885 || (isLast && currentItems.length > 0) || (pallets.length + 1 < targetPallets && currentGross >= 1000);
+      for (let s = 0; s < itemPalletCount; s++) {
+        const palletSerial = basePalletNumber + pallets.length;
+        const palletNo = `PLT-${palletSerial}`;
+        item.palletNumber = palletNo;
 
-    if (shouldClose) {
-      const palletNo = `PLT-${basePalletNumber + palletIdx - 1}`;
-      const dgItem = currentItems.find(it => it.isDangerousGood);
-      const isDg = Boolean(dgItem);
-
-      currentItems.forEach(it => {
-        it.palletNumber = palletNo;
-      });
+        pallets.push({
+          id: `plt-${Date.now()}-${palletSerial}`,
+          palletNumber: palletNo,
+          packageCount: subPkgs,
+          packageType: item.uqc === 'DRUM' ? 'DRUM' : 'BOX',
+          grossWeightKg: subGross,
+          netWeightKg: subNet,
+          dimensions: DEFAULT_PALLET_DIMENSIONS,
+          footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
+          modelOrDescription: item.description || 'EFB70-S95-D26L - Lead Acid Batteries',
+          isDangerousGoods: item.isDangerousGood,
+          imoClass: item.imoClass,
+          unNumber: item.unNumber,
+          packingGroup: item.packingGroup,
+          lineItemIds: [item.id]
+        });
+      }
+    } else {
+      const palletSerial = basePalletNumber + pallets.length;
+      const palletNo = `PLT-${palletSerial}`;
+      item.palletNumber = palletNo;
 
       pallets.push({
-        id: `plt-${Date.now()}-${palletIdx}`,
+        id: `plt-${Date.now()}-${palletSerial}`,
         palletNumber: palletNo,
-        packageCount: currentPkgs,
-        packageType: currentItems[0]?.uqc === 'DRUM' ? 'DRUM' : 'BOX',
-        grossWeightKg: Number(currentGross.toFixed(2)),
-        netWeightKg: Number(currentNet.toFixed(2)),
+        packageCount: pkgs,
+        packageType: item.uqc === 'DRUM' ? 'DRUM' : 'BOX',
+        grossWeightKg: itemGross,
+        netWeightKg: itemNet,
         dimensions: DEFAULT_PALLET_DIMENSIONS,
         footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
-        modelOrDescription: currentItems[0]?.description || 'EFB70-S95-D26L - Lead Acid Batteries',
-        isDangerousGoods: isDg,
-        imoClass: dgItem?.imoClass,
-        unNumber: dgItem?.unNumber,
-        packingGroup: dgItem?.packingGroup,
-        lineItemIds: currentItems.map(it => it.id)
+        modelOrDescription: item.description || 'EFB70-S95-D26L - Lead Acid Batteries',
+        isDangerousGoods: item.isDangerousGood,
+        imoClass: item.imoClass,
+        unNumber: item.unNumber,
+        packingGroup: item.packingGroup,
+        lineItemIds: [item.id]
       });
-
-      currentItems = [];
-      currentGross = 0;
-      currentNet = 0;
-      currentPkgs = 0;
-      palletIdx++;
     }
   }
 

@@ -63,9 +63,10 @@ export function generateDgDeclaration(
 
   const dgContainers = invoice.containers.filter(c => c.hasDangerousGoods || invoice.containers.length === 1);
   const primaryClass = effectiveDgItems[0]?.imoClass || 'IMO Class 8 Corrosives';
-  const containersSummary = dgContainers.map(c => 
-    `${c.containerNumber} (${c.containerType}, Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets (${c.totalGrossWeightKg.toLocaleString()} kg) [${primaryClass}]`
-  ).join('; ');
+  const containersSummary = dgContainers.map(c => {
+    const plts = c.pallets.map(p => p.palletNumber).join(', ');
+    return `${c.containerNumber} (${c.containerType}, Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets [${plts}] (${c.totalGrossWeightKg.toLocaleString()} kg) [${primaryClass}]`;
+  }).join('; ');
 
   const dgRowsHtml = effectiveDgItems.map((item) => {
     return `
@@ -215,9 +216,15 @@ export function generateDgDeclaration(
     <table class="table-grid" style="margin-top: 12px;">
       <tr>
         <td style="width: 50%;">
-          <span class="label">CONTAINER / VEHICLE IDENTIFICATION & SEAL NUMBERS</span>
-          <div class="val" style="font-family: monospace; font-size: 12px; color: #0284c7;">
-            ${dgContainers.map(c => `${c.containerNumber} (Seal: ${c.sealNumber})`).join('<br/>') || 'MSCU7829104 (Seal: EMC883921)'}
+          <span class="label">CONTAINER / VEHICLE IDENTIFICATION & ALLOCATED PALLETS</span>
+          <div class="val" style="font-family: monospace; font-size: 11px; color: #0284c7; line-height: 1.5;">
+            ${dgContainers.map(c => {
+              const palletList = c.pallets.map(p => p.palletNumber).join(', ') || 'PLT-5644 to PLT-5655';
+              return `<div>` +
+                `<strong>${c.containerNumber}</strong> [${c.containerType}] (Seal: ${c.sealNumber}) ${c.isSpillover ? '<span style="color:#b45309;font-size:9px;">[SPILLOVER]</span>' : ''}<br/>` +
+                `<span style="color: #475569; font-size: 10px;">Pallets (${c.pallets.length}): ${palletList} | Gross: ${c.totalGrossWeightKg.toLocaleString()} kg</span>` +
+              `</div>`;
+            }).join('<div style="margin: 6px 0; border-top: 1px dashed #cbd5e1;"></div>') || 'TEMU2523270 (Seal: EXD98201)'}
           </div>
         </td>
         <td style="width: 50%;">

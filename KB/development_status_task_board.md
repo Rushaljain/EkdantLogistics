@@ -13,8 +13,9 @@
 | **Phase 3** | `CONTAINER-OPTIMIZER` | **LAFF Solver & Containerization Engine** | • Implement `src/utils/containerOptimizer.ts` with LAFF (Largest Weight / Area Fit First) heuristic<br>• Enforce strict 25-ton (25,000 kg) payload caps for 20' containers<br>• Enforce 20' container floor footprint cap (maximum 11 standard 1200x1000mm pallets)<br>• Automated multi-container spillover allocation (Container #1, Container #2) with ISO container serial generation (`TEMU2523270`)<br>• Wire LAFF solver into `containerAllocator.ts` and `geminiExtractor.ts` | ✅ **Completed** |
 | **Phase 4** | `HAZMAT-DOCS` | **#DG & Master BOL Document Pipeline** | • IMO/IMDG-compliant Dangerous Goods Declaration renderer (`dgGenerator.ts`) supporting UN 2794 Class 8 PG III lead-acid battery consignments<br>• Master Bill of Lading document compiler (`bolGenerator.ts`) with multi-container summary<br>• One-click direct HTML/PDF export actions for #DG & Master BOL | ✅ **Completed** |
 | **Phase 5** | `VISUAL-QC-BOARD` | **Table-Based Visual Container QC & Drag-and-Drop Editor** | • Create `ContainerQcBoard.tsx` with vertical column tables for each container<br>• Interactive HTML5 draggable pallet cards with item model (`EFB70-S95-D26L - Lead Acid Batteries`), gross weight, package count, and UN number<br>• Real-time column footer metrics: Gross Weight vs 25T cap, Pallet Floor count vs 11-pallet cap, dual progress bars<br>• Instant constraint violation detection & inline warning banners<br>• Sticky footer with "Lock Shipment Plan & Generate Documents" action button | ✅ **Completed** |
-| **Phase 6** | `TEMPLATE-MGMT` | **Template Management & Custom Layouts** | • Dynamic template selector dropdown in header/action bar<br>• Client template schema definition & field mapping engine<br>• Custom header/logo injection for client-specific BOLs | 🟡 **In Progress** |
-| **Phase 7** | `DEPLOYMENT` | **Deployment & CI/CD Verification** | • Fix Vercel integration provisioning failure<br>• Ensure zero TypeScript errors (`tsc -b && vite build`)<br>• Live on Vercel and pushed to GitHub `main` | ✅ **Completed** |
+| **Phase 6** | `EXPAND-PALLETS` | **Multi-Pallet Dynamic Expansion & Serial Mapping** | • Dynamic expansion of multi-pallet ranges (e.g., Exide `CHW000263` pallets `5644` to `5655`) into distinct pallet entities (`PLT-5644` through `PLT-5655`)<br>• Correct LAFF allocation: Container #1 (`TEMU2523270`) takes 11 pallets (20,735 kg, 82.9% weight, 100% floor limit), Container #2 (`TEMU4198205`) takes 1 spillover pallet (1,885 kg)<br>• Every individual pallet rendered as independent draggable card in `ContainerQcBoard.tsx`<br>• Individual pallet serial numbers listed in Master BOL and #DG Declaration | ✅ **Completed** |
+| **Phase 7** | `TEMPLATE-MGMT` | **Template Management & Custom Layouts** | • Dynamic template selector dropdown in header/action bar<br>• Client template schema definition & field mapping engine<br>• Custom header/logo injection for client-specific BOLs | 🟡 **In Progress** |
+| **Phase 8** | `DEPLOYMENT` | **Deployment & CI/CD Verification** | • Fix Vercel integration provisioning failure<br>• Ensure zero TypeScript errors (`tsc -b && vite build`)<br>• Verified build passes cleanly in production<br>• Live on Vercel and pushed to GitHub `main` | ✅ **Completed** |
 
 ---
 
@@ -33,14 +34,20 @@
 - [x] Automated spillover container provisioning (e.g. 12 pallets totaling 22,620 kg splits into Container #1 with 11 pallets and Container #2 with 1 spillover pallet).
 - [x] Realistic ISO 6346 container number and high-security seal generation (`TEMU2523270`, `EMC883921`).
 
-### 3. Visual QC Board & Drag-and-Drop Editor (`ContainerQcBoard.tsx`)
+### 3. Multi-Pallet Expansion & Entity Serialization (`containerOptimizer.ts` & `profiles.ts`)
+- [x] Detection of multi-pallet ranges and sequential pallet numbers (`5644 - 5655` / `PLT-5644` to `PLT-5655`).
+- [x] Individual pallet entity generation with uniform mass distribution (1,885 kg gross / 1,860 kg net per pallet for Exide `CHW000263`).
+- [x] Default initial sample updated with all 12 individual pallets distributed across Container #1 (11 pallets) and Container #2 (1 pallet).
+
+### 4. Visual QC Board & Drag-and-Drop Editor (`ContainerQcBoard.tsx`)
 - [x] Vertical column table layout rendering each container with container number, seal number, tare weight, and container type.
 - [x] Draggable pallet cards displaying pallet number (`Pallet #5644`), gross weight (`1,885 kg`), and product model (`EFB70-S95-D26L - Lead Acid Batteries`).
 - [x] Real-time column footer metrics: Gross Weight vs 25T cap, Pallet Floor count vs 11-pallet cap, dual progress bars.
 - [x] Drag-and-drop validation with real-time recalculation across both affected containers and inline violation alerts.
 - [x] Prominent "Lock Shipment Plan & Generate Documents" action button at the bottom of the QC board.
 
-### 4. Document Generation (`bolGenerator.ts` & `dgGenerator.ts`)
+### 5. Document Generation (`bolGenerator.ts` & `dgGenerator.ts`)
 - [x] Dangerous Goods Multimodal Declaration generation matching IMO/IMDG standards with UN 2794 Battery support.
 - [x] Master Bill of Lading (BOL) structured document generation with multi-container summary.
+- [x] Full list of individual pallet serial numbers per container explicitly printed in BOL and #DG documents.
 - [x] One-click direct download and interactive print rendering for both documents.

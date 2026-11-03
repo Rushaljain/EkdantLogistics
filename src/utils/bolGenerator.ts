@@ -23,7 +23,9 @@ export function generateMasterBol(
   ).join('; ');
 
   const containerRowsHtml = invoice.containers.map((cont) => {
-    const palletList = cont.pallets.map(p => p.palletNumber).join(', ') || 'Pallets 5644-5655';
+    const palletSerials = cont.pallets.length > 0
+      ? cont.pallets.map(p => p.palletNumber).join(', ')
+      : 'PLT-5644 to PLT-5655';
     const cbmEstimate = (cont.totalGrossWeightKg / 300).toFixed(2);
     return `
       <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
@@ -31,16 +33,19 @@ export function generateMasterBol(
           ${cont.containerNumber}<br/>
           <span style="font-weight: normal; color: #64748b; font-size: 10px;">Seal: ${cont.sealNumber}</span><br/>
           <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3; font-size: 9px; font-weight: 700; margin-top: 4px;">${cont.containerType}</span>
+          ${cont.isSpillover ? '<br/><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; background: #fef3c7; color: #b45309; font-size: 8px; font-weight: 700; margin-top: 2px;">SPILLOVER UNIT</span>' : ''}
         </td>
         <td style="padding: 10px; font-family: monospace;">
-          ${cont.pallets.length} Pallets<br/>
-          <span style="color: #64748b; font-size: 10px;">(${palletList})</span><br/>
-          <span style="color: #475569; font-size: 10px;">${cont.totalPackages} Packages</span>
+          <strong>${cont.pallets.length} Pallets</strong><br/>
+          <div style="color: #4338ca; font-size: 9.5px; line-height: 1.3; margin-top: 2px; max-width: 220px; word-break: break-word;">
+            ${palletSerials}
+          </div>
+          <span style="color: #475569; font-size: 10px; margin-top: 2px; display: inline-block;">${cont.totalPackages} Packages</span>
         </td>
         <td style="padding: 10px;">
           <strong>STC: ${invoice.lineItems[0]?.description || 'Commercial Merchandise'}</strong><br/>
           <span style="font-size: 10px; color: #64748b;">Invoice Ref: ${invoice.invoiceNumber} | Incoterm: ${invoice.incoterm}</span><br/>
-          ${cont.hasDangerousGoods ? '<span style="color: #dc2626; font-weight: bold; font-size: 10px;">⚠ DANGEROUS GOODS ATTACHED</span>' : '<span style="color: #16a34a; font-size: 10px;">Non-Hazardous General Cargo</span>'}
+          ${cont.hasDangerousGoods ? '<span style="color: #dc2626; font-weight: bold; font-size: 10px;">⚠ DANGEROUS GOODS (IMO CLASS 8 / UN 2794)</span>' : '<span style="color: #16a34a; font-size: 10px;">Non-Hazardous General Cargo</span>'}
         </td>
         <td style="padding: 10px; text-align: right; font-family: monospace; font-weight: bold;">
           ${cont.totalGrossWeightKg.toLocaleString()} KGS<br/>
