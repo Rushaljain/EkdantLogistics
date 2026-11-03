@@ -15,8 +15,31 @@ export function generateDgDeclaration(
 
   // Filter hazardous items or synthesize standard HazMat declaration if none explicitly tagged
   const dgItems = invoice.lineItems.filter(it => it.isDangerousGood);
+  const isBatteryShipment = invoice.lineItems.some(it => 
+    /(battery|batteries|lead[\s-]*acid|electric storage)/i.test(it.description || '') || it.unNumber === 'UN 2794'
+  );
+
   const effectiveDgItems = dgItems.length > 0 ? dgItems : [
-    {
+    isBatteryShipment ? {
+      id: 'dg-default-battery',
+      itemNumber: 1,
+      description: 'Industrial Heavy Duty Lead-Acid Electric Storage Batteries',
+      hsnCode: '85071000',
+      quantity: 12,
+      uqc: 'BOX',
+      unitPrice: 1200,
+      total: 14400,
+      netWeightKg: 20810,
+      grossWeightKg: 22620,
+      isDangerousGood: true,
+      imoClass: 'Class 8 (Corrosive Liquid)',
+      unNumber: 'UN 2794',
+      packingGroup: 'III' as const,
+      properShippingName: 'BATTERIES, WET, FILLED WITH ACID, electric storage',
+      flashPoint: undefined,
+      marinePollutant: false,
+      emergencyContact: '+91 22 2724 8890 (Ekdant 24/7 HazMat Response)'
+    } : {
       id: 'dg-default',
       itemNumber: 1,
       description: invoice.lineItems[0]?.description || 'Industrial Chemical Solvents & Coatings',
@@ -39,8 +62,9 @@ export function generateDgDeclaration(
   ];
 
   const dgContainers = invoice.containers.filter(c => c.hasDangerousGoods || invoice.containers.length === 1);
+  const primaryClass = effectiveDgItems[0]?.imoClass || 'IMO Class 8 Corrosives';
   const containersSummary = dgContainers.map(c => 
-    `${c.containerNumber} (${c.containerType}, Seal: ${c.sealNumber}) - IMO Class 3 Flammables`
+    `${c.containerNumber} (${c.containerType}, Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets (${c.totalGrossWeightKg.toLocaleString()} kg) [${primaryClass}]`
   ).join('; ');
 
   const dgRowsHtml = effectiveDgItems.map((item) => {

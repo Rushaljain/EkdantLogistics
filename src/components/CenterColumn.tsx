@@ -66,7 +66,6 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             <Layers className="w-3.5 h-3.5 text-indigo-600" />
             <span>Multi-Invoice Ingestion</span>
           </h2>
-          <span className="text-[10px] text-slate-400 font-mono">PDF Commercial & Packing Lists</span>
         </div>
 
         {/* Upload Drop Zone */}
@@ -154,9 +153,6 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
               <h3 className="text-xs font-semibold text-slate-700">
                 No invoices in workspace
               </h3>
-              <p className="text-[11px] text-slate-400 mt-1 max-w-[240px] leading-relaxed">
-                Drop multiple commercial invoice & packing list PDFs above to extract weights, allocate pallets, and generate BOL & #DG forms.
-              </p>
             </div>
           ) : (
             documents.map(doc => {

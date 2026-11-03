@@ -35,7 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Ekdant Logistics
             </h1>
             <p className="text-[10px] text-slate-400 font-medium truncate">
-              Multi-Container & HazMat Dispatch
+              Dispatch Tool
             </p>
           </div>
         </div>
@@ -82,9 +82,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="text-slate-500 font-semibold tracking-tight truncate">
           Ekdant Dispatch
         </div>
-        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-200/60 text-slate-700">
-          20GP • 40HC • #DG
-        </span>
       </div>
     </aside>
   );

@@ -404,7 +404,7 @@ export function App() {
                   Ekdant Logistics
                 </h1>
                 <p className="text-[10px] text-slate-400 font-medium">
-                  Multi-Container & HazMat Dispatch
+                  Dispatch Tool
                 </p>
               </div>
             </div>
@@ -443,9 +443,7 @@ export function App() {
                     </span>
                   )}
                 </div>
-              ) : (
-                <span className="text-slate-400 font-medium">Multi-Invoice Ingestion • Container Segregation • BOL & #DG Generation</span>
-              )}
+              ) : null}
             </div>
           </header>
 

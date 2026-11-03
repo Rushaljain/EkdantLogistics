@@ -3,11 +3,11 @@
 
 export type ContainerType = '20GP' | '40GP' | '40HC' | '45HC';
 
-export const CONTAINER_SPECS: Record<ContainerType, { name: string; maxPayloadKg: number; tareWeightKg: number; cbm: number }> = {
-  '20GP': { name: "20' General Purpose", maxPayloadKg: 21700, tareWeightKg: 2300, cbm: 33.2 },
-  '40GP': { name: "40' General Purpose", maxPayloadKg: 26500, tareWeightKg: 3750, cbm: 67.7 },
-  '40HC': { name: "40' High Cube", maxPayloadKg: 26500, tareWeightKg: 3900, cbm: 76.4 },
-  '45HC': { name: "45' High Cube", maxPayloadKg: 27800, tareWeightKg: 4800, cbm: 86.0 }
+export const CONTAINER_SPECS: Record<ContainerType, { name: string; maxPayloadKg: number; tareWeightKg: number; cbm: number; maxPallets: number }> = {
+  '20GP': { name: "20' General Purpose", maxPayloadKg: 25000, tareWeightKg: 2300, cbm: 33.2, maxPallets: 11 },
+  '40GP': { name: "40' General Purpose", maxPayloadKg: 26500, tareWeightKg: 3750, cbm: 67.7, maxPallets: 24 },
+  '40HC': { name: "40' High Cube", maxPayloadKg: 26500, tareWeightKg: 3900, cbm: 76.4, maxPallets: 24 },
+  '45HC': { name: "45' High Cube", maxPayloadKg: 27800, tareWeightKg: 4800, cbm: 86.0, maxPallets: 26 }
 };
 
 export interface DangerousGoodsInfo {
@@ -44,18 +44,23 @@ export interface Pallet {
   packageType: string;        // BOX, DRUM, CARTON, CRATE
   grossWeightKg: number;
   netWeightKg: number;
-  dimensions?: string;        // e.g. "120 x 80 x 165 cm"
+  dimensions?: string;        // e.g. "1200 x 1000 x 1650 mm"
+  footprintAreaMm2?: number;  // Footprint tier area (e.g. 1200 * 1000)
   isDangerousGoods: boolean;
+  imoClass?: string;
+  unNumber?: string;
+  packingGroup?: 'I' | 'II' | 'III';
   assignedContainerId?: string;
   lineItemIds: string[];
 }
 
 export interface ContainerAllocation {
   id: string;
-  containerNumber: string;    // e.g. "MSCU7829104"
+  containerNumber: string;    // e.g. "TEMU2523270"
   sealNumber: string;         // e.g. "EMC883921"
   containerType: ContainerType;
   maxPayloadKg: number;
+  maxPallets?: number;
   tareWeightKg: number;
   pallets: Pallet[];
   assignedPalletIds: string[];
@@ -64,6 +69,10 @@ export interface ContainerAllocation {
   totalPackages: number;
   totalPallets?: number;
   isOverweight: boolean;
+  isOverCapacity?: boolean;
+  isSpillover?: boolean;
+  weightUtilizationPct?: number;
+  palletUtilizationPct?: number;
   hasDangerousGoods: boolean;
 }
 

@@ -75,6 +75,7 @@ export const INITIAL_SAMPLE_INVOICE: ConvertedInvoice = {
       sealNumber: 'EMC883921',
       containerType: '40HC',
       maxPayloadKg: 26500,
+      maxPallets: 24,
       tareWeightKg: 3900,
       pallets: [
         {

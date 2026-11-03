@@ -186,11 +186,18 @@ export async function extractInvoiceFromPdf(
     const gross = Number(i.grossWeightKg) || Number((qty * 18.5).toFixed(2));
     const net = Number(i.netWeightKg) || Number((gross * 0.92).toFixed(2));
 
+    const isBattery = Boolean(
+      (i.description && /(battery|batteries|lead[\s-]*acid|electric storage|accumulator)/i.test(i.description)) ||
+      i.unNumber === 'UN 2794' ||
+      i.unNumber === '2794'
+    );
+
     const isDg = Boolean(
       i.isDangerousGood ||
       i.unNumber ||
       i.imoClass ||
-      (i.description && /(flammable|chemical|acid|solvent|un\s*\d{4}|paint|hazmat|corrosive)/i.test(i.description))
+      isBattery ||
+      (i.description && /(flammable|chemical|acid|solvent|un\s*\d{4}|paint|hazmat|corrosive|electrolyte)/i.test(i.description))
     );
 
     return {
@@ -205,11 +212,11 @@ export async function extractInvoiceFromPdf(
       grossWeightKg: gross,
       netWeightKg: net,
       isDangerousGood: isDg,
-      imoClass: i.imoClass || (isDg ? 'Class 3 (Flammable Liquid)' : undefined),
-      unNumber: i.unNumber || (isDg ? 'UN 1993' : undefined),
-      packingGroup: (i.packingGroup as any) || (isDg ? 'II' : undefined),
-      properShippingName: i.properShippingName || (isDg ? 'FLAMMABLE LIQUID, N.O.S.' : undefined),
-      flashPoint: i.flashPoint || (isDg ? '23°C c.c.' : undefined),
+      imoClass: i.imoClass || (isBattery ? 'Class 8 (Corrosive)' : (isDg ? 'Class 3 (Flammable Liquid)' : undefined)),
+      unNumber: i.unNumber || (isBattery ? 'UN 2794' : (isDg ? 'UN 1993' : undefined)),
+      packingGroup: (i.packingGroup as any) || (isBattery ? 'III' : (isDg ? 'II' : undefined)),
+      properShippingName: i.properShippingName || (isBattery ? 'BATTERIES, WET, FILLED WITH ACID, electric storage' : (isDg ? 'FLAMMABLE LIQUID, N.O.S.' : undefined)),
+      flashPoint: i.flashPoint || (!isBattery && isDg ? '23°C c.c.' : undefined),
       marinePollutant: Boolean(i.marinePollutant)
     };
   });
@@ -218,12 +225,12 @@ export async function extractInvoiceFromPdf(
   const parsedGst = Number(parsed.gstAmount) || 0;
   const parsedTotal = Number(parsed.invoiceTotal) || itemsSum;
 
-  const totalGrossKg = Number(parsed.grossWeightKg) || Number(items.reduce((s, it) => s + it.grossWeightKg, 0).toFixed(2)) || 12500;
+  const totalGrossKg = Number(parsed.grossWeightKg) || Number(items.reduce((s, it) => s + it.grossWeightKg, 0).toFixed(2)) || 22620;
   const totalNetKg = Number(parsed.netWeightKg) || Number(items.reduce((s, it) => s + it.netWeightKg, 0).toFixed(2)) || Number((totalGrossKg * 0.92).toFixed(2));
-  const totalPallets = Number(parsed.totalPallets) || Math.max(1, Math.ceil(totalGrossKg / 1200));
+  const totalPallets = Number(parsed.totalPallets) || Math.max(1, Math.ceil(totalGrossKg / 1885));
 
-  // 3. Multi-Container & Pallet Allocation
-  const { containers, pallets } = allocateContainers(items, '40HC', totalPallets);
+  // 3. Multi-Container & Pallet Allocation via LAFF Solver (20' GP, 25T cap, 11-pallet cap)
+  const { containers, pallets } = allocateContainers(items, '20GP', totalPallets);
 
   const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/[_\\-]/g, ' ').toUpperCase();
   const realExporterName = parsed.exporterName?.trim() || cleanFileName;

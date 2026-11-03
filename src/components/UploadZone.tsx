@@ -78,9 +78,6 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         <h3 className="text-xs font-semibold text-slate-900">
           Drop PDF documents here
         </h3>
-        <p className="text-[11px] text-slate-500 mt-0.5 max-w-[260px] leading-relaxed">
-          Multi-page commercial invoices & packing lists from SAP, Tally, or scanned PDFs
-        </p>
 
         <div className="mt-3 flex items-center space-x-2">
           <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/80 px-3 py-1.5 rounded-lg transition-colors">
