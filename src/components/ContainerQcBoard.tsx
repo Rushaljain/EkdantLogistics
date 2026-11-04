@@ -398,45 +398,72 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                           key={pallet.id}
                           draggable={true}
                           onDragStart={(e) => handleDragStart(e, pallet.id, cont.id)}
-                          className={`group p-3 bg-white border rounded-xl shadow-2xs hover:shadow-sm transition-all cursor-grab active:cursor-grabbing ${
+                          className={`group p-3.5 bg-white border rounded-xl shadow-2xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing relative ${
                             isDragging 
-                              ? 'opacity-40 border-indigo-400 scale-95' 
-                              : 'border-slate-200/80 hover:border-indigo-300'
+                              ? 'opacity-40 border-indigo-400 scale-95 ring-2 ring-indigo-400' 
+                              : pallet.isDangerousGoods
+                              ? 'border-slate-200/90 hover:border-rose-400'
+                              : 'border-slate-200/90 hover:border-indigo-400'
                           }`}
                         >
-                          {/* Pallet Card Top Row */}
-                          <div className="flex items-center justify-between text-xs">
+                          {/* Unified Header: Drag Grip + Pallet ID Badge + Package / Box Count */}
+                          <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center space-x-1.5 min-w-0">
                               <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-indigo-500 shrink-0" />
-                              <span className="font-mono font-extrabold text-slate-900 tracking-tight">
+                              <span className="px-2 py-0.5 rounded-md text-xs font-mono font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200/80 tracking-tight">
                                 {pallet.palletNumber}
                               </span>
-                              {pallet.isDangerousGoods && (
-                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 flex items-center gap-0.5">
-                                  <Flame className="w-2.5 h-2.5 text-rose-600" />
-                                  <span>{pallet.unNumber || 'UN 2794'}</span>
-                                </span>
-                              )}
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200/70 font-mono">
+                                {pallet.packageCount} {pallet.packageType || 'BOX'}
+                              </span>
                             </div>
 
-                            <span className="font-mono font-bold text-slate-900 text-xs shrink-0">
-                              {pallet.grossWeightKg.toLocaleString()} kg
+                            <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                              {pallet.dimensions || DEFAULT_PALLET_DIMENSIONS}
                             </span>
                           </div>
 
-                          {/* Pallet Model / Item Description */}
-                          <div className="mt-1.5 text-[11px] font-medium text-slate-700 line-clamp-1 pl-5">
+                          {/* Unified Attribute 1: Item Model / Product Line */}
+                          <div className="mt-2 text-xs font-semibold text-slate-800 line-clamp-2 leading-snug pl-5">
                             {modelText}
                           </div>
 
-                          {/* Pallet Meta Footer */}
-                          <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-mono pl-5">
-                            <span>{pallet.packageCount} {pallet.packageType}</span>
-                            <span>{pallet.dimensions || DEFAULT_PALLET_DIMENSIONS}</span>
+                          {/* Unified Attribute 2: Weight Metrics (Gross & Net Weights Side-by-Side) */}
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-[11px] font-mono pl-5">
+                            <div className="bg-slate-50/90 rounded px-2 py-1 border border-slate-100">
+                              <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Gross Wt</span>
+                              <span className="font-extrabold text-slate-900">{pallet.grossWeightKg.toLocaleString()} kg</span>
+                            </div>
+                            <div className="bg-slate-50/90 rounded px-2 py-1 border border-slate-100">
+                              <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">Net Wt</span>
+                              <span className="font-extrabold text-slate-700">{pallet.netWeightKg.toLocaleString()} kg</span>
+                            </div>
+                          </div>
+
+                          {/* Unified Attribute 3: UN 2794 HazMat & #DG Compliance Badges + Quick Move */}
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5 flex-wrap pl-5">
+                            {pallet.isDangerousGoods ? (
+                              <div className="flex items-center space-x-1">
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                  <Flame className="w-2.5 h-2.5 text-rose-600" />
+                                  <span>{pallet.unNumber || 'UN 2794'}</span>
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                  {pallet.imoClass?.replace(/class/i, 'Cl.').replace(/\(.*\)/, '').trim() || 'Cl. 8'}
+                                </span>
+                                {pallet.packingGroup && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                    PG {pallet.packingGroup}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-medium">Non-Hazardous</span>
+                            )}
 
                             {/* Quick Reassign Dropdown for Quick Access */}
                             {containers.length > 1 && (
-                              <div className="relative group/menu">
+                              <div className="relative group/menu ml-auto">
                                 <select
                                   value={cont.id}
                                   onChange={(e) => handleDirectMove(pallet.id, cont.id, e.target.value)}

@@ -31,6 +31,7 @@ interface CenterColumnProps {
   onClearAllDocuments: () => void;
   onPortChange: (docId: string, port: CustomsPort) => void;
   onSaveAllToFiles?: () => void;
+  onConsolidateBatch?: () => void;
 }
 
 export const CenterColumn: React.FC<CenterColumnProps> = ({
@@ -44,7 +45,8 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
   onDeleteDocument,
   onClearAllDocuments,
   onPortChange,
-  onSaveAllToFiles
+  onSaveAllToFiles,
+  onConsolidateBatch
 }) => {
   const pendingCount = documents.filter(d => d.status === 'pending' || d.status === 'failed').length;
   const processedCount = documents.filter(d => d.status === 'processed' && d.invoice).length;
@@ -90,6 +92,19 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Consolidate Batch Button when multiple processed invoices exist */}
+            {processedCount >= 2 && onConsolidateBatch && (
+              <button
+                type="button"
+                onClick={onConsolidateBatch}
+                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 text-indigo-700 border border-indigo-200 shadow-2xs transition-all cursor-pointer"
+                title="Consolidate multiple invoices into a single unified multi-container shipment"
+              >
+                <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Consolidate ({processedCount})</span>
+              </button>
+            )}
+
             {/* Save All to Files button for converted documents */}
             {processedCount > 0 && onSaveAllToFiles && (
               <button
