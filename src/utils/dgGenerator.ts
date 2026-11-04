@@ -208,7 +208,7 @@ export function generateDgDeclaration(
         </div>
         <div>
           <span class="box-num">5</span><span class="box-title">Freight Fwd Ref</span>
-          <div style="font-family: monospace; font-size: 9px; margin-top: 2px;">EKD-${cleanInvNo}</div>
+          <div style="font-family: monospace; font-size: 9px; margin-top: 2px;">${bookingRef ? `EKD-${bookingRef}` : 'EKD-REF'}</div>
         </div>
       </div>
 
@@ -241,15 +241,17 @@ export function generateDgDeclaration(
 
     <!-- Boxes 9 to 13: Handling, Vessel, Ports -->
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; border-bottom: 2px solid #000;">
-      <!-- Box 9 -->
+      <!-- Box 9: Additional Handling Information -->
       <div style="border-right: 1px solid #000; padding: 6px 8px;">
-        <span class="box-num">9</span><span class="box-title">Additional Handling</span>
-        <div class="box-content" style="font-size: 9px;">
-          KEEP DRY & UPRIGHT.<br/>HANDLE WITH CARE.
+        <span class="box-num">9</span><span class="box-title">Additional Handling Information</span>
+        <div class="box-content" style="font-size: 8.5px; line-height: 1.35;">
+          <strong>24-HR EMERGENCY CONTACT:</strong><br/>
+          <span style="font-family: monospace; font-size: 9.5px; color: #1e3a8a; font-weight: 700;">${emgName} (${emgPhone})</span><br/>
+          <span style="font-size: 8px; color: #555;">STOWAGE CATEGORY A — KEEP DRY</span>
         </div>
       </div>
 
-      <!-- Box 10 -->
+      <!-- Box 10: Vessel and Voyage -->
       <div style="border-right: 1px solid #000; padding: 6px 8px;">
         <span class="box-num">10</span><span class="box-title">Vessel and Voyage</span>
         <div class="box-content" style="font-family: monospace; font-weight: 700;">
@@ -257,14 +259,11 @@ export function generateDgDeclaration(
         </div>
       </div>
 
-      <!-- Box 11 & Emergency Contact -->
+      <!-- Box 11: Port of Loading -->
       <div style="border-right: 1px solid #000; padding: 6px 8px;">
         <span class="box-num">11</span><span class="box-title">Port of Loading</span>
         <div class="box-content">
-          <strong>${pol}</strong><br/>
-          <div style="margin-top: 4px; font-size: 8.5px; color: #991b1b; font-weight: 700;">
-            EMERGENCY CONTACT:<br/>${emgName} (MOB: ${emgPhone})
-          </div>
+          <strong>${pol}</strong>
         </div>
       </div>
 
@@ -303,7 +302,7 @@ export function generateDgDeclaration(
         <tr>
           <td style="font-family: monospace; font-size: 10px; line-height: 1.45;">
             ${marksText.replace(/\n/g, '<br/>')}<br/><br/>
-            <strong>PALLET SERIALS (${totalPallets} PLTS):</strong><br/>
+            <strong>SHIPPING MARKS & NUMBERS (AS PER REFERENCE):</strong><br/>
             <span style="font-size: 9px; color: #1e3a8a;">
               ${palletRanges.map(r => `• ${r}`).join('<br/>')}
             </span>

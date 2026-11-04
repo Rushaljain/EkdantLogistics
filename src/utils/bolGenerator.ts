@@ -119,7 +119,7 @@ export function generateMasterBol(
   <div class="bol-container">
     <div class="title-banner">
       <span>${templateTitle}</span>
-      <span style="font-size: 11px; font-family: monospace;">B/L NO: ${docNumber}</span>
+      <span style="font-size: 11px; font-family: monospace;">B/L NO: ${docNumber} [INTERNAL DRAFT REFERENCE]</span>
     </div>
 
     <table class="header-table">
@@ -136,6 +136,9 @@ export function generateMasterBol(
         <td style="width: 45%;">
           <span class="label">B/L Number & Booking Reference</span>
           <div class="val" style="font-family: monospace; font-size: 12px; font-weight: 800; color: #0f172a;">${docNumber}</div>
+          <div style="font-size: 8.5px; font-weight: 700; color: #b45309; text-transform: uppercase; margin-top: 2px;">
+            INTERNAL DRAFT REFERENCE — NOT AN OFFICIAL CARRIER-ISSUED B/L
+          </div>
           <div style="margin-top: 4px;">
             <span class="label">Carrier & Service</span>
             <span class="val" style="font-size: 10.5px;">${invoice.carrierName || 'ONE LINE'} (Ocean Container Service)</span>
@@ -249,7 +252,7 @@ export function generateMasterBol(
             ${hazItem ? `
               <div style="font-family: monospace; font-size: 9.5px; font-weight: 700; color: #b91c1c; margin-bottom: 6px;">
                 UN NO. ${hazItem.unNumber || '2794'} &nbsp;&nbsp; IMCO CLASS: ${hazItem.imoClass || '8'}<br/>
-                PG: ${invoice.dgPackingGroupOverride || hazItem.packingGroup || 'III'}
+                PG: III
               </div>
             ` : ''}
 

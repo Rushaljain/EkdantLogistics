@@ -278,11 +278,20 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
           <div className="flex items-start space-x-2">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <div className="font-semibold text-amber-950 flex items-center gap-1.5">
-                <span>Cross-Document Conflict Detected ({activeConflicts.length})</span>
-                <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-amber-200/70 text-amber-900 uppercase">
-                  Operator Verification Required
-                </span>
+              <div className="font-semibold text-amber-950 flex items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span>Cross-Document Discrepancies ({activeConflicts.length})</span>
+                  <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-amber-200/70 text-amber-900 uppercase">
+                    Operator Verification Required
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDismissedConflicts(new Set(rawConflicts.map(c => c.id)))}
+                  className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-200 hover:bg-amber-300 text-amber-950 transition-colors cursor-pointer"
+                >
+                  Verify & Acknowledge All
+                </button>
               </div>
               <div className="mt-1 space-y-1.5">
                 {activeConflicts.map(conf => (
