@@ -17,32 +17,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   savedFilesCount = 0,
   onOpenFormatsModal,
-  showHeader = false,
 }) => {
   return (
     <aside className="w-60 h-full bg-white border-r border-zinc-200 flex flex-col shrink-0 select-none">
-      {/* Top Brand Header: Logo & Wordmark (used when standalone in files view) */}
-      {showHeader && (
-        <div className="h-14 px-4 border-b border-zinc-200 flex items-center space-x-3 shrink-0">
-          <img 
-            src="/logo.png" 
-            alt="Ekdant Logistics Logo" 
-            className="h-8 w-auto object-contain rounded" 
-            onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-          />
-          <div className="min-w-0">
-            <h1 className="text-xs font-semibold text-zinc-900 tracking-tight leading-tight truncate">
-              Ekdant Logistics
-            </h1>
-            <p className="text-[10px] text-zinc-500 font-normal truncate">
-              Dispatch Tool
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Navigation Items */}
       <div className="flex-1 py-3 px-2.5 space-y-1 overflow-y-auto">
         {/* Document Workspace */}

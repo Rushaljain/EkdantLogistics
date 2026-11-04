@@ -1,8 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Building2, 
-  FolderArchive, 
-  Search, 
   Trash2, 
   ExternalLink, 
   Plus,
@@ -16,6 +14,8 @@ import { generateDgDeclaration } from '../utils/dgGenerator';
 
 interface FilesViewProps {
   files: ConvertedInvoice[];
+  searchQuery?: string;
+  portFilter?: 'ALL' | string;
   onOpenInConverter: (invoice: ConvertedInvoice) => void;
   onDeleteFile: (fileId: string) => void;
   onClearAllFiles?: () => void;
@@ -24,12 +24,17 @@ interface FilesViewProps {
 
 export const FilesView: React.FC<FilesViewProps> = ({
   files,
+  searchQuery: propSearchQuery,
+  portFilter: propPortFilter,
   onOpenInConverter,
   onDeleteFile,
   onNavigateToConverter
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [portFilter, setPortFilter] = useState<'ALL' | string>('ALL');
+  const [internalSearchQuery] = useState('');
+  const [internalPortFilter] = useState<'ALL' | string>('ALL');
+
+  const searchQuery = propSearchQuery !== undefined ? propSearchQuery : internalSearchQuery;
+  const portFilter = propPortFilter !== undefined ? propPortFilter : internalPortFilter;
 
   // Filtered files based on search query & port
   const filteredFiles = useMemo(() => {
@@ -50,93 +55,6 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
   return (
     <div className="flex-1 h-full flex flex-col bg-zinc-50/50 overflow-hidden select-none">
-      {/* =========================================================================
-          TOP HEADER BAR OF FILES VIEW
-         ========================================================================= */}
-      <div className="h-14 px-6 bg-white border-b border-zinc-200 flex items-center justify-between shrink-0 gap-3">
-        {/* Left: Section Title & File Count */}
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-zinc-100 text-zinc-700 flex items-center justify-center shrink-0">
-            <FolderArchive className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h2 className="text-xs font-semibold text-zinc-900 tracking-tight">
-                Saved Shipments Repository
-              </h2>
-              <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-100 text-zinc-700 border border-zinc-200 font-mono">
-                {files.length} {files.length === 1 ? 'shipment' : 'shipments'}
-              </span>
-            </div>
-            <p className="text-[11px] text-zinc-400">
-              Allocated containers, pallet breakdowns, #DG declarations & Master BOLs
-            </p>
-          </div>
-        </div>
-
-        {/* Center/Right: Search & Filter Toolbar */}
-        <div className="flex items-center space-x-2.5">
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search shipments..."
-              className="w-52 lg:w-64 pl-8 pr-3 py-1 bg-zinc-50 border border-zinc-200 focus:border-zinc-400 rounded-lg text-xs text-zinc-800 placeholder-zinc-400 focus:bg-white outline-none transition-colors"
-            />
-          </div>
-
-          {/* Port Filter */}
-          <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/80 text-xs">
-            <button
-              type="button"
-              onClick={() => setPortFilter('ALL')}
-              className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer text-xs ${
-                portFilter === 'ALL'
-                  ? 'bg-white text-zinc-900 font-medium shadow-2xs'
-                  : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              All Ports
-            </button>
-            <button
-              type="button"
-              onClick={() => setPortFilter('INNSA1')}
-              className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer text-xs ${
-                portFilter === 'INNSA1'
-                  ? 'bg-white text-zinc-900 font-medium shadow-2xs'
-                  : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              Nhava Sheva
-            </button>
-            <button
-              type="button"
-              onClick={() => setPortFilter('INBOM4')}
-              className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer text-xs ${
-                portFilter === 'INBOM4'
-                  ? 'bg-white text-zinc-900 font-medium shadow-2xs'
-                  : 'text-zinc-600 hover:text-zinc-900'
-              }`}
-            >
-              Mumbai Air
-            </button>
-          </div>
-
-          {/* New Document Button */}
-          <button
-            type="button"
-            onClick={onNavigateToConverter}
-            className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>New Shipment</span>
-          </button>
-        </div>
-      </div>
-
       {/* =========================================================================
           MAIN TILES GRID
          ========================================================================= */}
