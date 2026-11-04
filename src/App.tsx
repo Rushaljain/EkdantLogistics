@@ -8,6 +8,7 @@ import { GeminiApiKeyModal } from './components/GeminiApiKeyModal';
 import type { ConvertedInvoice, CustomsPort, AppDocument } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 import { optimizeContainerAllocation } from './utils/containerOptimizer';
+import { SHIPMENT_MUMGA3747500 } from './data/profiles';
 
 const LOCAL_STORAGE_DOCS_KEY = 'ekdant_customs_documents_v1';
 const LOCAL_STORAGE_SAVED_FILES_KEY = 'ekdant_saved_files_v1';
@@ -49,22 +50,38 @@ export function App() {
     return BUNDLED_DEFAULT_KEY;
   });
 
+  // Default initial working document with MUMGA3747500 preloaded
+  const defaultInitialDoc: AppDocument = {
+    id: 'doc-mumga3747500',
+    fileName: 'DG ONEU2878769.pdf',
+    fileSize: 324500,
+    uploadedAt: 'Today, 04:30 PM',
+    status: 'processed',
+    invoice: SHIPMENT_MUMGA3747500
+  };
+
   // Saved Converted Files Repository (Persistent tiles view)
   const [savedFiles, setSavedFiles] = useState<ConvertedInvoice[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_SAVED_FILES_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasMumga = parsed.some((f: ConvertedInvoice) => f.bookingNumber === 'MUMGA3747500' || f.id === 'inv-mumga3747500');
+          return hasMumga ? parsed : [SHIPMENT_MUMGA3747500, ...parsed];
+        }
       }
       // Migrate existing legacy converted invoices if any
       const legacyInvoices = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
       if (legacyInvoices) {
         const parsed = JSON.parse(legacyInvoices);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasMumga = parsed.some((f: ConvertedInvoice) => f.bookingNumber === 'MUMGA3747500' || f.id === 'inv-mumga3747500');
+          return hasMumga ? parsed : [SHIPMENT_MUMGA3747500, ...parsed];
+        }
       }
     } catch {}
-    return [];
+    return [SHIPMENT_MUMGA3747500];
   });
 
   // Active Working Documents (upload queue & conversion board)
@@ -73,10 +90,13 @@ export function App() {
       const savedDocs = localStorage.getItem(LOCAL_STORAGE_DOCS_KEY);
       if (savedDocs) {
         const parsed = JSON.parse(savedDocs);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasMumga = parsed.some((d: AppDocument) => d.invoice?.bookingNumber === 'MUMGA3747500' || d.id === 'doc-mumga3747500');
+          return hasMumga ? parsed : [defaultInitialDoc, ...parsed];
+        }
       }
     } catch {}
-    return [];
+    return [defaultInitialDoc];
   });
 
   // Selected Document ID for Right Preview Pane
@@ -85,10 +105,13 @@ export function App() {
       const savedDocs = localStorage.getItem(LOCAL_STORAGE_DOCS_KEY);
       if (savedDocs) {
         const parsed = JSON.parse(savedDocs);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0].id;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const mumgaDoc = parsed.find((d: AppDocument) => d.invoice?.bookingNumber === 'MUMGA3747500' || d.id === 'doc-mumga3747500');
+          return mumgaDoc ? mumgaDoc.id : parsed[0].id;
+        }
       }
     } catch {}
-    return null;
+    return 'doc-mumga3747500';
   });
 
   // Bulk conversion state

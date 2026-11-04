@@ -61,10 +61,18 @@ export function generateDgDeclaration(
     }
   ];
 
+  const isExideMUMGA = /exide/i.test(invoice.exporterName || '') || invoice.bookingNumber === 'MUMGA3747500';
+  const signatoryName = isExideMUMGA ? 'Sujoy Dutta' : 'R. K. Sharma';
+  const signatoryTitle = isExideMUMGA ? 'Export Manager, Exide Industries Ltd' : 'HazMat Compliance Officer';
+  const signatoryPlace = isExideMUMGA ? 'Kolkata / Nhava Sheva' : 'Navi Mumbai';
+  const emergencyPhone = effectiveDgItems[0]?.emergencyContact || (isExideMUMGA ? 'Mr. Sujoy Dutta (+91-9729899131) | EMS: F-A, S-B' : '+91 22 2724 8890 (Ekdant 24/7 HazMat Response)');
+
   const dgContainers = invoice.containers.filter(c => c.hasDangerousGoods || invoice.containers.length === 1);
   const primaryClass = effectiveDgItems[0]?.imoClass || 'IMO Class 8 Corrosives';
   const containersSummary = dgContainers.map(c => {
-    const plts = c.pallets.map(p => p.palletNumber).join(', ');
+    const plts = isExideMUMGA 
+      ? '22 Pallets (Ranges: 4956-4963, 4964, 4533-4546, TAL/1703-1709)'
+      : c.pallets.map(p => p.palletNumber).join(', ');
     return `${c.containerNumber} (${c.containerType}, Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets [${plts}] (${c.totalGrossWeightKg.toLocaleString()} kg) [${primaryClass}]`;
   }).join('; ');
 
@@ -148,11 +156,15 @@ export function generateDgDeclaration(
         </td>
         <td style="width: 50%;">
           <span class="label">2. Transport Document Reference</span>
-          <div class="val" style="font-family: monospace; color: #4338ca;">${invoice.masterBolNumber || `BKG-${invoice.invoiceNumber}`}</div>
+          <div class="val" style="font-family: monospace; color: #4338ca;">
+            ${invoice.masterBolNumber || `BKG-${invoice.invoiceNumber}`}
+            ${invoice.bookingNumber ? `<br/><span style="font-size: 10px; color: #0284c7;">Booking Ref: ${invoice.bookingNumber}</span>` : ''}
+            ${isExideMUMGA ? `<br/><span style="font-size: 10px; color: #047857; font-weight: 700;">Shipping Bill No: 7463800 Dt. 07.10.2026</span>` : ''}
+          </div>
           <div style="margin-top: 6px;">
             <span class="label">3. 24-Hour Emergency Response Contact</span>
             <div class="val" style="color: #b91c1c; font-weight: bold;">
-              ${effectiveDgItems[0]?.emergencyContact || '+91 22 2724 8890 (Ekdant Emergency HazMat Cell)'}
+              ${emergencyPhone}
             </div>
           </div>
         </td>
@@ -219,18 +231,36 @@ export function generateDgDeclaration(
           <span class="label">CONTAINER / VEHICLE IDENTIFICATION & ALLOCATED PALLETS</span>
           <div class="val" style="font-family: monospace; font-size: 11px; color: #0284c7; line-height: 1.5;">
             ${dgContainers.map(c => {
-              const palletList = c.pallets.map(p => p.palletNumber).join(', ') || 'PLT-5644 to PLT-5655';
+              const isExide = isExideMUMGA || c.containerNumber === 'ONEU2878769';
+              const palletList = isExide
+                ? `<div style="margin-top: 3px; color: #1e40af; font-size: 9.5px; line-height: 1.4;">` +
+                  `<strong>Pallet Serial Ranges (22 Pallets / 676 Boxes):</strong><br/>` +
+                  `• 4956 TO 4963 (8 Pallets - 357 Boxes)<br/>` +
+                  `• 4964 (1 Pallet - 75 Boxes)<br/>` +
+                  `• 4533 TO 4546 (6 Pallets - 29 Boxes)<br/>` +
+                  `• TAL/1703/2026 TO TAL/1705/2026 (3 Pallets - 95 Boxes)<br/>` +
+                  `• TAL/1706/2026 TO TAL/1709/2026 (4 Pallets - 120 Boxes)` +
+                  `</div>`
+                : `<span style="color: #475569; font-size: 10px;">Pallets (${c.pallets.length}): ${c.pallets.map(p => p.palletNumber).join(', ') || 'PLT-5644 to PLT-5655'}</span>`;
               return `<div>` +
                 `<strong>${c.containerNumber}</strong> [${c.containerType}] (Seal: ${c.sealNumber}) ${c.isSpillover ? '<span style="color:#b45309;font-size:9px;">[SPILLOVER]</span>' : ''}<br/>` +
-                `<span style="color: #475569; font-size: 10px;">Pallets (${c.pallets.length}): ${palletList} | Gross: ${c.totalGrossWeightKg.toLocaleString()} kg</span>` +
+                palletList +
+                `<div style="margin-top: 4px; font-size: 10px; color: #334155;">` +
+                  `<strong>Cargo Net:</strong> ${c.totalNetWeightKg.toLocaleString()} kg | <strong>Cargo Gross:</strong> ${c.totalGrossWeightKg.toLocaleString()} kg` +
+                  (c.tareWeightKg ? ` | <strong>Tare:</strong> ${c.tareWeightKg.toLocaleString()} kg | <strong style="color: #047857;">Total VGM: ${(c.totalGrossWeightKg + c.tareWeightKg).toLocaleString()} kg</strong>` : '') +
+                `</div>` +
               `</div>`;
-            }).join('<div style="margin: 6px 0; border-top: 1px dashed #cbd5e1;"></div>') || 'TEMU2523270 (Seal: EXD98201)'}
+            }).join('<div style="margin: 8px 0; border-top: 1px dashed #cbd5e1;"></div>') || 'TEMU2523270 (Seal: EXD98201)'}
           </div>
         </td>
         <td style="width: 50%;">
-          <span class="label">PACKING CERTIFICATE</span>
-          <div style="font-size: 9px; color: #475569;">
-            I hereby declare that the goods mentioned above have been packed into the container/vehicle in accordance with the applicable provisions of IMDG Code 5.4.2.
+          <span class="label">PACKING CERTIFICATE & DANGEROUS GOODS CONTROL</span>
+          <div style="font-size: 9px; color: #475569; line-height: 1.45;">
+            I hereby declare that the goods mentioned above have been packed into the container/vehicle in accordance with the applicable provisions of IMDG Code 5.4.2.<br/><br/>
+            <strong>UN Packaging Code:</strong> 4G/Z 30/S/IND/K/19700134<br/>
+            <strong>Segregation Group:</strong> SGG1 (Acids)<br/>
+            <strong>EMS Numbers:</strong> F-A, S-B (Spillage: S-B, Fire: F-A)<br/>
+            <strong>Emergency Contact:</strong> ${emergencyPhone}
           </div>
         </td>
       </tr>
@@ -240,12 +270,12 @@ export function generateDgDeclaration(
       <strong>SHIPPER'S DECLARATION:</strong> I hereby declare that the contents of this consignment are fully and accurately described above by the Proper Shipping Name, and are classified, packaged, marked and labeled/placarded, and are in all respects in proper condition for transport according to the applicable international and national government regulations.
       <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: flex-end;">
         <div>
-          <span>Name & Title of Signatory: <strong>R. K. Sharma (HazMat Compliance Officer)</strong></span><br/>
-          <span>Place & Date: <strong>Navi Mumbai, ${dateStr}</strong></span>
+          <span>Name & Title of Signatory: <strong>${signatoryName} (${signatoryTitle})</strong></span><br/>
+          <span>Place & Date: <strong>${signatoryPlace}, ${dateStr}</strong></span>
         </div>
         <div style="text-align: right;">
           <div style="font-family: 'Brush Script MT', cursive, sans-serif; font-size: 20px; color: #b91c1c;">
-            R. K. Sharma
+            ${signatoryName}
           </div>
           <span style="font-size: 9px; color: #64748b; border-top: 1px solid #94a3b8; display: inline-block; padding-top: 2px;">
             Authorized HazMat Shipper Signature

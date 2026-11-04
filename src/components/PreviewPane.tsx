@@ -55,11 +55,11 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
 }) => {
   if (!document) {
     return (
-      <div className="flex-1 h-full flex flex-col items-center justify-center p-8 bg-slate-50/40 text-center select-none">
-        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-400 mb-4">
-          <Columns className="w-8 h-8 text-indigo-500/80" />
+      <div className="flex-1 h-full flex flex-col items-center justify-center p-8 bg-zinc-50/50 text-center select-none">
+        <div className="w-12 h-12 rounded-xl bg-white border border-zinc-200 shadow-2xs flex items-center justify-center text-zinc-400 mb-3">
+          <Columns className="w-6 h-6 text-zinc-500" />
         </div>
-        <h3 className="text-sm font-bold text-slate-800 tracking-tight">
+        <h3 className="text-xs font-semibold text-zinc-800 tracking-tight">
           Shipment Workspace & Container Allocator
         </h3>
       </div>
@@ -111,24 +111,24 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
   return (
     <div className="flex-1 h-full flex flex-col bg-white overflow-hidden select-none">
       {/* Top Header */}
-      <div className="h-16 px-6 border-b border-slate-200/80 flex items-center justify-between shrink-0 bg-white">
+      <div className="h-14 px-5 border-b border-zinc-200 flex items-center justify-between shrink-0 bg-white">
         <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-            <FileText className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-zinc-100 text-zinc-700 flex items-center justify-center shrink-0">
+            <FileText className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-bold text-slate-900 truncate">
+            <h2 className="text-xs font-semibold text-zinc-900 truncate">
               {document.fileName}
             </h2>
-            <div className="flex items-center space-x-2 text-[11px] text-slate-400 font-mono">
+            <div className="flex items-center space-x-2 text-[11px] text-zinc-400 font-mono">
               <span>{formatFileSize(document.fileSize)}</span>
               <span>•</span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+              <span className={`px-1.5 py-0.2 rounded text-[10px] font-medium ${
                 isProcessing
-                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                  ? 'bg-zinc-100 text-zinc-700 border border-zinc-200'
                   : isFailed
-                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  ? 'bg-rose-50 text-rose-700 border border-rose-200/60'
+                  : 'bg-zinc-100 text-zinc-600 border border-zinc-200'
               }`}>
                 {isProcessing ? 'Processing...' : isFailed ? 'Failed' : 'Ready to Convert'}
               </span>
@@ -141,7 +141,7 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
             type="button"
             onClick={() => onConvert(document.id)}
             disabled={isProcessing}
-            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+            className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
           >
             {isProcessing ? (
               <>
@@ -155,7 +155,7 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
               </>
             ) : (
               <>
-                <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                <Sparkles className="w-3.5 h-3.5 text-zinc-300" />
                 <span>Extract Weights & Pallets</span>
               </>
             )}
@@ -165,35 +165,35 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
 
       {/* Main Workspace (Split: Left Info Card, Right PDF Viewer) */}
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-1/2 h-full p-8 flex flex-col justify-center items-center text-center bg-slate-50/50 border-r border-slate-200/80 overflow-y-auto">
+        <div className="w-1/2 h-full p-6 flex flex-col justify-center items-center text-center bg-zinc-50/50 border-r border-zinc-200 overflow-y-auto">
           {isProcessing ? (
-            <div className="max-w-md space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-100/80 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
-                <Loader2 className="w-8 h-8 animate-spin" />
+            <div className="max-w-md space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-zinc-100 text-zinc-700 flex items-center justify-center mx-auto border border-zinc-200">
+                <Loader2 className="w-6 h-6 animate-spin" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">
+              <h3 className="text-sm font-semibold text-zinc-900">
                 Extracting Multi-Container Cargo Data
               </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Gemini Vision AI is scanning multi-page commercial invoice tables, gross/net weights, pallet distributions, and checking hazardous material classes (IMO/UN #).
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Scanning multi-page commercial invoice tables, gross/net weights, pallet distributions, and checking hazardous material classes (IMO/UN #).
               </p>
             </div>
           ) : isFailed ? (
-            <div className="max-w-md space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-                <AlertCircle className="w-8 h-8" />
+            <div className="max-w-md space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+                <AlertCircle className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">
+              <h3 className="text-sm font-semibold text-zinc-900">
                 Extraction Failed
               </h3>
-              <p className="text-xs text-rose-600 leading-relaxed bg-rose-50 p-3 rounded-xl border border-rose-200">
+              <p className="text-xs text-rose-700 leading-relaxed bg-rose-50 p-3 rounded-lg border border-rose-200/80">
                 {document.errorMessage || 'Unable to extract data from this PDF.'}
               </p>
               {onOpenKeyModal && (
                 <button
                   type="button"
                   onClick={onOpenKeyModal}
-                  className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition-colors cursor-pointer"
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors cursor-pointer"
                 >
                   <Key className="w-3.5 h-3.5" />
                   <span>Configure Gemini API Key</span>
@@ -201,24 +201,24 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
               )}
             </div>
           ) : (
-            <div className="max-w-md space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200/80 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
-                <FileText className="w-8 h-8 text-indigo-500" />
+            <div className="max-w-md space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-white border border-zinc-200 text-zinc-700 flex items-center justify-center mx-auto shadow-2xs">
+                <FileText className="w-6 h-6 text-zinc-600" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">
+              <h3 className="text-sm font-semibold text-zinc-900">
                 Ready for Extraction
               </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Click <strong>Extract Weights & Pallets</strong> to parse line items, gross/net weights, auto-segregate pallets into containers, and generate #DG and Master BOL forms.
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Click <strong className="text-zinc-800">Extract Weights & Pallets</strong> to parse line items, gross/net weights, auto-segregate pallets into containers, and generate #DG and Master BOL forms.
               </p>
             </div>
           )}
         </div>
 
         {/* Right Side: PDF Preview */}
-        <div className="w-1/2 h-full flex flex-col bg-slate-900 overflow-hidden">
-          <div className="h-10 bg-slate-800 px-4 flex items-center justify-between text-xs text-slate-300 shrink-0">
-            <span className="truncate">{document.fileName}</span>
+        <div className="w-1/2 h-full flex flex-col bg-zinc-900 overflow-hidden">
+          <div className="h-9 bg-zinc-800/90 px-4 flex items-center justify-between text-xs text-zinc-300 shrink-0 border-b border-zinc-700/50">
+            <span className="truncate text-zinc-300 font-mono text-[11px]">{document.fileName}</span>
             <div className="flex items-center space-x-2">
               <button
                 type="button"
@@ -228,7 +228,7 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
-              <span className="font-mono">{zoom}%</span>
+              <span className="font-mono text-xs">{zoom}%</span>
               <button
                 type="button"
                 onClick={() => setZoom(z => Math.min(z + 15, 180))}
@@ -243,16 +243,19 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
             {document.pdfUrl ? (
               <iframe
                 src={`${document.pdfUrl}#toolbar=0`}
-                className="w-full h-full rounded shadow-md border-0 bg-white"
+                className="w-full h-full rounded border-0 bg-white"
                 style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}
                 title={document.fileName}
               />
             ) : (
-              <div className="text-slate-400 text-xs">PDF preview not loaded.</div>
+              <div className="text-zinc-400 text-xs">PDF preview not loaded.</div>
             )}
           </div>
         </div>
       </div>
+    </div>
+  );
+};
     </div>
   );
 };

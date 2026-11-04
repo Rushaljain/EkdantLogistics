@@ -23,10 +23,25 @@ export function generateMasterBol(
   ).join('; ');
 
   const containerRowsHtml = invoice.containers.map((cont) => {
-    const palletSerials = cont.pallets.length > 0
-      ? cont.pallets.map(p => p.palletNumber).join(', ')
-      : 'PLT-5644 to PLT-5655';
+    const isExideMUMGA = invoice.bookingNumber === 'MUMGA3747500' || cont.containerNumber === 'ONEU2878769';
+    const palletSerials = isExideMUMGA
+      ? `<strong>Pallet Serial Ranges (22 Pallets Total):</strong><br/>` +
+        `• 4956 TO 4963 (8 Pallets - 357 Boxes)<br/>` +
+        `• 4964 (1 Pallet - 75 Boxes)<br/>` +
+        `• 4533 TO 4546 (6 Pallets - 29 Boxes)<br/>` +
+        `• TAL/1703/2026 TO TAL/1705/2026 (3 Pallets - 95 Boxes)<br/>` +
+        `• TAL/1706/2026 TO TAL/1709/2026 (4 Pallets - 120 Boxes)`
+      : (cont.pallets.length > 0
+        ? cont.pallets.map(p => p.palletNumber).join(', ')
+        : 'PLT-5644 to PLT-5655');
     const cbmEstimate = (cont.totalGrossWeightKg / 300).toFixed(2);
+    const shippingBillNote = isExideMUMGA
+      ? '<br/><span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: #e0f2fe; color: #0369a1; font-size: 9px; font-weight: 700; margin-top: 4px;">S/B: 7463800 Dt. 07.10.2026</span>'
+      : '';
+    const vgmNote = cont.tareWeightKg
+      ? `<br/><span style="font-size: 9px; color: #047857; font-weight: 600;">VGM (incl. tare): ${(cont.totalGrossWeightKg + cont.tareWeightKg).toLocaleString()} KGS</span>`
+      : '';
+
     return `
       <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
         <td style="padding: 10px; font-weight: bold; font-family: monospace;">
@@ -34,22 +49,24 @@ export function generateMasterBol(
           <span style="font-weight: normal; color: #64748b; font-size: 10px;">Seal: ${cont.sealNumber}</span><br/>
           <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3; font-size: 9px; font-weight: 700; margin-top: 4px;">${cont.containerType}</span>
           ${cont.isSpillover ? '<br/><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; background: #fef3c7; color: #b45309; font-size: 8px; font-weight: 700; margin-top: 2px;">SPILLOVER UNIT</span>' : ''}
+          ${shippingBillNote}
         </td>
         <td style="padding: 10px; font-family: monospace;">
           <strong>${cont.pallets.length} Pallets</strong><br/>
-          <div style="color: #4338ca; font-size: 9.5px; line-height: 1.3; margin-top: 2px; max-width: 220px; word-break: break-word;">
+          <div style="color: #4338ca; font-size: 9.5px; line-height: 1.35; margin-top: 2px; max-width: 250px; word-break: break-word;">
             ${palletSerials}
           </div>
-          <span style="color: #475569; font-size: 10px; margin-top: 2px; display: inline-block;">${cont.totalPackages} Packages</span>
+          <span style="color: #475569; font-size: 10px; margin-top: 3px; display: inline-block; font-weight: 600;">${cont.totalPackages} Packages (${cont.totalPackages} Boxes)</span>
         </td>
         <td style="padding: 10px;">
           <strong>STC: ${invoice.lineItems[0]?.description || 'Commercial Merchandise'}</strong><br/>
-          <span style="font-size: 10px; color: #64748b;">Invoice Ref: ${invoice.invoiceNumber} | Incoterm: ${invoice.incoterm}</span><br/>
-          ${cont.hasDangerousGoods ? '<span style="color: #dc2626; font-weight: bold; font-size: 10px;">⚠ DANGEROUS GOODS (IMO CLASS 8 / UN 2794)</span>' : '<span style="color: #16a34a; font-size: 10px;">Non-Hazardous General Cargo</span>'}
+          <span style="font-size: 10px; color: #64748b;">Invoices: ${invoice.invoiceNumber} | Incoterm: ${invoice.incoterm}</span><br/>
+          ${cont.hasDangerousGoods ? '<span style="color: #dc2626; font-weight: bold; font-size: 10px;">⚠ DANGEROUS GOODS (IMO CLASS 8 / UN 2794 / PG III)</span><br/><span style="font-size: 9px; color: #b91c1c;">BATTERIES, WET, FILLED WITH ACID (Technical: Lead Acid Storage Batteries)</span>' : '<span style="color: #16a34a; font-size: 10px;">Non-Hazardous General Cargo</span>'}
         </td>
         <td style="padding: 10px; text-align: right; font-family: monospace; font-weight: bold;">
           ${cont.totalGrossWeightKg.toLocaleString()} KGS<br/>
           <span style="font-weight: normal; color: #64748b; font-size: 10px;">Net: ${cont.totalNetWeightKg.toLocaleString()} KGS</span>
+          ${vgmNote}
         </td>
         <td style="padding: 10px; text-align: right; font-family: monospace;">
           ${cbmEstimate} CBM
