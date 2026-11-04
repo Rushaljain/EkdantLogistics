@@ -55,10 +55,10 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onClick={() => fileInputRef.current?.click()}
-      className={`relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all duration-200 ${
+      className={`relative border border-dashed rounded-xl p-3.5 text-center cursor-pointer transition-all duration-150 ${
         isDragging
-          ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01]'
-          : 'border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-slate-50/50 shadow-2xs'
+          ? 'border-zinc-900 bg-zinc-100/60 scale-[1.01]'
+          : 'border-zinc-300 bg-white hover:border-zinc-400 hover:bg-zinc-50/50 shadow-2xs'
       }`}
     >
       <input
@@ -71,17 +71,17 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       />
 
       <div className="flex flex-col items-center">
-        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2 transition-transform group-hover:scale-105">
-          <UploadCloud className="w-5 h-5" />
+        <div className="w-8 h-8 rounded-lg bg-zinc-100 text-zinc-700 flex items-center justify-center mb-1.5 transition-transform group-hover:scale-105">
+          <UploadCloud className="w-4 h-4" />
         </div>
 
-        <h3 className="text-xs font-semibold text-slate-900">
+        <h3 className="text-xs font-medium text-zinc-900">
           Drop PDF documents here
         </h3>
 
-        <div className="mt-3 flex items-center space-x-2">
-          <span className="inline-flex items-center space-x-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/80 px-3 py-1.5 rounded-lg transition-colors">
-            <FolderUp className="w-3.5 h-3.5" />
+        <div className="mt-2.5 flex items-center space-x-2">
+          <span className="inline-flex items-center space-x-1.5 text-xs font-medium text-zinc-700 bg-white hover:bg-zinc-50 border border-zinc-200 px-2.5 py-1 rounded-md shadow-2xs transition-colors">
+            <FolderUp className="w-3.5 h-3.5 text-zinc-500" />
             <span>Browse Files</span>
           </span>
         </div>

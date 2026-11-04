@@ -18,23 +18,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   showHeader = false,
 }) => {
   return (
-    <aside className="w-64 h-full bg-white border-r border-slate-200/80 flex flex-col shrink-0 select-none">
+    <aside className="w-60 h-full bg-white border-r border-zinc-200 flex flex-col shrink-0 select-none">
       {/* Top Brand Header: Logo & Wordmark (used when standalone in files view) */}
       {showHeader && (
-        <div className="h-16 px-5 border-b border-slate-200/80 flex items-center space-x-3 shrink-0">
+        <div className="h-14 px-4 border-b border-zinc-200 flex items-center space-x-3 shrink-0">
           <img 
             src="/logo.png" 
             alt="Ekdant Logistics Logo" 
-            className="h-9 w-auto object-contain rounded" 
+            className="h-8 w-auto object-contain rounded" 
             onError={(e) => {
               (e.target as HTMLElement).style.display = 'none';
             }}
           />
           <div className="min-w-0">
-            <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight truncate">
+            <h1 className="text-xs font-semibold text-zinc-900 tracking-tight leading-tight truncate">
               Ekdant Logistics
             </h1>
-            <p className="text-[10px] text-slate-400 font-medium truncate">
+            <p className="text-[10px] text-zinc-500 font-normal truncate">
               Dispatch Tool
             </p>
           </div>
@@ -42,18 +42,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* Navigation Items */}
-      <div className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto">
+      <div className="flex-1 py-3 px-2.5 space-y-1 overflow-y-auto">
         {/* Document Workspace */}
         <button
           type="button"
           onClick={() => onSelectTab?.('converter')}
-          className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
+          className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs transition-all text-left cursor-pointer ${
             activeTab === 'converter'
-              ? 'bg-indigo-50/80 text-indigo-700 border border-indigo-100 shadow-2xs'
-              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
+              ? 'bg-zinc-100 text-zinc-900 font-medium'
+              : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 font-normal'
           }`}
         >
-          <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
+          <Layers className={`w-4 h-4 shrink-0 ${activeTab === 'converter' ? 'text-zinc-900' : 'text-zinc-400'}`} />
           <span className="flex-1 truncate">Document Workspace</span>
         </button>
 
@@ -61,16 +61,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           type="button"
           onClick={() => onSelectTab?.('files')}
-          className={`w-full flex items-center space-x-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
+          className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs transition-all text-left cursor-pointer ${
             activeTab === 'files'
-              ? 'bg-indigo-50/80 text-indigo-700 border border-indigo-100 shadow-2xs'
-              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
+              ? 'bg-zinc-100 text-zinc-900 font-medium'
+              : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 font-normal'
           }`}
         >
-          <FolderArchive className="w-4 h-4 text-indigo-600 shrink-0" />
+          <FolderArchive className={`w-4 h-4 shrink-0 ${activeTab === 'files' ? 'text-zinc-900' : 'text-zinc-400'}`} />
           <span className="flex-1 truncate">Files Repository</span>
           {savedFilesCount > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 font-mono">
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-200/80 text-zinc-700 font-mono">
               {savedFilesCount}
             </span>
           )}
@@ -78,8 +78,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom System & Container Status Indicator */}
-      <div className="p-3.5 border-t border-slate-200/80 bg-slate-50/40 shrink-0 flex items-center justify-between text-[11px]">
-        <div className="text-slate-500 font-semibold tracking-tight truncate">
+      <div className="p-3 border-t border-zinc-200 bg-zinc-50/50 shrink-0 flex items-center justify-between text-xs">
+        <div className="text-zinc-500 font-medium tracking-tight truncate">
           Ekdant Dispatch
         </div>
       </div>

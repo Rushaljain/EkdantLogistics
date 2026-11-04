@@ -513,64 +513,64 @@ export function App() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 font-sans">
+    <div className="h-screen w-screen overflow-hidden bg-zinc-50 text-zinc-900 font-sans">
       {activeTab === 'converter' ? (
         /* =========================================================================
             DOCUMENT CONVERTER WORKSPACE (With Extended Full-Width Top Panel)
            ========================================================================= */
         <div className="h-full w-full flex flex-col overflow-hidden">
           {/* Extended Top Navigation Panel */}
-          <header className="h-16 w-full bg-white border-b border-slate-200/80 flex items-center justify-between px-6 shrink-0 z-20 select-none">
+          <header className="h-14 w-full bg-white border-b border-zinc-200 flex items-center justify-between px-5 shrink-0 z-20 select-none">
             {/* Left: Brand Logo & Wordmark */}
-            <div className="flex items-center space-x-3.5 shrink-0">
+            <div className="flex items-center space-x-3 shrink-0">
               <img 
                 src="/logo.png" 
                 alt="Ekdant Logistics Logo" 
-                className="h-9 w-auto object-contain rounded" 
+                className="h-8 w-auto object-contain rounded" 
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none';
                 }}
               />
               <div className="min-w-0">
-                <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
+                <h1 className="text-xs font-semibold text-zinc-900 tracking-tight leading-tight">
                   Ekdant Logistics
                 </h1>
-                <p className="text-[10px] text-slate-400 font-medium">
+                <p className="text-[10px] text-zinc-500 font-normal">
                   Dispatch Tool
                 </p>
               </div>
             </div>
 
             {/* Right: Context Status / Active Document */}
-            <div className="flex items-center space-x-2 text-xs font-medium text-slate-500">
+            <div className="flex items-center space-x-2 text-xs font-normal text-zinc-500">
               {activeDocument ? (
                 <div className="flex items-center space-x-2">
-                  <span className="text-slate-400">Active Shipment:</span>
-                  <span className="font-semibold text-slate-800 truncate max-w-[240px] lg:max-w-[380px]">
+                  <span className="text-zinc-400">Active Shipment:</span>
+                  <span className="font-medium text-zinc-800 truncate max-w-[240px] lg:max-w-[380px]">
                     {activeDocument.invoice?.invoiceNumber || activeDocument.fileName}
                   </span>
                   {activeDocument.invoice && (
-                    <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                    <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
                       {activeDocument.invoice.containers?.length || 1} Cont • {Math.round(activeDocument.invoice.grossWeightKg || 0).toLocaleString()} kg
                     </span>
                   )}
                   {activeDocument.invoice?.hasDangerousGoods && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200/60">
                       #DG HazMat
                     </span>
                   )}
                   {activeDocument.status === 'processed' && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60">
                       Allocated
                     </span>
                   )}
                   {activeDocument.status === 'pending' && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600 border border-zinc-200">
                       Pending
                     </span>
                   )}
                   {activeDocument.status === 'failed' && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200/60">
                       Failed
                     </span>
                   )}

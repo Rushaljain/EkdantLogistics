@@ -256,9 +256,6 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
     </div>
   );
 };
-    </div>
-  );
-};
 
 interface ActiveContentProps {
   invoice: ConvertedInvoice;
@@ -419,25 +416,25 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
   };
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-slate-50/50 overflow-hidden">
+    <div className="flex-1 h-full flex flex-col bg-zinc-50/50 overflow-hidden">
       {/* =========================================================================
           TOP ACTION BAR OF PREVIEW PANE
          ========================================================================= */}
-      <div className="h-16 px-6 bg-white border-b border-slate-200/80 flex items-center justify-between shrink-0 gap-4">
+      <div className="h-14 px-5 bg-white border-b border-zinc-200 flex items-center justify-between shrink-0 gap-3">
         {/* Left: View Mode Toggle */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 text-xs font-semibold">
+        <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/80 text-xs font-medium">
           <button
             type="button"
             onClick={() => setViewMode('allocation')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
               viewMode === 'allocation'
-                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
-            <Boxes className="w-3.5 h-3.5" />
+            <Boxes className="w-3.5 h-3.5 text-zinc-500" />
             <span>Containers & Pallets</span>
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-50 text-indigo-700 font-mono">
+            <span className="px-1.5 py-0.2 rounded text-[10px] bg-zinc-200/80 text-zinc-700 font-mono">
               {formData.containers.length}
             </span>
           </button>
@@ -445,16 +442,16 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
           <button
             type="button"
             onClick={() => setViewMode('data')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
               viewMode === 'data'
-                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
-            <FileCheck className="w-3.5 h-3.5" />
+            <FileCheck className="w-3.5 h-3.5 text-zinc-500" />
             <span>Cargo & HazMat</span>
             {formData.hasDangerousGoods && (
-              <Flame className="w-3 h-3 text-rose-600" />
+              <Flame className="w-3 h-3 text-rose-500" />
             )}
           </button>
 
@@ -466,87 +463,88 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
               }
               setViewMode('documents');
             }}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
               viewMode === 'documents'
-                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
-            <FileText className="w-3.5 h-3.5" />
+            <FileText className="w-3.5 h-3.5 text-zinc-500" />
             <span>#DG & BOL Forms</span>
           </button>
 
           <button
             type="button"
             onClick={() => setViewMode('pdf')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
               viewMode === 'pdf'
-                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
-            <Eye className="w-3.5 h-3.5" />
+            <Eye className="w-3.5 h-3.5 text-zinc-500" />
             <span>PDF Source</span>
           </button>
         </div>
 
-        {/* Right: Fast Generator Actions + Direct Downloads + Save to Files */}
+        {/* Right: Unified Action Buttons Group + Save to Files */}
         <div className="flex items-center space-x-2 shrink-0">
-          <div className="flex items-center bg-indigo-50 border border-indigo-200 rounded-lg p-0.5">
+          <div className="inline-flex items-center rounded-lg border border-zinc-200 bg-white shadow-2xs p-0.5 text-xs">
             <button
               type="button"
               onClick={handleGenerateBol}
-              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-semibold text-indigo-700 hover:bg-white transition-colors cursor-pointer"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md font-medium text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 transition-colors cursor-pointer"
               title="View Master Bill of Lading"
             >
-              <Ship className="w-3.5 h-3.5 text-indigo-600" />
+              <Ship className="w-3.5 h-3.5 text-zinc-500" />
               <span>Master BOL</span>
             </button>
             <button
               type="button"
               onClick={handleQuickDownloadBol}
-              className="p-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-white rounded-md transition-colors"
+              className="p-1 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 rounded-md transition-colors border-l border-zinc-200"
               title="Direct Download Master BOL (HTML/Print)"
             >
               <Download className="w-3.5 h-3.5" />
             </button>
-          </div>
 
-          {formData.hasDangerousGoods && (
-            <div className="flex items-center bg-rose-50 border border-rose-200 rounded-lg p-0.5">
-              <button
-                type="button"
-                onClick={handleGenerateDg}
-                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-md text-xs font-semibold text-rose-700 hover:bg-white transition-colors cursor-pointer"
-                title="View IMO Multimodal Dangerous Goods Declaration"
-              >
-                <Flame className="w-3.5 h-3.5 text-rose-600" />
-                <span>#DG Declaration</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleQuickDownloadDg}
-                className="p-1.5 text-rose-600 hover:text-rose-900 hover:bg-white rounded-md transition-colors"
-                title="Direct Download #DG Declaration (HTML/Print)"
-              >
-                <Download className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
+            {formData.hasDangerousGoods && (
+              <>
+                <div className="w-px h-4 bg-zinc-200 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={handleGenerateDg}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md font-medium text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 transition-colors cursor-pointer"
+                  title="View IMO Multimodal Dangerous Goods Declaration"
+                >
+                  <Flame className="w-3.5 h-3.5 text-rose-500" />
+                  <span>#DG Declaration</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickDownloadDg}
+                  className="p-1 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 rounded-md transition-colors border-l border-zinc-200"
+                  title="Direct Download #DG Declaration (HTML/Print)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
 
           <button
             type="button"
             onClick={handleSave}
-            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-2xs transition-all cursor-pointer ${
               isSaved
-                ? 'bg-emerald-600 text-white'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                ? 'bg-emerald-700 text-white'
+                : 'bg-zinc-900 hover:bg-zinc-800 text-white'
             }`}
           >
             {isSaved ? (
               <>
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Saved to Files!</span>
+                <span>Saved to Files</span>
               </>
             ) : (
               <>
@@ -589,44 +587,44 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
           PANEL B: CARGO & DANGEROUS GOODS (HAZMAT) DATA
          ========================================================================= */}
       {viewMode === 'data' && (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
+        <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs bg-zinc-50/50">
           {/* Section 1: Header / Shipping Information */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+          <div className="space-y-3 bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+              <h3 className="font-semibold text-zinc-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-zinc-600" />
                 <span>Shipment & Booking Information</span>
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
-                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                <label className="text-[11px] font-medium text-zinc-700 block mb-1">
                   Invoice / Reference No
                 </label>
                 <input
                   type="text"
                   value={formData.invoiceNumber}
                   onChange={(e) => setFormData(p => ({ ...p, invoiceNumber: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-slate-900 outline-none"
+                  className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-zinc-900 outline-none"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                <label className="text-[11px] font-medium text-zinc-700 block mb-1">
                   Booking Number
                 </label>
                 <input
                   type="text"
                   value={formData.bookingNumber || ''}
                   onChange={(e) => setFormData(p => ({ ...p, bookingNumber: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-900 outline-none"
+                  className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg px-2.5 py-1.5 text-xs font-mono text-zinc-900 outline-none"
                   placeholder="e.g. BKG-MSC-99201"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                <label className="text-[11px] font-medium text-zinc-700 block mb-1">
                   Vessel & Voyage
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -634,39 +632,39 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     type="text"
                     value={formData.vesselName || ''}
                     onChange={(e) => setFormData(p => ({ ...p, vesselName: e.target.value.toUpperCase() }))}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                    className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg px-2 py-1.5 text-xs font-medium text-zinc-900 outline-none"
                     placeholder="Vessel"
                   />
                   <input
                     type="text"
                     value={formData.voyageNumber || ''}
                     onChange={(e) => setFormData(p => ({ ...p, voyageNumber: e.target.value.toUpperCase() }))}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 outline-none"
+                    className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg px-2 py-1.5 text-xs font-mono text-zinc-900 outline-none"
                     placeholder="Voyage"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                <label className="text-[11px] font-medium text-zinc-700 block mb-1">
                   Port of Loading
                 </label>
                 <input
                   type="text"
                   value={formData.portOfLoading}
                   onChange={(e) => setFormData(p => ({ ...p, portOfLoading: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                  className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-900 outline-none"
                 />
               </div>
 
               <div className="md:col-span-2">
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-700">
+                  <label className="text-[11px] font-medium text-zinc-700">
                     Shipper / Exporter
                   </label>
                   <select
                     onChange={handleSelectExporter}
-                    className="text-[10px] bg-slate-100 text-slate-700 rounded px-2 py-0.5 border border-slate-200 outline-none cursor-pointer"
+                    className="text-[10px] bg-zinc-50 hover:bg-zinc-100 text-zinc-700 rounded px-1.5 py-0.5 border border-zinc-200 outline-none cursor-pointer"
                     defaultValue=""
                   >
                     <option value="" disabled>Auto-fill Profile...</option>
@@ -679,56 +677,56 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                   type="text"
                   value={formData.exporterName}
                   onChange={(e) => setFormData(p => ({ ...p, exporterName: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                  className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-900 outline-none"
                 />
               </div>
 
               <div className="md:col-span-2">
-                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
+                <label className="text-[11px] font-medium text-zinc-700 block mb-1">
                   Consignee / Buyer
                 </label>
                 <input
                   type="text"
                   value={formData.consigneeName}
                   onChange={(e) => setFormData(p => ({ ...p, consigneeName: e.target.value }))}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-900 outline-none"
+                  className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-900 outline-none"
                 />
               </div>
             </div>
           </div>
 
           {/* Section 2: Line Items & HazMat Flags */}
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <span>Cargo Line Items & Dangerous Goods Flags</span>
+          <div className="space-y-3 bg-white p-4 rounded-xl border border-zinc-200 shadow-2xs">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+              <h3 className="font-semibold text-zinc-900 uppercase tracking-wider text-[11px]">
+                Cargo Line Items & Dangerous Goods Flags
               </h3>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+            <div className="border border-zinc-200 rounded-lg overflow-hidden">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-600 text-[11px] font-semibold border-b border-slate-200 uppercase">
-                    <th className="py-2.5 px-3 w-8">#</th>
-                    <th className="py-2.5 px-3">Description & DG Attributes</th>
-                    <th className="py-2.5 px-3 w-28">HSN Code</th>
-                    <th className="py-2.5 px-3 w-20 text-right">Qty</th>
-                    <th className="py-2.5 px-3 w-28 text-right">Gross Wt</th>
-                    <th className="py-2.5 px-3 w-32 text-center">HazMat (#DG)</th>
+                  <tr className="bg-zinc-50 text-zinc-600 text-[11px] font-medium border-b border-zinc-200 uppercase">
+                    <th className="py-2 px-3 w-8">#</th>
+                    <th className="py-2 px-3">Description & DG Attributes</th>
+                    <th className="py-2 px-3 w-28">HSN Code</th>
+                    <th className="py-2 px-3 w-20 text-right">Qty</th>
+                    <th className="py-2 px-3 w-28 text-right">Gross Wt</th>
+                    <th className="py-2 px-3 w-32 text-center">HazMat (#DG)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-zinc-100">
                   {formData.lineItems.map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-slate-50/60">
-                      <td className="py-2.5 px-3 text-slate-400 font-mono text-center">
+                    <tr key={item.id} className="hover:bg-zinc-50/60">
+                      <td className="py-2 px-3 text-zinc-400 font-mono text-center">
                         {idx + 1}
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2 px-3">
                         <input
                           type="text"
                           value={item.description}
                           onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-800 font-medium outline-none"
+                          className="w-full bg-white border border-zinc-200 focus:border-zinc-400 rounded px-2 py-1 text-xs text-zinc-800 font-medium outline-none"
                         />
                         {item.isDangerousGood && (
                           <div className="mt-1 flex flex-wrap gap-2 text-[10px]">
@@ -737,50 +735,50 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                               value={item.unNumber || 'UN 1993'}
                               onChange={(e) => handleItemChange(idx, 'unNumber', e.target.value)}
                               placeholder="UN Number"
-                              className="font-mono text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 outline-none w-20"
+                              className="font-mono text-zinc-800 bg-zinc-100 border border-zinc-200 rounded px-1.5 py-0.5 outline-none w-20"
                             />
                             <input
                               type="text"
                               value={item.imoClass || 'Class 3'}
                               onChange={(e) => handleItemChange(idx, 'imoClass', e.target.value)}
                               placeholder="IMO Class"
-                              className="font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 outline-none w-24"
+                              className="font-medium text-zinc-800 bg-zinc-100 border border-zinc-200 rounded px-1.5 py-0.5 outline-none w-24"
                             />
                             <input
                               type="text"
                               value={item.flashPoint || ''}
                               onChange={(e) => handleItemChange(idx, 'flashPoint', e.target.value)}
                               placeholder="Flash Point (e.g. 23C)"
-                              className="text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 outline-none w-28"
+                              className="text-zinc-600 bg-zinc-50 border border-zinc-200 rounded px-1.5 py-0.5 outline-none w-28"
                             />
                           </div>
                         )}
                       </td>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2 px-3">
                         <input
                           type="text"
                           value={item.hsnCode}
                           onChange={(e) => handleItemChange(idx, 'hsnCode', e.target.value.replace(/[^0-9]/g, ''))}
-                          className="w-full font-mono text-xs bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                          className="w-full font-mono text-xs bg-white border border-zinc-200 rounded px-2 py-1 outline-none"
                         />
                       </td>
-                      <td className="py-2.5 px-3 text-right">
+                      <td className="py-2 px-3 text-right">
                         <input
                           type="number"
                           value={item.quantity}
                           onChange={(e) => handleItemChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                          className="w-full font-mono text-right bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                          className="w-full font-mono text-right bg-white border border-zinc-200 rounded px-2 py-1 outline-none tabular-nums"
                         />
                       </td>
-                      <td className="py-2.5 px-3 text-right">
+                      <td className="py-2 px-3 text-right">
                         <input
                           type="number"
                           value={item.grossWeightKg}
                           onChange={(e) => handleItemChange(idx, 'grossWeightKg', parseFloat(e.target.value) || 0)}
-                          className="w-full font-mono text-right bg-white border border-slate-200 rounded px-2 py-1 outline-none"
+                          className="w-full font-mono text-right bg-white border border-zinc-200 rounded px-2 py-1 outline-none tabular-nums"
                         />
                       </td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2 px-3 text-center">
                         <button
                           type="button"
                           onClick={() => {
@@ -790,10 +788,10 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                               setFormData(p => ({ ...p, hasDangerousGoods: true }));
                             }
                           }}
-                          className={`px-2 py-1 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                          className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer border ${
                             item.isDangerousGood
-                              ? 'bg-rose-100 text-rose-700 border border-rose-300'
-                              : 'bg-slate-100 text-slate-500 hover:text-slate-800'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200/80'
+                              : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 border-zinc-200'
                           }`}
                         >
                           {item.isDangerousGood ? 'HazMat (DG)' : 'Non-Hazardous'}
@@ -812,11 +810,11 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
           PANEL C: GENERATED #DG & BOL DOCUMENTS (WITH TEMPLATE SELECTOR)
          ========================================================================= */}
       {viewMode === 'documents' && (
-        <div className="flex-1 flex flex-col overflow-hidden bg-slate-100/70">
+        <div className="flex-1 flex flex-col overflow-hidden bg-zinc-50/50">
           {/* Template Bar */}
-          <div className="h-14 px-6 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 gap-4">
-            <div className="flex items-center space-x-3">
-              <span className="text-xs font-bold text-slate-700">Template Layout:</span>
+          <div className="h-12 px-5 bg-white border-b border-zinc-200 flex items-center justify-between shrink-0 gap-3">
+            <div className="flex items-center space-x-2.5">
+              <span className="text-xs font-medium text-zinc-600">Template:</span>
               <select
                 value={activeGeneratedDoc?.documentType === 'DG' ? formData.selectedDgTemplateId : formData.selectedBolTemplateId}
                 onChange={(e) => {
@@ -829,7 +827,7 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                     setActiveGeneratedDoc(generateMasterBol(formData, val));
                   }
                 }}
-                className="text-xs font-semibold bg-slate-50 text-slate-900 border border-slate-200 rounded-lg px-3 py-1.5 outline-none cursor-pointer"
+                className="text-xs font-medium bg-zinc-50 text-zinc-800 border border-zinc-200 rounded-md px-2.5 py-1 outline-none cursor-pointer hover:bg-zinc-100"
               >
                 {activeGeneratedDoc?.documentType === 'DG'
                   ? DOCUMENT_TEMPLATES.filter(t => t.type === 'DG').map(t => (
@@ -846,10 +844,10 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
               <button
                 type="button"
                 onClick={() => handleGenerateBol()}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                   activeGeneratedDoc?.documentType === 'BOL'
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    ? 'bg-zinc-900 text-white'
+                    : 'border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700'
                 }`}
               >
                 Master BOL
@@ -858,10 +856,10 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
               <button
                 type="button"
                 onClick={() => handleGenerateDg()}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                   activeGeneratedDoc?.documentType === 'DG'
-                    ? 'bg-rose-600 text-white'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    ? 'bg-zinc-900 text-white'
+                    : 'border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700'
                 }`}
               >
                 #DG Declaration
@@ -872,19 +870,19 @@ const ActivePreviewPaneContent: React.FC<ActiveContentProps> = ({
                   <button
                     type="button"
                     onClick={() => printDocument(activeGeneratedDoc.formattedHtml)}
-                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                    className="p-1.5 border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 rounded-md transition-colors cursor-pointer"
                     title="Print Document"
                   >
-                    <Printer className="w-4 h-4" />
+                    <Printer className="w-3.5 h-3.5" />
                   </button>
 
                   <button
                     type="button"
                     onClick={() => downloadDocumentHtml(activeGeneratedDoc)}
-                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                    className="p-1.5 border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 rounded-md transition-colors cursor-pointer"
                     title="Download HTML"
                   >
-                    <Download className="w-4 h-4" />
+                    <Download className="w-3.5 h-3.5" />
                   </button>
                 </>
               )}
