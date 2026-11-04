@@ -41,7 +41,9 @@ export function generateMasterBol(
     ? invoice.containers.flatMap(c => c.pallets)
     : (invoice.pallets || []);
   const palletNumbers = allPallets.map(p => p.palletNumber).filter(Boolean);
-  const formattedRanges = formatSequentialPalletRanges(palletNumbers);
+  const formattedRanges = invoice.palletRanges && invoice.palletRanges.length > 0
+    ? invoice.palletRanges
+    : formatSequentialPalletRanges(palletNumbers);
 
   // Marks and numbers block
   const marksLines = (invoice.shippingMarks || 'KAUNG SWANN\nHTET TRADING\nMYANMAR')
@@ -49,9 +51,14 @@ export function generateMasterBol(
     .map(line => line.trim())
     .filter(Boolean);
 
-  // Goods description components
-  const primaryItem = invoice.lineItems[0];
-  const goodsDescription = primaryItem?.description || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES';
+  // Goods description components (Statutory override with secondary model specifications)
+  const statutoryDescription = invoice.statutoryDescription || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES';
+  const uniqueModels = Array.from(new Set(
+    [
+      ...invoice.lineItems.map(it => it.modelNumber),
+      ...allPallets.map(p => p.modelOrDescription)
+    ].filter(Boolean)
+  )) as string[];
   const brandName = invoice.brandName || 'DYNEX MATRIX';
   const hsnCode = invoice.hsnCode || '85071000';
   const shippingBills = invoice.shippingBillNumbers
@@ -216,9 +223,14 @@ export function generateMasterBol(
 
           <!-- Column 3: Description of Goods & Customs / SB details -->
           <td>
-            <div style="font-weight: 700; margin-bottom: 3px;">
-              ${goodsDescription}
+            <div style="font-weight: 700; margin-bottom: 3px; font-size: 11px;">
+              ${statutoryDescription}
             </div>
+            ${uniqueModels.length > 0 ? `
+              <div style="font-size: 9.5px; color: #475569; margin-bottom: 4px; line-height: 1.35;">
+                ${uniqueModels.join(', ')}
+              </div>
+            ` : ''}
             <div style="font-size: 10px; margin-bottom: 2px;">
               <strong>${brandName}</strong>
             </div>
@@ -314,20 +326,12 @@ export function generateMasterBol(
         <div class="val" style="font-size: 11px; color: #16a34a; font-weight: bold;">
           ${invoice.freightTerms || (invoice.incoterm === 'CIF' || invoice.incoterm === 'CFR' ? 'FREIGHT PREPAID' : 'FREIGHT COLLECT')}
         </div>
-        <div style="margin-top: 4px; font-size: 9px; color: #64748b;">
-          Payable at: ${invoice.freightTerms === 'FREIGHT PREPAID' || invoice.incoterm === 'CIF' ? displayPol : displayPod}
-        </div>
       </div>
 
       <div style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px; text-align: right;">
-        <span class="label">Dated at & Certified By</span>
-        <div class="val" style="font-weight: 700;">Ekdant Logistics Pvt Ltd</div>
-        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">
-          As Agents for Carrier | Date of Issue: ${dateStr}
-        </div>
-        <div style="margin-top: 6px; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 16px; color: #1e293b;">
-          Authorized Signature
-        </div>
+        <span class="label">Signed for the Carrier</span>
+        <div style="height: 26px; border-bottom: 1px solid #94a3b8; width: 70%; margin-left: auto; margin-top: 12px;"></div>
+        <div style="font-size: 8.5px; color: #64748b; margin-top: 3px;">Authorized Signatory / As Carrier</div>
       </div>
     </div>
 

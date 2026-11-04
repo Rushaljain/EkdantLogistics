@@ -121,7 +121,9 @@ export function generateDgDeclaration(
 
   // Pallet serial ranges breakdown
   const palletNumbers = invoice.pallets?.map(p => p.palletNumber) || [];
-  const palletRanges = formatSequentialPalletRanges(palletNumbers);
+  const palletRanges = invoice.palletRanges && invoice.palletRanges.length > 0
+    ? invoice.palletRanges
+    : formatSequentialPalletRanges(palletNumbers);
   const palletRangesStr = palletRanges.length > 0 ? palletRanges.join(', ') : '4956 TO 4963, 4964, 4533 TO 4546, TAL/1703/2026 TO TAL/1709/2026';
 
   const containersSummary = `${containerNo} (20' GP, Seal: ${sealNo}) - ${totalPallets} Pallets [${palletRangesStr}] (${totalGrossKg.toLocaleString()} kg)`;
@@ -382,9 +384,9 @@ export function generateDgDeclaration(
           <strong>Name/Status of Declarant:</strong> ${declarantName} / ${declarantStatus}<br/>
           <strong>Place and Date:</strong> ${dateStr}
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 6px;">
-          <div class="signature-font">${declarantName}</div>
-          <span style="font-size: 8px; color: #444; border-top: 1px solid #000; padding-top: 2px;">Signature of Declarant</span>
+        <div style="margin-top: 10px;">
+          <div style="height: 24px; border-bottom: 1px solid #000; width: 65%;"></div>
+          <span style="font-size: 8px; color: #444; padding-top: 2px; display: block;">Signature of Declarant</span>
         </div>
       </div>
 
@@ -396,8 +398,8 @@ export function generateDgDeclaration(
           <div class="legal-text" style="margin-top: 2px;">
             Received the above number of packages/containers/trailers in apparent good order and condition, unless stated hereon:
           </div>
-          <div style="margin-top: 4px; font-size: 8.5px; color: #555;">
-            Haulier's Name: ${invoice.haulierName || 'INTERMODAL LOGISTICS'} &nbsp;|&nbsp; Vehicle Reg: ${invoice.vehicleRegNo || 'MH-46-AR-2190'}
+          <div style="margin-top: 6px; font-size: 8.5px; color: #333;">
+            Haulier's Name: ${invoice.haulierName ? `<strong>${invoice.haulierName}</strong>` : '________________________'} &nbsp;&nbsp;|&nbsp;&nbsp; Vehicle Reg: ${invoice.vehicleRegNo ? `<strong>${invoice.vehicleRegNo}</strong>` : '____________________'}
           </div>
         </div>
 
@@ -409,9 +411,9 @@ export function generateDgDeclaration(
             <span>Name/Status: <strong>${declarantName} / ${declarantStatus}</strong></span><br/>
             <span>Place & Date: <strong>${dateStr}</strong></span>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 4px;">
-            <div class="signature-font">${declarantName}</div>
-            <span style="font-size: 8px; color: #444; border-top: 1px solid #000; padding-top: 2px;">Authorized HazMat Shipper Signature</span>
+          <div style="margin-top: 10px;">
+            <div style="height: 24px; border-bottom: 1px solid #000; width: 65%;"></div>
+            <span style="font-size: 8px; color: #444; padding-top: 2px; display: block;">Authorized HazMat Shipper Signature</span>
           </div>
         </div>
       </div>

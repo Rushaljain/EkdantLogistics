@@ -5,6 +5,7 @@
 import * as XLSX from 'xlsx';
 import type { ConvertedInvoice, LineItem, Pallet, CustomsPort } from '../types';
 import { optimizeContainerAllocation } from './containerOptimizer';
+import { formatSequentialPalletRanges } from './dgGenerator';
 
 export interface SpreadsheetExtractionResult {
   invoice: ConvertedInvoice;
@@ -31,6 +32,27 @@ function readVerticalBlock(
     if (val && val !== '---' && val !== '0') {
       result.push(val);
     }
+  }
+  return result;
+}
+
+/**
+ * Robust integer range expander helper:
+ * Any string matching (\d+)\s*(?:TO|-)\s*(\d+) interpolates and includes every integer in that range.
+ * E.g., "4533 TO 4546" -> ["4533", "4534", ..., "4546"]
+ */
+export function interpolateIntegerRanges(rangeStr: string): string[] {
+  const trimmed = rangeStr.trim();
+  const match = trimmed.match(/(\d+)\s*(?:TO|-)\s*(\d+)/i);
+  if (!match) return [trimmed];
+  const start = parseInt(match[1], 10);
+  const end = parseInt(match[2], 10);
+  if (isNaN(start) || isNaN(end) || start > end || end - start > 1000) {
+    return [trimmed];
+  }
+  const result: string[] = [];
+  for (let n = start; n <= end; n++) {
+    result.push(String(n));
   }
   return result;
 }
@@ -100,10 +122,18 @@ export async function extractFromSpreadsheet(
     const expLines = readVerticalBlock(invRows, 0, 3, 7, /^Consignee:?$/i);
     if (expLines.length > 0) {
       exporterName = expLines[0].replace(/LIMITESD/i, 'LIMITED').trim();
-      shipperAddress = expLines.slice(1).join(', ').trim();
+      let addr = expLines.slice(1).join(', ').trim();
+      // Ensure PIN code 700 020 is complete and not truncated
+      if (/KOLKATA/i.test(addr) && !/700\s*020|700020/.test(addr)) {
+        addr = addr.replace(/KOLKATA\s*,?\s*(?:WEST\s*BENGAL)?\s*,?\s*INDIA/i, 'KOLKATA – 700 020, WEST BENGAL, INDIA');
+        if (!/700\s*020/.test(addr)) {
+          addr = addr.replace(/KOLKATA/i, 'KOLKATA – 700 020');
+        }
+      }
+      shipperAddress = addr;
     } else {
       exporterName = 'EXIDE INDUSTRIES LIMITED';
-      shipperAddress = 'EXIDE HOUSE, 59E, CHOWRINGHEE ROAD, KOLKATA, WEST BENGAL, INDIA';
+      shipperAddress = 'EXIDE HOUSE, 59/E, CHOWRINGHEE ROAD, KOLKATA – 700 020, WEST BENGAL, INDIA';
     }
 
     // === B. On Behalf Of (Col 2, Rows 3 to 7) ===
@@ -150,16 +180,19 @@ export async function extractFromSpreadsheet(
       portOfLoading = rawPol;
     }
 
-    const rawPod = String(invRows[28]?.[0] || '').trim();
+    const rawPod = String(invRows[28]?.[0] || invRows[27]?.[0] || '').trim();
     if (rawPod && rawPod !== '0' && rawPod !== '---') {
       portOfDischarge = rawPod;
+    } else {
+      const podMatch = combinedText.match(/(?:YANGON,\s*MYANMAR|YANGON)/i);
+      if (podMatch) portOfDischarge = 'YANGON, MYANMAR';
     }
 
-    const rawDest = String(invRows[28]?.[2] || '').trim();
+    const rawDest = String(invRows[28]?.[2] || invRows[27]?.[2] || '').trim();
     if (rawDest && rawDest !== '0' && rawDest !== '---') {
       finalDestination = rawDest;
     } else {
-      finalDestination = portOfDischarge;
+      finalDestination = portOfDischarge || 'YANGON, MYANMAR';
     }
 
     // Vessel / Voyage: If 0, "0", "---", or empty -> empty string (DO NOT hardcode!)
@@ -291,7 +324,8 @@ export async function extractFromSpreadsheet(
         const item: LineItem = {
           id: itemId,
           itemNumber: pallets.length + 1,
-          description: model,
+          description: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
+          modelNumber: model,
           hsnCode,
           quantity: Math.round(boxQty),
           uqc: 'BOX',
@@ -415,6 +449,32 @@ export async function extractFromSpreadsheet(
     </div>
   `;
 
+  // Calculate exact sequential pallet range for this invoice
+  let invoicePalletRange: string | undefined;
+  if (pallets.length > 0) {
+    const rawNums = pallets.map(p => p.palletNumber).filter(Boolean);
+    const talNums = rawNums
+      .map(n => n.match(/^TAL\/(\d+)\/2026$/i))
+      .filter((m): m is RegExpMatchArray => Boolean(m))
+      .map(m => parseInt(m[1], 10));
+    const plainNums = rawNums
+      .filter(n => /^\d+$/.test(n))
+      .map(n => parseInt(n, 10));
+
+    if (talNums.length > 0 && plainNums.length === 0) {
+      const minTal = Math.min(...talNums);
+      const maxTal = Math.max(...talNums);
+      invoicePalletRange = minTal === maxTal ? `TAL/${minTal}/2026` : `TAL/${minTal}/2026 TO TAL/${maxTal}/2026`;
+    } else if (plainNums.length > 0 && talNums.length === 0) {
+      const minNum = Math.min(...plainNums);
+      const maxNum = Math.max(...plainNums);
+      invoicePalletRange = minNum === maxNum ? `${minNum}` : `${minNum} TO ${maxNum}`;
+    } else {
+      const formatted = formatSequentialPalletRanges(rawNums);
+      if (formatted.length > 0) invoicePalletRange = formatted.join(', ');
+    }
+  }
+
   const invoice: ConvertedInvoice = {
     id: `inv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     fileName: file.name,
@@ -451,6 +511,8 @@ export async function extractFromSpreadsheet(
     totalPackages: totalBoxes,
     packageType: 'BOX',
     totalPallets: pallets.length,
+    palletRanges: invoicePalletRange ? [invoicePalletRange] : undefined,
+    statutoryDescription: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
     hasDangerousGoods: true,
     selectedBolTemplateId: 'bol-standard',
     selectedDgTemplateId: 'dg-imo-standard',

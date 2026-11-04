@@ -19,6 +19,14 @@ interface ManageMasterFormatsViewProps {
   onDeleteFormat: (formatId: string) => void;
 }
 
+function generateFormatId(): string {
+  return `fmt-custom-${Date.now()}`;
+}
+
+function getFormattedDate(): string {
+  return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export const ManageMasterFormatsView: React.FC<ManageMasterFormatsViewProps> = ({
   formats,
   onAddFormat,
@@ -74,13 +82,13 @@ export const ManageMasterFormatsView: React.FC<ManageMasterFormatsViewProps> = (
     }
 
     const newFormat: MasterFormat = {
-      id: `fmt-custom-${Date.now()}`,
+      id: generateFormatId(),
       name: formatName.trim(),
       carrierOrClient: carrierName.trim() || 'Custom Shipping Line',
       description: `Format layout for ${carrierName.trim() || 'shipping line'} reference.`,
       isPreseeded: false,
       uploadedFileName: selectedFile?.name,
-      uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      uploadedAt: getFormattedDate(),
       fileContent,
       fileType
     };
@@ -115,7 +123,7 @@ export const ManageMasterFormatsView: React.FC<ManageMasterFormatsViewProps> = (
 
       onReplaceFormat(replacingFormatId, {
         uploadedFileName: file.name,
-        uploadedAt: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        uploadedAt: getFormattedDate(),
         fileContent,
         fileType
       }, file);

@@ -139,8 +139,8 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-zinc-900 shrink-0" />
             <span className="truncate">
               {effectiveMode === 'multiple'
-                ? `Auto-Verified: Multi-Invoice Consolidation (${documents.length} Files Merged -> 1 DG & 1 BL)`
-                : `Auto-Verified: Single Invoice Mode (${documents.length} Invoice -> 1 DG & 1 BL)`}
+                ? `Auto-Verified: Multi-Invoice Consolidation (${documents.length} ${documents.length === 1 ? 'File' : 'Files'} Merged -> 1 DG & 1 BL)`
+                : `Auto-Verified: Single Invoice Mode (${documents.length} ${documents.length === 1 ? 'Invoice' : 'Invoices'} -> 1 DG & 1 BL)`}
             </span>
           </div>
         )}
@@ -154,7 +154,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 onChange={(e) => onConversionModeChange?.(e.target.value as 'single' | 'multiple')}
                 className="w-full appearance-none rounded-lg px-2.5 py-1.5 text-xs font-medium border border-zinc-300 hover:border-zinc-400 bg-white text-zinc-900 transition-colors outline-none cursor-pointer pr-8 shadow-2xs"
               >
-                <option value="multiple">Multi-Invoice Consolidation ({documents.length} Files → 1 DG & 1 BL)</option>
+                <option value="multiple">Multi-Invoice Consolidation ({documents.length} {documents.length === 1 ? 'File' : 'Files'} → 1 DG & 1 BL)</option>
                 <option value="single">Single Invoice Mode (Process Independently)</option>
               </select>
               <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
@@ -166,7 +166,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
 
         {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {effectiveMode === 'multiple' && consolidatedInvoice && documents.length > 1 && (
+          {effectiveMode === 'multiple' && consolidatedInvoice && (
             <div 
               onClick={() => onSelectDocument('consolidated')}
               className={`p-2.5 rounded-lg border cursor-pointer transition-all ${

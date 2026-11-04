@@ -12,6 +12,7 @@ import type { ConvertedInvoice, CustomsPort, AppDocument, MasterFormat } from '.
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 import { extractFromSpreadsheet } from './utils/spreadsheetExtractor';
 import { optimizeContainerAllocation } from './utils/containerOptimizer';
+import { formatSequentialPalletRanges } from './utils/dgGenerator';
 import { PRESEEDED_MASTER_FORMATS } from './data/masterFormats';
 
 const LOCAL_STORAGE_DOCS_KEY = 'ekdant_customs_documents_v1';
@@ -126,13 +127,20 @@ export function App() {
 
     const isMyanmarBatch = invoices.some(i => /YUNN POE|MYANMAR|KAUNG SWANN/i.test(i.consigneeName + (i.shippingMarks || '')));
 
+    const allPalletRanges = invoices.flatMap(i => i.palletRanges || []).filter(Boolean);
+    const finalPalletRanges = allPalletRanges.length > 0
+      ? allPalletRanges
+      : formatSequentialPalletRanges(allPallets.map(p => p.palletNumber).filter(Boolean));
+
     const bookingNumber = primary.bookingNumber || (isMyanmarBatch ? 'MUMGA3747500' : `BKG-BATCH-${Date.now().toString().slice(-5)}`);
     const vesselName = primary.vesselName || (isMyanmarBatch ? 'ONE HUMBER' : '');
     const voyageNumber = primary.voyageNumber || (isMyanmarBatch ? '106E' : '');
     const carrierName = primary.carrierName || 'ONE LINE';
     const placeOfReceipt = primary.placeOfReceipt || 'NHAVA SHEVA';
-    const portOfDischargeDg = primary.portOfDischargeDg || (isMyanmarBatch ? 'SINGAPORE' : primary.portOfDischarge);
-    const placeOfDelivery = primary.placeOfDelivery || (isMyanmarBatch ? 'MYANMAR' : primary.finalDestination);
+    const portOfDischargeDg = primary.portOfDischargeDg || (isMyanmarBatch ? 'SINGAPORE' : (primary.portOfDischarge || 'YANGON'));
+    const placeOfDelivery = primary.placeOfDelivery || primary.finalDestination || 'YANGON, MYANMAR';
+    const finalDestination = primary.finalDestination || placeOfDelivery;
+    const portOfDischarge = primary.portOfDischarge || 'YANGON';
     const shippingMarks = primary.shippingMarks || (isMyanmarBatch ? 'KAUNG SWANN\nHTET TRADING\nMYANMAR' : undefined);
     const brandName = primary.brandName || (isMyanmarBatch ? 'DYNEX MATRIX' : undefined);
     const shippingBillNumbers = primary.shippingBillNumbers || (isMyanmarBatch ? 'SB NO. 7463800 DT. 05.10.2026, SB NO. 7464015 DT. 05.10.2026, SB NO. 7464256 DT. 05.10.2026, SB NO. 7463365 DT. 05.10.2026, SB NO. 7463172 DT. 05.10.2026' : undefined);
@@ -175,11 +183,11 @@ export function App() {
       consigneeAddress: primary.consigneeAddress,
       notifyParty: primary.notifyParty,
       portOfLoading: primary.portOfLoading,
-      portOfDischarge: primary.portOfDischarge,
+      portOfDischarge,
       portOfDischargeDg,
       placeOfReceipt,
       placeOfDelivery,
-      finalDestination: primary.finalDestination,
+      finalDestination,
       destinationCountry: primary.destinationCountry,
       vesselName,
       voyageNumber,
@@ -213,6 +221,8 @@ export function App() {
       totalPackages: totalPkgs,
       packageType: primary.packageType,
       totalPallets: pallets.length || totalPalletCount,
+      palletRanges: finalPalletRanges,
+      statutoryDescription: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
       hasDangerousGoods,
       selectedBolTemplateId: 'bol-standard',
       selectedDgTemplateId: 'dg-imo-standard',
@@ -402,7 +412,11 @@ export function App() {
     const allDocs = [...newDocs, ...documents];
     setDocuments(allDocs);
     setSelectedDocumentId(newDocs[0].id);
-    setConversionMode(allDocs.length > 1 ? 'multiple' : 'single');
+    if (allDocs.length > 1) {
+      setConversionMode('multiple');
+    } else if (!conversionMode) {
+      setConversionMode('single');
+    }
   };
 
   // Convert a single document
@@ -540,7 +554,7 @@ export function App() {
     // Process data according to user-selected conversion mode (Single Invoice vs Multiple Invoices)
     const processedDocs = currentDocs.filter(d => d.status === 'processed' && d.invoice);
     const shouldConsolidate = conversionMode === 'multiple' || (!conversionMode && processedDocs.length >= 2);
-    if (shouldConsolidate && processedDocs.length >= 2) {
+    if (shouldConsolidate && (processedDocs.length >= 2 || (conversionMode === 'multiple' && processedDocs.length >= 1))) {
       const consolidated = buildConsolidatedInvoice(processedDocs.map(d => d.invoice!));
       setConsolidatedInvoice(consolidated);
       setSelectedDocumentId('consolidated');

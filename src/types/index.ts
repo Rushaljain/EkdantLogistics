@@ -33,6 +33,7 @@ export interface LineItem extends DangerousGoodsInfo {
   total: number;
   netWeightKg: number;
   grossWeightKg: number;
+  modelNumber?: string;
   palletNumber?: string;      // e.g. "PLT-5644"
   containerNumber?: string;   // e.g. "MSCU7829104"
 }
@@ -156,6 +157,8 @@ export interface ConvertedInvoice {
   freightTerms?: 'FREIGHT COLLECT' | 'FREIGHT PREPAID';
   movementType?: string;      // e.g. "FCL / CY"
   freeTimeClause?: string;    // e.g. "14 DAYS FREE TIME DETENTION AT DESTINATION"
+  palletRanges?: string[];    // e.g. ["4956 TO 4963", "4964", "4533 TO 4546", ...]
+  statutoryDescription?: string; // e.g. "LEAD ACID AUTOMOTIVE STORAGE BATTERIES"
   blDeclaredNetWeightKg?: number; // Optional override if BL body net weight differs
   dgPackingGroupOverride?: 'I' | 'II' | 'III' | 'NA';
   dgDeclarantName?: string;   // e.g. "SUJOY DUTTA"
