@@ -23,11 +23,12 @@ import type {
 import { generateMasterBol, printDocument, downloadDocumentHtml } from '../utils/bolGenerator';
 import { generateDgDeclaration } from '../utils/dgGenerator';
 import { ContainerQcBoard } from './ContainerQcBoard';
+import { ShipmentManifestPane } from './ShipmentManifestPane';
 import { recalculateContainer, createEmptyContainer } from '../utils/containerAllocator';
 import { optimizeContainerAllocation } from '../utils/containerOptimizer';
 import { reconcileShipment } from '../utils/reconciliationEngine';
 
-export type RightPaneViewMode = 'invoices' | 'container_plan' | 'dg' | 'bl';
+export type RightPaneViewMode = 'invoices' | 'container_plan' | 'manifest' | 'dg' | 'bl';
 
 interface PreviewPaneProps {
   documents: AppDocument[];
@@ -249,6 +250,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             >
               <option value="invoices">View Invoices ({documents.length})</option>
               <option value="container_plan">Container Plan</option>
+              <option value="manifest">Shipment & Manifest</option>
               <option value="dg">View DG</option>
               <option value="bl">View BL</option>
             </select>
@@ -521,6 +523,29 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* =========================================================================
+          VIEW: SHIPMENT & CARRIER MANIFEST
+         ========================================================================= */}
+      {activeView === 'manifest' && (
+        formData ? (
+          <ShipmentManifestPane
+            invoice={formData}
+            onUpdateInvoice={(updated: ConvertedInvoice) => {
+              setFormData(updated);
+              onSave(updated);
+            }}
+          />
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-center p-12 text-zinc-400">
+            <Boxes className="w-10 h-10 mb-2 text-zinc-300" />
+            <h3 className="text-xs font-semibold text-zinc-800">No Active Shipment Manifest</h3>
+            <p className="text-[11px] text-zinc-400 mt-1 max-w-sm">
+              Process your shipment invoices in the left panel to populate and edit manifest fields.
+            </p>
+          </div>
+        )
       )}
 
       {/* =========================================================================
