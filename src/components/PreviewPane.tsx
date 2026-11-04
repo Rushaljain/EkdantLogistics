@@ -186,10 +186,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
          ========================================================================= */}
       <div className="h-14 px-5 bg-white border-b border-zinc-200 flex items-center justify-between shrink-0 gap-3 select-none">
         {/* Left: View Selector + Master Format Selector */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 min-w-0">
           {/* 1. View Selector Dropdown */}
-          <div className="flex items-center space-x-1.5">
-            <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+          <div className="flex items-center space-x-1.5 shrink-0">
+            <span className="text-[10px] font-mono font-medium text-zinc-400 uppercase tracking-wider">
               View:
             </span>
             <select
@@ -205,14 +205,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           </div>
 
           {/* 2. Output Format Selector Dropdown */}
-          <div className="flex items-center space-x-1.5">
-            <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-              Master Format:
+          <div className="flex items-center space-x-1.5 min-w-0">
+            <span className="text-[10px] font-mono font-medium text-zinc-400 uppercase tracking-wider shrink-0">
+              Format:
             </span>
             <select
               value={selectedFormatId}
               onChange={(e) => onSelectFormat(e.target.value)}
-              className="text-xs font-medium bg-white text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1.5 outline-none cursor-pointer hover:bg-zinc-50 shadow-2xs max-w-[260px] truncate"
+              className="text-xs font-medium bg-white text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1.5 outline-none cursor-pointer hover:bg-zinc-50 shadow-2xs max-w-[240px] truncate"
               title="Select Master BL & #DG layout format"
             >
               {masterFormats.map(fmt => (

@@ -175,26 +175,12 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
          ========================================================================= */}
       <div className="bg-white border-b border-zinc-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div>
-          <div className="flex items-center space-x-2">
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
-              Interactive QC Table
-            </span>
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
-              Drag-and-Drop Active
-            </span>
-            {hasDangerousGoods && (
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200/60 flex items-center gap-1">
-                <Flame className="w-3 h-3 text-rose-500" />
-                <span>HazMat Safety Gate</span>
-              </span>
-            )}
-          </div>
-          <h2 className="text-sm font-semibold text-zinc-900 tracking-tight mt-1 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-zinc-900 tracking-tight flex items-center gap-2">
             <Boxes className="w-4 h-4 text-zinc-700" />
             <span>Container Distribution & Pallet QC</span>
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Drag pallet rows between containers to balance weight. Constraints: <strong className="text-zinc-700">25,000 kg cap</strong> and <strong className="text-zinc-700">11-pallet floor limit</strong> per 20' container.
+            Drag pallet rows between containers to balance weight. Max 25,000 kg cap and 11-pallet floor limit per 20' container.
           </p>
         </div>
 
@@ -294,71 +280,83 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                     : 'border-zinc-200'
                 }`}
               >
-                {/* Column Table Header */}
-                <div className="pb-3 border-b border-zinc-100 flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className={`w-5 h-5 rounded font-mono text-[11px] font-semibold flex items-center justify-center ${
-                      isSpillover ? 'bg-zinc-200 text-zinc-800' : 'bg-zinc-900 text-white'
-                    }`}>
-                      {cIdx + 1}
-                    </span>
-                    <div>
-                      <div className="font-mono font-medium text-xs text-zinc-900 tracking-tight flex items-center gap-1.5">
-                        {onContainerFieldChange ? (
-                          <input
-                            type="text"
-                            value={cont.containerNumber}
-                            onChange={(e) => onContainerFieldChange(cont.id, 'containerNumber', e.target.value)}
-                            className="font-mono font-semibold text-xs text-zinc-900 bg-transparent hover:bg-zinc-50 focus:bg-white px-1 py-0.5 rounded border border-transparent hover:border-zinc-200 focus:border-zinc-400 outline-none w-28"
-                          />
-                        ) : (
-                          <span>{cont.containerNumber}</span>
-                        )}
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-zinc-100 text-zinc-600 border border-zinc-200">
-                          {isSpillover ? 'Spillover' : "20' Std"}
+                {/* Column Table Header (Strict 2-Row Layout to Prevent Overlaps) */}
+                <div className="pb-3 border-b border-zinc-100 space-y-2">
+                  {/* Row 1: Container Number Badge + Container Type Dropdown + Delete Button */}
+                  <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center space-x-1.5 min-w-0">
+                      <span className={`w-5 h-5 rounded font-mono text-[11px] font-semibold flex items-center justify-center shrink-0 ${
+                        isSpillover ? 'bg-zinc-200 text-zinc-800' : 'bg-zinc-900 text-white'
+                      }`}>
+                        {cIdx + 1}
+                      </span>
+                      {onContainerFieldChange ? (
+                        <input
+                          type="text"
+                          value={cont.containerNumber}
+                          onChange={(e) => onContainerFieldChange(cont.id, 'containerNumber', e.target.value)}
+                          className="font-mono font-semibold text-xs text-zinc-900 bg-zinc-50 hover:bg-zinc-100 focus:bg-white px-1.5 py-0.5 rounded border border-zinc-200 focus:border-zinc-400 outline-none w-28 truncate"
+                          title="Container Number"
+                        />
+                      ) : (
+                        <span className="font-mono font-semibold text-xs text-zinc-900 truncate">
+                          {cont.containerNumber}
                         </span>
-                      </div>
-                      <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-1">
-                        <span>Seal:</span>
-                        {onContainerFieldChange ? (
-                          <input
-                            type="text"
-                            value={cont.sealNumber}
-                            onChange={(e) => onContainerFieldChange(cont.id, 'sealNumber', e.target.value)}
-                            className="font-mono text-[10px] text-zinc-700 bg-transparent hover:bg-zinc-50 focus:bg-white px-1 py-0.2 rounded border border-transparent hover:border-zinc-200 outline-none w-20"
-                          />
-                        ) : (
-                          <span className="text-zinc-600">{cont.sealNumber}</span>
-                        )}
-                        <span>• Tare: {spec.tareWeightKg.toLocaleString()} kg</span>
-                      </div>
+                      )}
+                      {isSpillover && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-zinc-100 text-zinc-600 border border-zinc-200 shrink-0">
+                          Spill
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center space-x-1 shrink-0">
+                      {onContainerTypeChange && (
+                        <select
+                          value={cont.containerType}
+                          onChange={(e) => onContainerTypeChange(cont.id, e.target.value as ContainerType)}
+                          className="text-[10px] font-medium bg-zinc-50 text-zinc-700 rounded px-1.5 py-1 border border-zinc-200 outline-none cursor-pointer hover:bg-zinc-100 max-w-[125px] truncate"
+                          title="Container Type & Specs"
+                        >
+                          <option value="20GP">20' GP (25T/11P)</option>
+                          <option value="40GP">40' GP (26.5T/24P)</option>
+                          <option value="40HC">40' HC (26.5T/24P)</option>
+                          <option value="45HC">45' HC (27.8T/26P)</option>
+                        </select>
+                      )}
+
+                      {containers.length > 1 && onDeleteContainer && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteContainer(cont.id)}
+                          className="p-1 text-zinc-300 hover:text-rose-600 rounded transition-colors cursor-pointer shrink-0"
+                          title="Remove Container"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-1.5 shrink-0">
-                    {onContainerTypeChange && (
-                      <select
-                        value={cont.containerType}
-                        onChange={(e) => onContainerTypeChange(cont.id, e.target.value as ContainerType)}
-                        className="text-[10px] font-medium bg-zinc-50 text-zinc-700 rounded px-1.5 py-0.5 border border-zinc-200 outline-none cursor-pointer hover:bg-zinc-100"
-                      >
-                        <option value="20GP">20' GP (25T/11Plt)</option>
-                        <option value="40GP">40' GP (26.5T/24Plt)</option>
-                        <option value="40HC">40' HC (26.5T/24Plt)</option>
-                        <option value="45HC">45' HC (27.8T/26Plt)</option>
-                      </select>
-                    )}
-
-                    {containers.length > 1 && onDeleteContainer && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteContainer(cont.id)}
-                        className="p-1 text-zinc-300 hover:text-rose-600 rounded transition-colors"
-                        title="Remove Container"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                  {/* Row 2: Seal Number + Tare Weight Metadata */}
+                  <div className="flex items-center justify-between text-[10.5px] font-mono text-zinc-500 pt-0.5 px-0.5">
+                    <div className="flex items-center space-x-1 min-w-0">
+                      <span className="text-[10px] text-zinc-400">Seal:</span>
+                      {onContainerFieldChange ? (
+                        <input
+                          type="text"
+                          value={cont.sealNumber}
+                          onChange={(e) => onContainerFieldChange(cont.id, 'sealNumber', e.target.value)}
+                          className="font-mono text-[10px] text-zinc-700 bg-transparent hover:bg-zinc-50 focus:bg-white px-1 py-0.2 rounded border border-transparent hover:border-zinc-200 outline-none w-24 truncate"
+                          title="Seal Number"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-zinc-700 font-medium truncate">{cont.sealNumber}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-zinc-400 shrink-0">
+                      Tare: {spec.tareWeightKg.toLocaleString()} kg
+                    </span>
                   </div>
                 </div>
 
@@ -387,6 +385,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                               : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/40 shadow-2xs'
                           }`}
                         >
+                          {/* Row 1: Pallet ID + Package Count + Clean Right-Aligned Gross Weight */}
                           <div className="flex items-center justify-between gap-1.5">
                             <div className="flex items-center space-x-1.5 min-w-0">
                               <GripVertical className="w-3.5 h-3.5 text-zinc-300 group-hover:text-zinc-600 shrink-0" />
@@ -398,35 +397,37 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                               </span>
                             </div>
 
-                            <div className="font-mono text-xs font-semibold text-zinc-800 tabular-nums">
+                            <div className="font-mono text-xs font-semibold text-zinc-900 tabular-nums shrink-0">
                               {pallet.grossWeightKg.toLocaleString()} kg
                             </div>
                           </div>
 
+                          {/* Row 2: Cargo Model / Description */}
                           <div className="mt-1 text-[11px] font-normal text-zinc-600 truncate pl-5">
                             {modelText}
                           </div>
 
+                          {/* Row 3: Compact HazMat Badge / Dimensions Footer */}
                           <div className="mt-2 pt-1.5 border-t border-zinc-100 flex items-center justify-between gap-1.5 pl-5 text-[10px] font-mono">
-                            <div className="flex items-center space-x-1">
+                            <div className="flex items-center space-x-1.5 min-w-0 truncate">
                               {pallet.isDangerousGoods ? (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-mono text-[10px] font-medium bg-zinc-100 text-zinc-800 border border-zinc-200">
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded font-mono text-[9.5px] font-medium bg-zinc-100 text-zinc-800 border border-zinc-200 shrink-0">
                                   <Flame className="w-2.5 h-2.5 text-rose-500" />
                                   <span>{pallet.unNumber || 'UN 2794'}</span>
                                 </span>
                               ) : (
                                 <span className="text-zinc-400">Net: {pallet.netWeightKg.toLocaleString()} kg</span>
                               )}
-                              <span className="text-zinc-400">• {pallet.dimensions || DEFAULT_PALLET_DIMENSIONS}</span>
+                              <span className="text-zinc-400 truncate">• {pallet.dimensions || DEFAULT_PALLET_DIMENSIONS}</span>
                             </div>
 
                             {containers.length > 1 && (
                               <select
                                 value={cont.id}
                                 onChange={(e) => handleDirectMove(pallet.id, cont.id, e.target.value)}
-                                className="text-[9px] bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded px-1.5 py-0.5 text-zinc-600 cursor-pointer font-sans"
+                                className="text-[9px] bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded px-1.5 py-0.5 text-zinc-600 cursor-pointer font-sans shrink-0"
                                 onClick={(e) => e.stopPropagation()}
-                                title="Move pallet"
+                                title="Move pallet to another container"
                               >
                                 {containers.map((c, idx) => (
                                   <option key={c.id} value={c.id}>
