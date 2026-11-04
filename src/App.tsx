@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FolderArchive, Search, Plus } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import type { NavTab } from './components/Sidebar';
 import { CenterColumn } from './components/CenterColumn';
@@ -28,9 +28,8 @@ export function App() {
   // Navigation: 'converter' (working workspace) or 'files' (archived tiles library)
   const [activeTab, setActiveTab] = useState<NavTab>('converter');
 
-  // Files Repository Search & Port Filter
+  // Files Repository Search
   const [fileSearchQuery, setFileSearchQuery] = useState<string>('');
-  const [filePortFilter, setFilePortFilter] = useState<'ALL' | string>('ALL');
 
   // Conversion Mode: 'single' (1 invoice -> 1 DG/BL), 'multiple' (consolidated multi-invoice), or '' ('Select Type')
   const [conversionMode, setConversionMode] = useState<'single' | 'multiple' | ''>('');
@@ -695,83 +694,17 @@ export function App() {
 
         {/* Right Section: Tab-dependent Header Controls */}
         {activeTab === 'converter' ? null : (
-          /* Files Repository Global Header Controls (Seamlessly aligned with NO vertical divider) */
-          <div className="flex-1 flex items-center justify-between ml-6 min-w-0">
-            {/* Title & Count */}
-            <div className="flex items-center space-x-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-zinc-100 text-zinc-700 flex items-center justify-center shrink-0">
-                <FolderArchive className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex items-center space-x-2">
-                <h2 className="text-xs font-semibold text-zinc-900 tracking-tight">
-                  Saved Shipments Repository
-                </h2>
-                <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-100 text-zinc-700 border border-zinc-200 font-mono">
-                  {savedFiles.length} {savedFiles.length === 1 ? 'shipment' : 'shipments'}
-                </span>
-              </div>
-            </div>
-
-            {/* Search, Filter & Action Button */}
-            <div className="flex items-center space-x-2.5 shrink-0">
-              {/* Search Box */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={fileSearchQuery}
-                  onChange={(e) => setFileSearchQuery(e.target.value)}
-                  placeholder="Search shipments..."
-                  className="w-48 lg:w-60 pl-8 pr-3 py-1 bg-zinc-50 border border-zinc-200 focus:border-zinc-400 rounded-lg text-xs text-zinc-800 placeholder-zinc-400 focus:bg-white outline-none transition-colors"
-                />
-              </div>
-
-              {/* Port Filter */}
-              <div className="flex items-center bg-zinc-100 p-0.5 rounded-lg border border-zinc-200/80 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setFilePortFilter('ALL')}
-                  className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer text-xs ${
-                    filePortFilter === 'ALL'
-                      ? 'bg-white text-zinc-900 font-medium shadow-2xs'
-                      : 'text-zinc-600 hover:text-zinc-900'
-                  }`}
-                >
-                  All Ports
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilePortFilter('INNSA1')}
-                  className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer text-xs ${
-                    filePortFilter === 'INNSA1'
-                      ? 'bg-white text-zinc-900 font-medium shadow-2xs'
-                      : 'text-zinc-600 hover:text-zinc-900'
-                  }`}
-                >
-                  Nhava Sheva
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilePortFilter('INBOM4')}
-                  className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer text-xs ${
-                    filePortFilter === 'INBOM4'
-                      ? 'bg-white text-zinc-900 font-medium shadow-2xs'
-                      : 'text-zinc-600 hover:text-zinc-900'
-                  }`}
-                >
-                  Mumbai Air
-                </button>
-              </div>
-
-              {/* New Shipment Action */}
-              <button
-                type="button"
-                onClick={() => setActiveTab('converter')}
-                className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>New Shipment</span>
-              </button>
+          /* Files Repository Header: Search shipments */
+          <div className="flex-1 flex items-center justify-end ml-6 min-w-0">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={fileSearchQuery}
+                onChange={(e) => setFileSearchQuery(e.target.value)}
+                placeholder="Search shipments..."
+                className="w-48 lg:w-60 pl-8 pr-3 py-1 bg-zinc-50 border border-zinc-200 focus:border-zinc-400 rounded-lg text-xs text-zinc-800 placeholder-zinc-400 focus:bg-white outline-none transition-colors"
+              />
             </div>
           </div>
         )}
@@ -825,7 +758,7 @@ export function App() {
           <FilesView
             files={savedFiles}
             searchQuery={fileSearchQuery}
-            portFilter={filePortFilter}
+            portFilter="ALL"
             onOpenInConverter={handleOpenInConverter}
             onDeleteFile={handleDeleteSavedFile}
             onClearAllFiles={handleClearAllSavedFiles}
