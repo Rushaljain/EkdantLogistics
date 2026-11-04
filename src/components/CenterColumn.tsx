@@ -35,11 +35,11 @@ interface CenterColumnProps {
 
 export const CenterColumn: React.FC<CenterColumnProps> = ({
   documents,
-  selectedDocumentId,
+  selectedDocumentId: _selectedDocumentId,
   consolidatedInvoice,
   conversionMode = '',
   onConversionModeChange,
-  onSelectDocument,
+  onSelectDocument: _onSelectDocument,
   onFilesSelected,
   onConvertDocument,
   onConvertAll,
@@ -159,52 +159,35 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
         {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
           {conversionMode === 'multiple' && consolidatedInvoice && documents.length > 1 && (
-            <div
-              onClick={() => onSelectDocument('consolidated')}
-              className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
-                selectedDocumentId === 'consolidated'
-                  ? 'bg-zinc-900 text-white border-zinc-900 ring-1 ring-zinc-900 shadow-xs'
-                  : 'bg-zinc-100 hover:bg-zinc-200/80 border-zinc-300 text-zinc-900 shadow-2xs'
-              }`}
-            >
+            <div className="p-2.5 rounded-lg border border-zinc-900 bg-zinc-900 text-white shadow-xs">
               <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center space-x-1.5 min-w-0">
-                  <span className={`font-semibold text-xs font-mono truncate ${selectedDocumentId === 'consolidated' ? 'text-white' : 'text-zinc-900'}`}>
+                  <span className="font-semibold text-xs font-mono truncate text-white">
                     Consolidated Master ({documents.filter(d => d.status === 'processed').length} Invoices)
                   </span>
-                  <span className={`inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 ${
-                    selectedDocumentId === 'consolidated'
-                      ? 'bg-zinc-800 text-zinc-200 border border-zinc-700'
-                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                  }`}>
+                  <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 bg-zinc-800 text-zinc-200 border border-zinc-700">
                     <CheckCircle2 className="w-2.5 h-2.5" />
                     <span>1 DG & 1 BL</span>
                   </span>
                 </div>
-                <span className={`text-[10px] font-mono font-medium shrink-0 ${selectedDocumentId === 'consolidated' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                <span className="text-[10px] font-mono font-medium shrink-0 text-zinc-400">
                   MASTER
                 </span>
               </div>
-              <div className={`flex items-center justify-between mt-2 pt-1.5 text-[11px] gap-2 border-t ${
-                selectedDocumentId === 'consolidated' ? 'border-zinc-800 text-zinc-300' : 'border-zinc-200 text-zinc-600'
-              }`}>
+              <div className="flex items-center justify-between mt-2 pt-1.5 text-[11px] gap-2 border-t border-zinc-800 text-zinc-300">
                 <div className="truncate min-w-0">
                   <span className="font-mono text-[10px]">
                     {consolidatedInvoice.containers?.length || 1} Cont • {Math.round(consolidatedInvoice.grossWeightKg || 0).toLocaleString()} kg • {consolidatedInvoice.totalPallets} Plts
                   </span>
                 </div>
-                <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center space-x-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
                       const bol = generateMasterBol(consolidatedInvoice);
                       downloadDocumentHtml(bol);
                     }}
-                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
-                      selectedDocumentId === 'consolidated'
-                        ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700'
-                        : 'bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-200'
-                    }`}
+                    className="px-2 py-0.5 text-[10px] font-medium rounded transition-colors bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 cursor-pointer"
                     title="Download Master BOL"
                   >
                     BOL
@@ -216,11 +199,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         const dg = generateDgDeclaration(consolidatedInvoice);
                         downloadDocumentHtml(dg);
                       }}
-                      className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
-                        selectedDocumentId === 'consolidated'
-                          ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700'
-                          : 'bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-200'
-                      }`}
+                      className="px-2 py-0.5 text-[10px] font-medium rounded transition-colors bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 cursor-pointer"
                       title="Download Consolidated #DG Declaration"
                     >
                       #DG
@@ -242,7 +221,6 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             </div>
           ) : (
             documents.map(doc => {
-              const isSelected = doc.id === selectedDocumentId;
               const isProcessing = doc.status === 'processing';
               const isProcessed = doc.status === 'processed' && Boolean(doc.invoice);
               const isFailed = doc.status === 'failed';
@@ -251,12 +229,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
               return (
                 <div
                   key={doc.id}
-                  onClick={() => onSelectDocument(doc.id)}
-                  className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-white border-zinc-900 ring-1 ring-zinc-900 shadow-xs'
-                      : 'bg-white hover:bg-zinc-50/80 border-zinc-200 shadow-2xs'
-                  }`}
+                  className="p-2.5 rounded-lg border border-zinc-200 bg-white shadow-2xs"
                 >
                   {isProcessed && inv ? (
                     <>
