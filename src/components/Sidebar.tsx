@@ -1,14 +1,14 @@
 import React from 'react';
 import { Layers, FolderArchive, SlidersHorizontal } from 'lucide-react';
 
-export type NavTab = 'converter' | 'files';
+export type NavTab = 'converter' | 'files' | 'formats';
 
 interface SidebarProps {
   activeTab?: NavTab;
   onSelectTab?: (tab: NavTab) => void;
   savedFilesCount?: number;
+  masterFormatsCount?: number;
   onOpenKeyModal?: () => void;
-  onOpenFormatsModal?: () => void;
   showHeader?: boolean;
 }
 
@@ -16,7 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'converter',
   onSelectTab,
   savedFilesCount = 0,
-  onOpenFormatsModal,
+  masterFormatsCount = 0,
 }) => {
   return (
     <aside className="w-60 h-full bg-white border-r border-zinc-200 flex flex-col shrink-0 select-none">
@@ -56,16 +56,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
 
         {/* Manage Master Formats */}
-        {onOpenFormatsModal && (
-          <button
-            type="button"
-            onClick={onOpenFormatsModal}
-            className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-all text-left cursor-pointer font-normal"
-          >
-            <SlidersHorizontal className="w-4 h-4 shrink-0 text-zinc-400" />
-            <span className="flex-1 truncate">Manage Master Formats</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => onSelectTab?.('formats')}
+          className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs transition-all text-left cursor-pointer ${
+            activeTab === 'formats'
+              ? 'bg-zinc-100 text-zinc-900 font-medium'
+              : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 font-normal'
+          }`}
+        >
+          <SlidersHorizontal className={`w-4 h-4 shrink-0 ${activeTab === 'formats' ? 'text-zinc-900' : 'text-zinc-400'}`} />
+          <span className="flex-1 truncate">Manage Master Formats</span>
+          {masterFormatsCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-200/80 text-zinc-700 font-mono">
+              {masterFormatsCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Bottom System & Container Status Indicator */}

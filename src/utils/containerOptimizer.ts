@@ -317,16 +317,19 @@ export function optimizeContainerAllocation(
 
   // 2. Apply LAFF Heuristic:
   // Sort pallets descending: Heaviest Gross Weight First, then Largest Footprint Area First
-  const sortedPallets = [...rawPallets].sort((a, b) => {
-    // Primary: Gross Weight descending
-    const weightDiff = (b.grossWeightKg || 0) - (a.grossWeightKg || 0);
-    if (Math.abs(weightDiff) > 0.01) return weightDiff;
+  // When existingPallets are provided from a verified packing list, preserve their logical sequence by default
+  const sortedPallets = (existingPallets && existingPallets.length > 0 && options.preservePalletOrder !== false)
+    ? [...rawPallets]
+    : [...rawPallets].sort((a, b) => {
+        // Primary: Gross Weight descending
+        const weightDiff = (b.grossWeightKg || 0) - (a.grossWeightKg || 0);
+        if (Math.abs(weightDiff) > 0.01) return weightDiff;
 
-    // Secondary: Area descending
-    const areaA = a.footprintAreaMm2 || parseFootprintAreaMm2(a.dimensions);
-    const areaB = b.footprintAreaMm2 || parseFootprintAreaMm2(b.dimensions);
-    return areaB - areaA;
-  });
+        // Secondary: Area descending
+        const areaA = a.footprintAreaMm2 || parseFootprintAreaMm2(a.dimensions);
+        const areaB = b.footprintAreaMm2 || parseFootprintAreaMm2(b.dimensions);
+        return areaB - areaA;
+      });
 
   // 3. Multi-Container Allocation with Spillover
   const containers: ContainerAllocation[] = [];
@@ -460,7 +463,7 @@ function finalizeContainer(
   const net = Number(cont.totalNetWeightKg.toFixed(2));
   const palletCount = cont.pallets.length;
 
-  const maxPalletsLimit = cont.maxPallets || 11;
+  const maxPalletsLimit = cont.maxPallets || 22;
   const weightUtil = Math.round((gross / cont.maxPayloadKg) * 100);
   const palletUtil = Math.round((palletCount / maxPalletsLimit) * 100);
 

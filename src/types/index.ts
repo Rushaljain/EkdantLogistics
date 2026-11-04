@@ -4,7 +4,7 @@
 export type ContainerType = '20GP' | '40GP' | '40HC' | '45HC';
 
 export const CONTAINER_SPECS: Record<ContainerType, { name: string; maxPayloadKg: number; tareWeightKg: number; cbm: number; maxPallets: number }> = {
-  '20GP': { name: "20' General Purpose", maxPayloadKg: 25000, tareWeightKg: 2300, cbm: 33.2, maxPallets: 11 },
+  '20GP': { name: "20' General Purpose", maxPayloadKg: 25000, tareWeightKg: 2150, cbm: 33.2, maxPallets: 22 },
   '40GP': { name: "40' General Purpose", maxPayloadKg: 26500, tareWeightKg: 3750, cbm: 67.7, maxPallets: 24 },
   '40HC': { name: "40' High Cube", maxPayloadKg: 26500, tareWeightKg: 3900, cbm: 76.4, maxPallets: 24 },
   '45HC': { name: "45' High Cube", maxPayloadKg: 27800, tareWeightKg: 4800, cbm: 86.0, maxPallets: 26 }
@@ -85,6 +85,8 @@ export interface MasterFormat {
   isPreseeded?: boolean;
   uploadedFileName?: string;
   uploadedAt?: string;
+  fileContent?: string;
+  fileType?: string;
 }
 
 export interface DocumentTemplate {
@@ -127,6 +129,7 @@ export interface ConvertedInvoice {
   // Parties
   exporterName: string;       // Shipper
   shipperAddress?: string;
+  onBehalfOf?: string;
   iec?: string;
   gstin?: string;
   adCode?: string;
@@ -135,15 +138,37 @@ export interface ConvertedInvoice {
   notifyParty?: string;
   
   // Routing & Shipping References
+  carrierName?: string;       // e.g. "ONE LINE", "CMA CGM"
   portOfLoading: string;      // e.g. "Nhava Sheva (INNSA1)"
-  portOfDischarge: string;    // e.g. "Rotterdam (NLRTM)"
-  placeOfReceipt?: string;
+  portOfDischarge: string;    // e.g. "Rotterdam (NLRTM)", "YANGON, MYANMAR"
+  portOfDischargeDg?: string; // e.g. "SINGAPORE" (if transshipment port on DG differs from BL POD)
+  placeOfReceipt?: string;    // e.g. "NHAVA SHEVA"
+  placeOfDelivery?: string;   // e.g. "MYANMAR"
   finalDestination?: string;
   destinationCountry: string; // 2-letter ISO (DE, US, NL, etc.)
   vesselName?: string;
   voyageNumber?: string;
-  shippingBillNumber?: string;
+  shippingMarks?: string;     // e.g. "KAUNG SWANN\nHTET TRADING\nMYANMAR"
+  brandName?: string;         // e.g. "DYNEX MATRIX"
+  hsnCode?: string;           // e.g. "85071000"
+  shippingBillNumber?: string;// e.g. "7463800"
+  shippingBillNumbers?: string; // e.g. "SB NO. 7463800 DT. 05.10.2026, SB NO. 7464015 DT. 05.10.2026..."
+  freightTerms?: 'FREIGHT COLLECT' | 'FREIGHT PREPAID';
+  movementType?: string;      // e.g. "FCL / CY"
+  freeTimeClause?: string;    // e.g. "14 DAYS FREE TIME DETENTION AT DESTINATION"
+  blDeclaredNetWeightKg?: number; // Optional override if BL body net weight differs
+  dgPackingGroupOverride?: 'I' | 'II' | 'III' | 'NA';
+  dgDeclarantName?: string;   // e.g. "SUJOY DUTTA"
+  dgDeclarantStatus?: string; // e.g. "EXPORT MANAGER"
+  dgDeclarationPlaceAndDate?: string; // e.g. "MUMBAI / 07.10.2026"
   emergencyContact?: string;
+  emergencyContactName?: string; // e.g. "MR. SUJOY"
+  emergencyContactPhone?: string;// e.g. "9729899131"
+  unPackingCode?: string;     // e.g. "4G/Z 30/S/IND/K/19700134"
+  segregationGroup?: string;  // e.g. "SGG1"
+  emsNumber?: string;         // e.g. "F-A-S-B"
+  haulierName?: string;
+  vehicleRegNo?: string;
   signatoryName?: string;
   signatoryTitle?: string;
   

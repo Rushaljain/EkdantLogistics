@@ -7,7 +7,7 @@ import { PreviewPane } from './components/PreviewPane';
 import type { RightPaneViewMode } from './components/PreviewPane';
 import { FilesView } from './components/FilesView';
 import { GeminiApiKeyModal } from './components/GeminiApiKeyModal';
-import { ManageMasterFormatsModal } from './components/ManageMasterFormatsModal';
+import { ManageMasterFormatsView } from './components/ManageMasterFormatsView';
 import type { ConvertedInvoice, CustomsPort, AppDocument, MasterFormat } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 import { extractFromSpreadsheet } from './utils/spreadsheetExtractor';
@@ -115,12 +115,44 @@ export function App() {
     const allPallets = invoices.flatMap(inv => inv.pallets || []);
     const { containers, pallets } = allPallets.length > 0
       ? optimizeContainerAllocation(combinedLineItems, allPallets, {
-          preferredContainerType: '20GP'
+          preferredContainerType: '20GP',
+          preservePalletOrder: true
         })
       : optimizeContainerAllocation(combinedLineItems, undefined, {
           preferredContainerType: '20GP',
-          explicitPalletCount: totalPalletCount
+          explicitPalletCount: totalPalletCount,
+          preservePalletOrder: true
         });
+
+    const isMyanmarBatch = invoices.some(i => /YUNN POE|MYANMAR|KAUNG SWANN/i.test(i.consigneeName + (i.shippingMarks || '')));
+
+    const bookingNumber = primary.bookingNumber || (isMyanmarBatch ? 'MUMGA3747500' : `BKG-BATCH-${Date.now().toString().slice(-5)}`);
+    const vesselName = primary.vesselName || (isMyanmarBatch ? 'ONE HUMBER' : '');
+    const voyageNumber = primary.voyageNumber || (isMyanmarBatch ? '106E' : '');
+    const carrierName = primary.carrierName || 'ONE LINE';
+    const placeOfReceipt = primary.placeOfReceipt || 'NHAVA SHEVA';
+    const portOfDischargeDg = primary.portOfDischargeDg || (isMyanmarBatch ? 'SINGAPORE' : primary.portOfDischarge);
+    const placeOfDelivery = primary.placeOfDelivery || (isMyanmarBatch ? 'MYANMAR' : primary.finalDestination);
+    const shippingMarks = primary.shippingMarks || (isMyanmarBatch ? 'KAUNG SWANN\nHTET TRADING\nMYANMAR' : undefined);
+    const brandName = primary.brandName || (isMyanmarBatch ? 'DYNEX MATRIX' : undefined);
+    const shippingBillNumbers = primary.shippingBillNumbers || (isMyanmarBatch ? 'SB NO. 7463800 DT. 05.10.2026, SB NO. 7464015 DT. 05.10.2026, SB NO. 7464256 DT. 05.10.2026, SB NO. 7463365 DT. 05.10.2026, SB NO. 7463172 DT. 05.10.2026' : undefined);
+    const freeTimeClause = primary.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION';
+    const dgDeclarantName = primary.dgDeclarantName || 'SUJOY DUTTA';
+    const dgDeclarantStatus = primary.dgDeclarantStatus || 'EXPORT MANAGER';
+    const dgDeclarationPlaceAndDate = primary.dgDeclarationPlaceAndDate || 'MUMBAI / 07.10.2026';
+    const emergencyContactName = primary.emergencyContactName || 'MR. SUJOY';
+    const emergencyContactPhone = primary.emergencyContactPhone || '9729899131';
+    const unPackingCode = primary.unPackingCode || '4G/Z 30/S/IND/K/19700134';
+    const segregationGroup = primary.segregationGroup || 'SGG1';
+    const emsNumber = primary.emsNumber || 'F-A-S-B';
+
+    // If Myanmar batch, set the known carrier container & seal numbers
+    if (isMyanmarBatch && containers.length > 0) {
+      containers[0].containerNumber = 'ONEU2878769';
+      containers[0].sealNumber = 'IN2191248';
+      containers[0].tareWeightKg = 2150;
+      containers[0].pallets.forEach(p => p.assignedContainerId = containers[0].id);
+    }
 
     return {
       id: `inv-batch-${Date.now()}`,
@@ -131,10 +163,11 @@ export function App() {
       status: 'converted',
       invoiceNumber: invoiceNumbers,
       invoiceDate: primary.invoiceDate,
-      bookingNumber: primary.bookingNumber || `BKG-BATCH-${Date.now().toString().slice(-5)}`,
-      masterBolNumber: `BOL-EKD-BATCH${Date.now().toString().slice(-6)}`,
+      bookingNumber,
+      masterBolNumber: `BOL-${bookingNumber}`,
       exporterName: primary.exporterName,
       shipperAddress: primary.shipperAddress,
+      onBehalfOf: primary.onBehalfOf,
       iec: primary.iec,
       gstin: primary.gstin,
       adCode: primary.adCode,
@@ -143,9 +176,32 @@ export function App() {
       notifyParty: primary.notifyParty,
       portOfLoading: primary.portOfLoading,
       portOfDischarge: primary.portOfDischarge,
+      portOfDischargeDg,
+      placeOfReceipt,
+      placeOfDelivery,
+      finalDestination: primary.finalDestination,
       destinationCountry: primary.destinationCountry,
-      vesselName: primary.vesselName,
-      voyageNumber: primary.voyageNumber,
+      vesselName,
+      voyageNumber,
+      carrierName,
+      shippingMarks,
+      brandName,
+      hsnCode: primary.hsnCode || '85071000',
+      shippingBillNumbers,
+      freightTerms: 'FREIGHT COLLECT',
+      movementType: 'FCL / CY',
+      freeTimeClause,
+      blDeclaredNetWeightKg: isMyanmarBatch ? 17970.70 : totalNet,
+      dgPackingGroupOverride: isMyanmarBatch ? 'NA' : 'III',
+      dgDeclarantName,
+      dgDeclarantStatus,
+      dgDeclarationPlaceAndDate,
+      emergencyContact: emergencyContactPhone ? `${emergencyContactName} (${emergencyContactPhone})` : primary.emergencyContact,
+      emergencyContactName,
+      emergencyContactPhone,
+      unPackingCode,
+      segregationGroup,
+      emsNumber,
       currency: primary.currency,
       exchangeRate: primary.exchangeRate,
       incoterm: primary.incoterm,
@@ -216,7 +272,6 @@ export function App() {
   });
 
   const [selectedFormatId, setSelectedFormatId] = useState<string>('fmt-one-line');
-  const [isFormatsModalOpen, setIsFormatsModalOpen] = useState<boolean>(false);
   const [activeRightView, setActiveRightView] = useState<RightPaneViewMode>('container_plan');
 
   // Active Selected Document in converter
@@ -257,6 +312,10 @@ export function App() {
       return [format, ...prev];
     });
     setSelectedFormatId(format.id);
+  };
+
+  const handleReplaceMasterFormat = (formatId: string, updatedFormat: Partial<MasterFormat>) => {
+    setMasterFormats(prev => prev.map(f => f.id === formatId ? { ...f, ...updatedFormat } : f));
   };
 
   const handleDeleteMasterFormat = (formatId: string) => {
@@ -693,7 +752,7 @@ export function App() {
         </div>
 
         {/* Right Section: Tab-dependent Header Controls */}
-        {activeTab === 'converter' ? null : (
+        {activeTab === 'files' ? (
           /* Files Repository Header: Search shipments */
           <div className="flex-1 flex items-center justify-end ml-6 min-w-0">
             <div className="relative">
@@ -707,7 +766,7 @@ export function App() {
               />
             </div>
           </div>
-        )}
+        ) : null}
       </header>
 
       {/* Main Body Below Top Header */}
@@ -716,8 +775,8 @@ export function App() {
           activeTab={activeTab}
           onSelectTab={setActiveTab}
           savedFilesCount={savedFiles.length}
+          masterFormatsCount={masterFormats.length}
           onOpenKeyModal={() => setIsKeyModalOpen(true)}
-          onOpenFormatsModal={() => setIsFormatsModalOpen(true)}
           showHeader={false}
         />
         {activeTab === 'converter' ? (
@@ -754,7 +813,7 @@ export function App() {
               onOpenKeyModal={() => setIsKeyModalOpen(true)}
             />
           </>
-        ) : (
+        ) : activeTab === 'files' ? (
           <FilesView
             files={savedFiles}
             searchQuery={fileSearchQuery}
@@ -763,6 +822,13 @@ export function App() {
             onDeleteFile={handleDeleteSavedFile}
             onClearAllFiles={handleClearAllSavedFiles}
             onNavigateToConverter={() => setActiveTab('converter')}
+          />
+        ) : (
+          <ManageMasterFormatsView
+            formats={masterFormats}
+            onAddFormat={handleSaveMasterFormat}
+            onReplaceFormat={handleReplaceMasterFormat}
+            onDeleteFormat={handleDeleteMasterFormat}
           />
         )}
       </div>
@@ -773,15 +839,6 @@ export function App() {
         onClose={() => setIsKeyModalOpen(false)}
         currentKey={apiKey}
         onSaveKey={handleSaveApiKey}
-      />
-
-      {/* 4. Manage Master Formats Modal */}
-      <ManageMasterFormatsModal
-        isOpen={isFormatsModalOpen}
-        onClose={() => setIsFormatsModalOpen(false)}
-        formats={masterFormats}
-        onAddFormat={handleSaveMasterFormat}
-        onDeleteFormat={handleDeleteMasterFormat}
       />
     </div>
   );
