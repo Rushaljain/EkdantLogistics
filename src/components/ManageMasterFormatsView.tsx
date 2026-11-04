@@ -5,7 +5,6 @@ import {
   Trash2, 
   Eye, 
   RefreshCw, 
-  Layers, 
   Plus, 
   X,
   FileSpreadsheet,
@@ -212,7 +211,7 @@ export const ManageMasterFormatsView: React.FC<ManageMasterFormatsViewProps> = (
   };
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-zinc-50 overflow-hidden select-none">
+    <div className="flex-1 h-full flex flex-col bg-zinc-50 overflow-hidden select-none relative">
       {/* Hidden file input for Replace action */}
       <input 
         ref={replaceInputRef}
@@ -222,123 +221,22 @@ export const ManageMasterFormatsView: React.FC<ManageMasterFormatsViewProps> = (
         className="hidden"
       />
 
-      {/* Top Banner / Actions Area */}
-      <div className="p-6 border-b border-zinc-200 bg-white shrink-0">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-sm font-semibold text-zinc-900 tracking-tight flex items-center gap-2">
-              <Layers className="w-4 h-4 text-zinc-700" />
-              <span>Master Formats Library</span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-100 text-zinc-600 border border-zinc-200">
-                {formats.length} {formats.length === 1 ? 'Format' : 'Formats'}
-              </span>
-            </h1>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Reference layouts and carrier templates used for generating Master Bill of Lading (BOL) and #DG Declarations.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowUploadForm(!showUploadForm)}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-xs transition-colors cursor-pointer"
-          >
-            {showUploadForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-            <span>{showUploadForm ? 'Cancel Upload' : 'Upload Format'}</span>
-          </button>
+      {/* Notifications Toast */}
+      {successMsg && (
+        <div className="absolute top-4 right-6 z-30 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center space-x-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{successMsg}</span>
         </div>
+      )}
 
-        {/* Notifications */}
-        {successMsg && (
-          <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {errorMsg && (
-          <div className="mt-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg">
-            {errorMsg}
-          </div>
-        )}
-
-        {/* Collapsible Upload Form */}
-        {showUploadForm && (
-          <form onSubmit={handleCreateFormat} className="mt-4 pt-4 border-t border-zinc-100 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium text-zinc-700 mb-1">
-                  Format Name *
-                </label>
-                <input
-                  type="text"
-                  value={formatName}
-                  onChange={(e) => setFormatName(e.target.value)}
-                  placeholder="e.g. Hapag-Lloyd Standard Master BL"
-                  className="w-full text-xs bg-white border border-zinc-200 rounded-lg px-3 py-1.5 outline-none focus:border-zinc-900 text-zinc-900 shadow-2xs"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-zinc-700 mb-1">
-                  Shipping Line Name *
-                </label>
-                <input
-                  type="text"
-                  value={carrierName}
-                  onChange={(e) => setCarrierName(e.target.value)}
-                  placeholder="e.g. Hapag-Lloyd, Maersk, MSC, ONE Line"
-                  className="w-full text-xs bg-white border border-zinc-200 rounded-lg px-3 py-1.5 outline-none focus:border-zinc-900 text-zinc-900 shadow-2xs"
-                />
-              </div>
-            </div>
-
-            {/* Drop Zone */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border border-dashed border-zinc-300 hover:border-zinc-500 rounded-lg p-4 text-center cursor-pointer bg-zinc-50/70 hover:bg-zinc-50 transition-colors"
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.docx,.xlsx,.xls,.csv,.html"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <UploadCloud className="w-5 h-5 mx-auto text-zinc-400 mb-1" />
-              <span className="text-xs font-medium text-zinc-800">
-                {selectedFile ? selectedFile.name : 'Select or drop reference Master BL / DG format file'}
-              </span>
-              <p className="text-[10px] text-zinc-400 mt-0.5">
-                Supports .pdf, .docx, .xlsx, .csv, and .html templates
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowUploadForm(false);
-                  setSelectedFile(null);
-                  setFormatName('');
-                  setCarrierName('');
-                }}
-                className="px-3 py-1.5 bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 rounded-lg text-xs font-medium transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-              >
-                Save Format
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
+      {errorMsg && (
+        <div className="absolute top-4 right-6 z-30 p-2.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
+          {errorMsg}
+        </div>
+      )}
 
       {/* Grid of Master Formats */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6 pb-24">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
           {formats.map((fmt) => (
             <div
@@ -441,6 +339,118 @@ export const ManageMasterFormatsView: React.FC<ManageMasterFormatsViewProps> = (
           ))}
         </div>
       </div>
+
+      {/* Floating Bottom-Right Action Button */}
+      <div className="absolute bottom-6 right-8 z-30">
+        <button
+          type="button"
+          onClick={() => setShowUploadForm(true)}
+          className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-full text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-xl hover:shadow-2xl transition-all hover:scale-105 active:scale-95 cursor-pointer border border-zinc-700/60"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Upload Format</span>
+        </button>
+      </div>
+
+      {/* Upload Modal (when floating button clicked) */}
+      {showUploadForm && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 select-none animate-in fade-in duration-150"
+          onClick={() => setShowUploadForm(false)}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-2xl border border-zinc-200 w-full max-w-lg overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-5 py-3.5 border-b border-zinc-200 flex items-center justify-between bg-white shrink-0">
+              <div className="flex items-center space-x-2">
+                <UploadCloud className="w-4 h-4 text-zinc-700" />
+                <h3 className="text-xs font-bold text-zinc-900">Upload Master Format</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUploadForm(false)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Form Body */}
+            <form onSubmit={handleCreateFormat} className="p-5 space-y-4">
+              <div>
+                <label className="block text-[11px] font-medium text-zinc-700 mb-1">
+                  Format Name *
+                </label>
+                <input
+                  type="text"
+                  value={formatName}
+                  onChange={(e) => setFormatName(e.target.value)}
+                  placeholder="e.g. Hapag-Lloyd Standard Master BL"
+                  className="w-full text-xs bg-white border border-zinc-200 rounded-lg px-3 py-2 outline-none focus:border-zinc-900 text-zinc-900 shadow-2xs"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-zinc-700 mb-1">
+                  Shipping Line Name *
+                </label>
+                <input
+                  type="text"
+                  value={carrierName}
+                  onChange={(e) => setCarrierName(e.target.value)}
+                  placeholder="e.g. Hapag-Lloyd, Maersk, MSC, ONE Line"
+                  className="w-full text-xs bg-white border border-zinc-200 rounded-lg px-3 py-2 outline-none focus:border-zinc-900 text-zinc-900 shadow-2xs"
+                />
+              </div>
+
+              {/* Drop Zone */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border border-dashed border-zinc-300 hover:border-zinc-500 rounded-lg p-5 text-center cursor-pointer bg-zinc-50/70 hover:bg-zinc-50 transition-colors"
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.xlsx,.xls,.csv,.html"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <UploadCloud className="w-6 h-6 mx-auto text-zinc-400 mb-1.5" />
+                <span className="text-xs font-medium text-zinc-800 block truncate">
+                  {selectedFile ? selectedFile.name : 'Select or drop reference Master BL / DG format file'}
+                </span>
+                <p className="text-[10px] text-zinc-400 mt-1">
+                  Supports .pdf, .docx, .xlsx, .csv, and .html templates
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUploadForm(false);
+                    setSelectedFile(null);
+                    setFormatName('');
+                    setCarrierName('');
+                  }}
+                  className="px-3.5 py-1.5 bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  Save Format
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Preview Modal */}
       {previewingFormat && (

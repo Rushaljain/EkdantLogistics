@@ -1,8 +1,18 @@
 // Master Bill of Lading (BOL) Document Generator
-// Formats multi-container & pallet breakdowns with corporate carrier layouts
+// Formats multi-container & pallet breakdowns with corporate carrier layouts matching BL DRAFT specifications
 
 import type { ConvertedInvoice, DocumentOutput } from '../types';
 import { DOCUMENT_TEMPLATES } from '../data/templates';
+import { formatSequentialPalletRanges } from './dgGenerator';
+
+function numberToWords(num: number): string {
+  const ones = ['', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+  if (num === 0) return 'ZERO';
+  if (num < 20) return ones[num];
+  if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? '-' + ones[num % 10] : '');
+  return String(num);
+}
 
 export function generateMasterBol(
   invoice: ConvertedInvoice,
@@ -11,69 +21,65 @@ export function generateMasterBol(
   const template = DOCUMENT_TEMPLATES.find(t => t.id === templateId) || DOCUMENT_TEMPLATES[0];
   const templateTitle = template?.name?.toUpperCase() || 'MASTER BILL OF LADING FOR OCEAN TRANSPORT';
 
-  const docNumber = invoice.masterBolNumber || `BOL-EKD-${invoice.invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const docNumber = invoice.masterBolNumber || (invoice.bookingNumber ? `BOL-${invoice.bookingNumber}` : `BOL-EKD-${invoice.invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`);
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const totalGross = invoice.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || invoice.grossWeightKg;
-  const totalPackages = invoice.containers.reduce((s, c) => s + c.totalPackages, 0) || invoice.totalPackages;
+  const totalNet = invoice.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || invoice.netWeightKg;
   const totalPallets = invoice.containers.reduce((s, c) => s + c.pallets.length, 0) || invoice.totalPallets;
 
-  const displayVessel = invoice.vesselName || 'TBN (To Be Nominated)';
-  const displayVoyage = invoice.voyageNumber || 'TBN';
-  const displayPod = invoice.portOfDischarge || 'To Be Nominated';
-  const displayPol = invoice.portOfLoading || 'Nhava Sheva (INNSA1)';
+  const displayVessel = invoice.vesselName || 'ONE HUMBER';
+  const displayVoyage = invoice.voyageNumber || '106E';
+  const displayPol = invoice.portOfLoading || 'NHAVA SHEVA, INDIA';
+  const displayPod = invoice.portOfDischarge || 'YANGON';
+  const displayDelivery = invoice.placeOfDelivery || invoice.finalDestination || 'MYANMAR';
+  const displayReceipt = invoice.placeOfReceipt || 'NHAVA SHEVA';
 
-  // Build containers summary text e.g. "MSCU7829104 [20GP] (Seal: EMC883921) - 11 Pallets, 18,500 kg"
+  // Pallet ranges formatting
+  const allPallets = invoice.containers.flatMap(c => c.pallets).length > 0
+    ? invoice.containers.flatMap(c => c.pallets)
+    : (invoice.pallets || []);
+  const palletNumbers = allPallets.map(p => p.palletNumber).filter(Boolean);
+  const formattedRanges = formatSequentialPalletRanges(palletNumbers);
+
+  // Marks and numbers block
+  const marksLines = (invoice.shippingMarks || 'KAUNG SWANN\nHTET TRADING\nMYANMAR')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  // Goods description components
+  const primaryItem = invoice.lineItems[0];
+  const goodsDescription = primaryItem?.description || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES';
+  const brandName = invoice.brandName || 'DYNEX MATRIX';
+  const hsnCode = invoice.hsnCode || '85071000';
+  const shippingBills = invoice.shippingBillNumbers
+    ? invoice.shippingBillNumbers.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
+  const hazItem = invoice.lineItems.find(it => it.isDangerousGood) || (invoice.hasDangerousGoods ? { unNumber: '2794', imoClass: '8', packingGroup: 'III' } : null);
+
+  const declaredNetWeight = invoice.blDeclaredNetWeightKg || totalNet;
+
+  // Container summary string for metadata
   const containersSummary = invoice.containers.map(c => 
     `${c.containerNumber} [${c.containerType}] (Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets, ${c.totalGrossWeightKg.toLocaleString()} kg`
   ).join('; ');
 
-  const containerRowsHtml = invoice.containers.map((cont) => {
-    const palletNumbers = cont.pallets.map(p => p.palletNumber).filter(Boolean);
-    const palletSerials = palletNumbers.length > 0
-      ? palletNumbers.join(', ')
-      : `${cont.pallets.length} Pallets Allocated`;
-    const cbmEstimate = (cont.totalGrossWeightKg / 300).toFixed(2);
-    const vgmNote = cont.tareWeightKg
-      ? `<br/><span style="font-size: 9px; color: #047857; font-weight: 600;">VGM (incl. tare): ${(cont.totalGrossWeightKg + cont.tareWeightKg).toLocaleString()} KGS</span>`
-      : '';
+  const contType = invoice.containers[0]?.containerType || '20GP';
+  const contTypeLabel = contType === '20GP' ? "20' FCL" : contType === '40GP' ? "40' FCL" : `${contType} FCL`;
+  const palletsWord = numberToWords(totalPallets);
 
-    const hazItem = invoice.lineItems.find(it => it.isDangerousGood);
-
-    return `
-      <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
-        <td style="padding: 10px; font-weight: bold; font-family: monospace;">
-          ${cont.containerNumber}<br/>
-          <span style="font-weight: normal; color: #64748b; font-size: 10px;">Seal: ${cont.sealNumber}</span><br/>
-          <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3; font-size: 9px; font-weight: 700; margin-top: 4px;">${cont.containerType}</span>
-          ${cont.isSpillover ? '<br/><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; background: #fef3c7; color: #b45309; font-size: 8px; font-weight: 700; margin-top: 2px;">SPILLOVER UNIT</span>' : ''}
-        </td>
-        <td style="padding: 10px; font-family: monospace;">
-          <strong>${cont.pallets.length} Pallets</strong><br/>
-          <div style="color: #4338ca; font-size: 9.5px; line-height: 1.35; margin-top: 2px; max-width: 250px; word-break: break-word;">
-            ${palletSerials}
-          </div>
-          <span style="color: #475569; font-size: 10px; margin-top: 3px; display: inline-block; font-weight: 600;">${cont.totalPackages} Packages</span>
-        </td>
-        <td style="padding: 10px;">
-          <strong>STC: ${invoice.lineItems[0]?.description || 'Commercial Merchandise'}</strong><br/>
-          <span style="font-size: 10px; color: #64748b;">Invoices: ${invoice.invoiceNumber} | Incoterm: ${invoice.incoterm}</span><br/>
-          ${cont.hasDangerousGoods 
-            ? `<span style="color: #dc2626; font-weight: bold; font-size: 10px;">⚠ DANGEROUS GOODS (${hazItem?.imoClass || 'Class 8'} / ${hazItem?.unNumber || 'UN 2794'} / PG ${hazItem?.packingGroup || 'III'})</span><br/><span style="font-size: 9px; color: #b91c1c;">${hazItem?.properShippingName || 'HAZARDOUS CARGO'}</span>` 
-            : '<span style="color: #16a34a; font-size: 10px;">Non-Hazardous General Cargo</span>'}
-        </td>
-        <td style="padding: 10px; text-align: right; font-family: monospace; font-weight: bold;">
-          ${cont.totalGrossWeightKg.toLocaleString()} KGS<br/>
-          <span style="font-weight: normal; color: #64748b; font-size: 10px;">Net: ${cont.totalNetWeightKg.toLocaleString()} KGS</span>
-          ${vgmNote}
-        </td>
-        <td style="padding: 10px; text-align: right; font-family: monospace;">
-          ${cbmEstimate} CBM
-        </td>
-      </tr>
-    `;
-  }).join('');
+  const containerTableRows = invoice.containers.map(c => `
+    <tr style="border-bottom: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px;">
+      <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #cbd5e1;">${c.containerNumber}</td>
+      <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1;">${c.sealNumber || '---'}</td>
+      <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1;">${c.pallets.length} PALLET</td>
+      <td style="padding: 6px 10px; text-align: right; border-right: 1px solid #cbd5e1;">${c.totalGrossWeightKg.toFixed(2)}</td>
+      <td style="padding: 6px 10px; text-align: right;">${c.totalNetWeightKg.toFixed(2)}</td>
+    </tr>
+  `).join('');
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -83,19 +89,23 @@ export function generateMasterBol(
   <title>Master Bill of Lading - ${docNumber}</title>
   <style>
     @media print {
-      body { margin: 0; padding: 0; background: #fff; }
+      body { margin: 0; padding: 0; background: #fff; font-size: 10px; }
       .no-print { display: none !important; }
+      .bol-container { border: 1.5px solid #000 !important; box-shadow: none !important; padding: 16px !important; }
     }
-    body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
-    .bol-container { max-width: 900px; margin: 0 auto; background: #fff; border: 2px solid #0f172a; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-    .header-table td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; font-size: 11px; }
-    .label { font-size: 9px; text-transform: uppercase; color: #64748b; font-weight: 700; margin-bottom: 3px; display: block; }
-    .val { font-size: 11px; font-weight: 600; color: #0f172a; }
-    .title-banner { background: #0f172a; color: #fff; padding: 8px 12px; font-size: 16px; font-weight: 800; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .items-table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #0f172a; }
-    .items-table th { background: #f1f5f9; padding: 8px; font-size: 10px; text-transform: uppercase; font-weight: 800; border-bottom: 2px solid #0f172a; text-align: left; }
-    .footer-terms { font-size: 8px; color: #64748b; line-height: 1.3; margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+    body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 16px; font-size: 11px; }
+    .bol-container { max-width: 920px; margin: 0 auto; background: #fff; border: 2px solid #0f172a; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; border: 1.5px solid #0f172a; }
+    .header-table td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; font-size: 10.5px; }
+    .label { font-size: 8.5px; text-transform: uppercase; color: #64748b; font-weight: 700; margin-bottom: 2px; display: block; letter-spacing: 0.5px; }
+    .val { font-size: 11px; font-weight: 600; color: #0f172a; line-height: 1.35; }
+    .title-banner { background: #0f172a; color: #fff; padding: 8px 12px; font-size: 14px; font-weight: 800; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .items-table { width: 100%; border-collapse: collapse; border: 1.5px solid #0f172a; margin-top: 6px; }
+    .items-table th { background: #f1f5f9; padding: 7px 8px; font-size: 9.5px; text-transform: uppercase; font-weight: 800; border-bottom: 1.5px solid #0f172a; border-right: 1px solid #cbd5e1; text-align: left; }
+    .items-table td { vertical-align: top; padding: 8px; border-right: 1px solid #cbd5e1; font-size: 10.5px; line-height: 1.4; }
+    .summary-table { width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-top: 10px; font-size: 10.5px; }
+    .summary-table th { background: #f8fafc; padding: 5px 8px; font-size: 9px; text-transform: uppercase; font-weight: 700; border: 1px solid #cbd5e1; }
+    .footer-terms { font-size: 7.5px; color: #64748b; line-height: 1.3; margin-top: 10px; padding-top: 6px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
@@ -107,39 +117,38 @@ export function generateMasterBol(
 
     <table class="header-table">
       <tr>
-        <td style="width: 50%;">
-          <span class="label">1. Shipper / Exporter</span>
-          <div class="val">${invoice.exporterName}</div>
-          <div style="font-size: 10px; color: #475569; margin-top: 2px;">
-            ${invoice.shipperAddress ? `${invoice.shipperAddress}<br/>` : ''}
-            ${[invoice.iec ? `IEC: ${invoice.iec}` : '', invoice.gstin ? `GSTIN: ${invoice.gstin}` : ''].filter(Boolean).join(' | ')}
+        <td style="width: 55%;">
+          <span class="label">Shipper / Exporter</span>
+          <div class="val" style="font-weight: 700;">${invoice.exporterName}</div>
+          <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.shipperAddress}</div>
+          ${invoice.onBehalfOf ? `<div style="font-size: 9.5px; color: #475569; margin-top: 3px;"><strong>(ON BEHALF OF):</strong> ${invoice.onBehalfOf}</div>` : ''}
+          <div style="font-family: monospace; font-size: 10.5px; font-weight: 700; color: #0f172a; margin-top: 4px;">
+            BOOKING NO: ${invoice.bookingNumber || 'MUMGA3747500'}
           </div>
         </td>
-        <td style="width: 50%;">
+        <td style="width: 45%;">
           <span class="label">B/L Number & Booking Reference</span>
-          <div class="val" style="font-family: monospace; font-size: 13px; color: #4338ca;">${docNumber}</div>
-          <div style="margin-top: 6px;">
-            <span class="label">Booking Number</span>
-            <span class="val">${invoice.bookingNumber || `BKG-${invoice.invoiceNumber}`}</span>
+          <div class="val" style="font-family: monospace; font-size: 12px; font-weight: 800; color: #0f172a;">${docNumber}</div>
+          <div style="margin-top: 4px;">
+            <span class="label">Carrier & Service</span>
+            <span class="val" style="font-size: 10.5px;">${invoice.carrierName || 'ONE LINE'} (Ocean Container Service)</span>
           </div>
-          <div style="margin-top: 6px;">
-            <span class="label">Carrier Template</span>
-            <span style="font-size: 10px; font-weight: 600; color: #0284c7;">${template.name}</span>
+          <div style="margin-top: 4px;">
+            <span class="label">Movement Type</span>
+            <span class="val" style="font-size: 10.5px; font-weight: 700;">${invoice.movementType || 'FCL / CY'}</span>
           </div>
         </td>
       </tr>
       <tr>
         <td>
-          <span class="label">2. Consignee (or Order of)</span>
-          <div class="val">${invoice.consigneeName}</div>
-          <div style="font-size: 10px; color: #475569; margin-top: 2px;">
-            ${invoice.consigneeAddress || ''}
-          </div>
+          <span class="label">Consignee (or Order of)</span>
+          <div class="val" style="font-weight: 700;">${invoice.consigneeName}</div>
+          <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.consigneeAddress || ''}</div>
         </td>
         <td>
-          <span class="label">3. Notify Party (Carrier not responsible for failure to notify)</span>
-          <div class="val">${invoice.notifyParty || invoice.consigneeName}</div>
-          <div style="font-size: 10px; color: #475569;">SAME AS CONSIGNEE</div>
+          <span class="label">Notify Party (Carrier not responsible for failure to notify)</span>
+          <div class="val" style="font-weight: 700;">${invoice.notifyParty || invoice.consigneeName}</div>
+          <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.notifyParty ? (invoice.consigneeAddress || '') : 'SAME AS CONSIGNEE'}</div>
         </td>
       </tr>
       <tr>
@@ -149,73 +158,174 @@ export function generateMasterBol(
         </td>
         <td>
           <span class="label">Place of Receipt</span>
-          <div class="val">${invoice.placeOfReceipt || invoice.portOfLoading || 'Nhava Sheva, India'}</div>
+          <div class="val" style="font-weight: 700;">${displayReceipt}</div>
         </td>
       </tr>
       <tr>
         <td>
           <span class="label">Ocean Vessel & Voyage No.</span>
-          <div class="val">${displayVessel} / ${displayVoyage}</div>
+          <div class="val" style="font-weight: 700;">${displayVessel} / ${displayVoyage}</div>
         </td>
         <td>
           <span class="label">Port of Loading</span>
-          <div class="val">${displayPol}</div>
+          <div class="val" style="font-weight: 700;">${displayPol}</div>
         </td>
       </tr>
       <tr>
         <td>
           <span class="label">Port of Discharge</span>
-          <div class="val">${displayPod}</div>
+          <div class="val" style="font-weight: 700;">${displayPod}</div>
         </td>
         <td>
-          <span class="label">Place of Delivery</span>
-          <div class="val">${invoice.finalDestination || displayPod}</div>
+          <span class="label">Port of Delivery / Final Destination</span>
+          <div class="val" style="font-weight: 700;">${displayDelivery}</div>
         </td>
       </tr>
     </table>
 
+    <!-- Main Cargo Table -->
     <table class="items-table">
       <thead>
         <tr>
-          <th style="width: 25%;">Container No. / Seal No.</th>
-          <th style="width: 18%;">Pallets / Packages</th>
-          <th style="width: 32%;">Description of Goods & Marks</th>
-          <th style="width: 15%; text-align: right;">Gross Weight</th>
-          <th style="width: 10%; text-align: right;">Measurement</th>
+          <th style="width: 25%;">Container Nos. Marks & Numbers</th>
+          <th style="width: 25%;">Number and Kind of Packages</th>
+          <th style="width: 32%;">Description of Goods</th>
+          <th style="width: 18%; text-align: right; border-right: none;">Gross Weight / Net Weight</th>
         </tr>
       </thead>
       <tbody>
-        ${containerRowsHtml}
+        <tr>
+          <!-- Column 1: Marks & Numbers + Sequential Pallet Ranges -->
+          <td>
+            <div style="font-weight: 700; line-height: 1.4; margin-bottom: 8px;">
+              ${marksLines.map(line => `<div>${line}</div>`).join('')}
+            </div>
+            <div style="font-family: monospace; font-size: 10px; line-height: 1.4; color: #0f172a; margin-top: 6px;">
+              ${formattedRanges.map(r => `<div>${r}</div>`).join('')}
+            </div>
+          </td>
+
+          <!-- Column 2: Number and Kind of Packages -->
+          <td>
+            <div style="font-weight: 700; line-height: 1.4;">
+              ${invoice.containers.length} X ${contTypeLabel} SAID TO CONTAIN<br/>
+              TOTAL ${totalPallets} PALLETS<br/>
+              <span style="font-size: 9.5px; font-weight: 600;">(TOTAL ${palletsWord} PALLETS ONLY)</span>
+            </div>
+          </td>
+
+          <!-- Column 3: Description of Goods & Customs / SB details -->
+          <td>
+            <div style="font-weight: 700; margin-bottom: 3px;">
+              ${goodsDescription}
+            </div>
+            <div style="font-size: 10px; margin-bottom: 2px;">
+              <strong>${brandName}</strong>
+            </div>
+            <div style="font-size: 10px; margin-bottom: 6px;">
+              <strong>H.S. CODE NO. ${hsnCode}</strong>
+            </div>
+
+            <!-- Shipping Bills List -->
+            ${shippingBills.length > 0 ? `
+              <div style="font-family: monospace; font-size: 9.5px; line-height: 1.35; margin-bottom: 6px;">
+                ${shippingBills.map(sb => `<div>${sb}</div>`).join('')}
+              </div>
+            ` : ''}
+
+            <!-- Dangerous Goods / IMDG Notice -->
+            ${hazItem ? `
+              <div style="font-family: monospace; font-size: 9.5px; font-weight: 700; color: #b91c1c; margin-bottom: 6px;">
+                UN NO. ${hazItem.unNumber || '2794'} &nbsp;&nbsp; IMCO CLASS: ${hazItem.imoClass || '8'}<br/>
+                PG: ${invoice.dgPackingGroupOverride || hazItem.packingGroup || 'III'}
+              </div>
+            ` : ''}
+
+            <!-- Freight Terms & Detention Clause -->
+            <div style="font-weight: 700; font-size: 10px; margin-bottom: 2px;">
+              ${invoice.freightTerms || 'FREIGHT COLLECT'}
+            </div>
+            <div style="font-style: italic; font-size: 9.5px; color: #1e293b; font-weight: 600;">
+              "${invoice.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION'}"
+            </div>
+          </td>
+
+          <!-- Column 4: Gross & Net Weights -->
+          <td style="text-align: right; border-right: none; font-family: monospace;">
+            <div style="font-weight: 800; font-size: 11px; margin-bottom: 8px;">
+              ${totalGross.toFixed(2)} KGS
+            </div>
+            <div style="font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase;">
+              NET WEIGHT
+            </div>
+            <div style="font-weight: 700; font-size: 11px;">
+              ${declaredNetWeight.toFixed(2)} KGS
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Mid Section: Total Containers & Movement -->
+    <div style="margin-top: 8px; display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f8fafc; border: 1px solid #cbd5e1; font-size: 10.5px; font-weight: 600;">
+      <div>
+        <span>Total No. of Containers / Packages: </span>
+        <strong style="font-family: monospace;">0${invoice.containers.length} / ${totalPallets} PLTS</strong>
+      </div>
+      <div>
+        <span>Movement: </span>
+        <strong>${invoice.movementType || 'FCL / CY'}</strong>
+      </div>
+      <div>
+        <span>Freight: </span>
+        <strong>${invoice.freightTerms || 'FREIGHT COLLECT'}</strong>
+      </div>
+    </div>
+
+    <!-- Container Breakdown QC Table -->
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th style="width: 25%; text-align: left;">CONT.NO.</th>
+          <th style="width: 25%; text-align: left;">Seal no.</th>
+          <th style="width: 20%; text-align: left;">Pallets</th>
+          <th style="width: 15%; text-align: right;">Gr.wt. kgs</th>
+          <th style="width: 15%; text-align: right;">Nt.wt. kgs</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${containerTableRows}
       </tbody>
       <tfoot>
-        <tr style="background: #f8fafc; font-weight: bold; border-top: 2px solid #0f172a; font-size: 11px;">
-          <td style="padding: 8px;">TOTALS: ${invoice.containers.length} CONTAINER(S)</td>
-          <td style="padding: 8px;">${totalPallets} PALLETS (${totalPackages} PKGS)</td>
-          <td style="padding: 8px;">FCL/FCL SHIPMENT</td>
-          <td style="padding: 8px; text-align: right; font-family: monospace;">${totalGross.toLocaleString()} KGS</td>
-          <td style="padding: 8px; text-align: right; font-family: monospace;">${(totalGross / 300).toFixed(2)} CBM</td>
+        <tr style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 10.5px; border-top: 1.5px solid #0f172a;">
+          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1;">TOTAL (${invoice.containers.length} CONTAINER)</td>
+          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1;">---</td>
+          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1;">${totalPallets} PALLET</td>
+          <td style="padding: 6px 10px; text-align: right; border-right: 1px solid #cbd5e1;">${totalGross.toFixed(2)}</td>
+          <td style="padding: 6px 10px; text-align: right;">${totalNet.toFixed(2)}</td>
         </tr>
       </tfoot>
     </table>
 
-    <div style="margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-      <div style="border: 1px solid #cbd5e1; padding: 10px; font-size: 10px;">
+    <!-- Bottom Signoff & Carrier Agent Block -->
+    <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <div style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px;">
         <span class="label">Freight & Charges</span>
-        <div class="val" style="font-size: 12px; color: #16a34a; font-weight: bold;">
-          ${invoice.incoterm === 'CIF' || invoice.incoterm === 'CFR' ? 'FREIGHT PREPAID' : 'FREIGHT COLLECT'}
+        <div class="val" style="font-size: 11px; color: #16a34a; font-weight: bold;">
+          ${invoice.freightTerms || (invoice.incoterm === 'CIF' || invoice.incoterm === 'CFR' ? 'FREIGHT PREPAID' : 'FREIGHT COLLECT')}
         </div>
-        <div style="margin-top: 6px; font-size: 9px; color: #64748b;">
-          Payable at: ${invoice.incoterm === 'CIF' ? invoice.portOfLoading : invoice.portOfDischarge}
+        <div style="margin-top: 4px; font-size: 9px; color: #64748b;">
+          Payable at: ${invoice.freightTerms === 'FREIGHT PREPAID' || invoice.incoterm === 'CIF' ? displayPol : displayPod}
         </div>
       </div>
 
-      <div style="border: 1px solid #cbd5e1; padding: 10px; font-size: 10px; text-align: right;">
+      <div style="border: 1px solid #cbd5e1; padding: 8px; font-size: 10px; text-align: right;">
         <span class="label">Dated at & Certified By</span>
-        <div class="val">Ekdant Logistics Pvt Ltd</div>
-        <div style="font-size: 9px; color: #64748b; margin-top: 4px;">
+        <div class="val" style="font-weight: 700;">Ekdant Logistics Pvt Ltd</div>
+        <div style="font-size: 9px; color: #64748b; margin-top: 2px;">
           As Agents for Carrier | Date of Issue: ${dateStr}
         </div>
-        <div style="margin-top: 8px; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 18px; color: #1e293b;">
+        <div style="margin-top: 6px; font-family: 'Brush Script MT', cursive, sans-serif; font-size: 16px; color: #1e293b;">
           Authorized Signature
         </div>
       </div>
