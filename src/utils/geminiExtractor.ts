@@ -3,7 +3,7 @@
 // Supports Multi-Container Segregation, Weight/Pallet Allocation, and Dangerous Goods (#DG) Extraction
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { ConvertedInvoice, LineItem } from '../types';
+import type { ConvertedInvoice, LineItem, FieldTraceability } from '../types';
 import { allocateContainers } from './containerAllocator';
 
 export const ICEGATE_UQC_LIST = ['NOS', 'PCS', 'KGS', 'MTR', 'BOX', 'SET', 'CTN', 'LTR', 'MTS', 'DRUM', 'PLT'] as const;
@@ -62,6 +62,11 @@ Extract structured JSON strictly matching this schema:
   "totalPallets": 1,
   "totalPackages": 1,
   "packageType": "BOX or CTN or DRUM or CRATE",
+  "totalOuterPackages": 1,
+  "outerPackageType": "PALLET or CRATE or DRUM",
+  "totalInnerPackages": 1,
+  "innerPackageType": "BOX or CARTON or FIBREBOARD BOX",
+  "totalBaseUnits": 1,
   "hasDangerousGoods": false,
   "lineItems": [
     {
@@ -225,20 +230,52 @@ export async function extractInvoiceFromPdf(
   const parsedGst = Number(parsed.gstAmount) || 0;
   const parsedTotal = Number(parsed.invoiceTotal) || itemsSum;
 
-  const totalGrossKg = Number(parsed.grossWeightKg) || Number(items.reduce((s, it) => s + it.grossWeightKg, 0).toFixed(2)) || 22620;
+  const totalGrossKg = Number(parsed.grossWeightKg) || Number(items.reduce((s, it) => s + it.grossWeightKg, 0).toFixed(2)) || 0;
   const totalNetKg = Number(parsed.netWeightKg) || Number(items.reduce((s, it) => s + it.netWeightKg, 0).toFixed(2)) || Number((totalGrossKg * 0.92).toFixed(2));
-  const totalPallets = Number(parsed.totalPallets) || Math.max(1, Math.ceil(totalGrossKg / 1885));
+  const totalPallets = Number(parsed.totalPallets) || Number(parsed.totalOuterPackages) || Math.max(1, Math.ceil(totalGrossKg / 1885));
+  const totalOuter = Number(parsed.totalOuterPackages) || totalPallets;
+  const totalInner = Number(parsed.totalInnerPackages) || Number(parsed.totalPackages) || items.reduce((s, it) => s + it.quantity, 0);
+  const totalBase = Number(parsed.totalBaseUnits) || totalInner;
 
   // 3. Multi-Container & Pallet Allocation via LAFF Solver (20' GP, 25T cap, 11-pallet cap)
   const { containers, pallets } = allocateContainers(items, '20GP', totalPallets);
 
   const cleanFileName = file.name.replace(/\.[^/.]+$/, '').replace(/[_\\-]/g, ' ').toUpperCase();
   const realExporterName = parsed.exporterName?.trim() || cleanFileName;
-  const realConsigneeName = parsed.consigneeName?.trim() || 'INTERNATIONAL LOGISTICS CONSIGNEE';
+  const realConsigneeName = parsed.consigneeName?.trim() || '';
   const realInvoiceNumber = parsed.invoiceNumber?.trim() || cleanFileName;
   const hasDg = items.some(it => it.isDangerousGood) || Boolean(parsed.hasDangerousGoods);
 
   const portOfLoadingStr = targetPort === 'INBOM4' ? 'Mumbai Air Cargo (INBOM4)' : 'Nhava Sheva (INNSA1)';
+
+  // Build Field-Level Traceability Metadata
+  const fieldTraceability: Record<string, FieldTraceability> = {
+    exporterName: {
+      value: realExporterName,
+      sourceDoc: file.name,
+      confidence: parsed.exporterName ? 0.98 : 0.70
+    },
+    consigneeName: {
+      value: realConsigneeName,
+      sourceDoc: file.name,
+      confidence: parsed.consigneeName ? 0.98 : 0.50
+    },
+    invoiceNumber: {
+      value: realInvoiceNumber,
+      sourceDoc: file.name,
+      confidence: parsed.invoiceNumber ? 0.99 : 0.75
+    },
+    grossWeightKg: {
+      value: totalGrossKg,
+      sourceDoc: file.name,
+      confidence: parsed.grossWeightKg ? 0.97 : 0.80
+    },
+    totalPallets: {
+      value: totalPallets,
+      sourceDoc: file.name,
+      confidence: parsed.totalPallets ? 0.95 : 0.75
+    }
+  };
 
   return {
     id: `inv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -249,8 +286,8 @@ export async function extractInvoiceFromPdf(
     status: 'converted',
     invoiceNumber: realInvoiceNumber,
     invoiceDate: parsed.invoiceDate || now.toISOString().slice(0, 10),
-    bookingNumber: parsed.bookingNumber?.trim() || `BKG-${realInvoiceNumber}`,
-    masterBolNumber: `BOL-EKD-${realInvoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+    bookingNumber: parsed.bookingNumber?.trim() || undefined,
+    masterBolNumber: parsed.bookingNumber?.trim() ? `BOL-${parsed.bookingNumber.trim()}` : `BOL-EKD-${realInvoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
     exporterName: realExporterName,
     shipperAddress: parsed.shipperAddress?.trim() || undefined,
     iec: parsed.iec?.trim() || undefined,
@@ -272,9 +309,15 @@ export async function extractInvoiceFromPdf(
     invoiceTotal: parsedTotal,
     grossWeightKg: totalGrossKg,
     netWeightKg: totalNetKg,
-    totalPackages: Number(parsed.totalPackages) || items.length * 4,
+    totalPackages: totalInner,
     packageType: parsed.packageType || 'BOX',
     totalPallets,
+    totalOuterPackages: totalOuter,
+    outerPackageType: parsed.outerPackageType || 'PALLET',
+    totalInnerPackages: totalInner,
+    innerPackageType: parsed.innerPackageType || 'BOX',
+    totalBaseUnits: totalBase,
+    fieldTraceability,
     hasDangerousGoods: hasDg,
     selectedBolTemplateId: 'bol-standard',
     selectedDgTemplateId: 'dg-imo-standard',
@@ -284,11 +327,11 @@ export async function extractInvoiceFromPdf(
       {
         id: `item-${Date.now()}-1`,
         itemNumber: 1,
-        description: 'General Industrial Freight Cargo',
+        description: 'Freight Cargo',
         hsnCode: '84818090',
-        quantity: 10,
+        quantity: totalInner || 1,
         uqc: 'BOX',
-        unitPrice: parsedTotal / 10,
+        unitPrice: parsedTotal / (totalInner || 1),
         total: parsedTotal,
         grossWeightKg: totalGrossKg,
         netWeightKg: totalNetKg,

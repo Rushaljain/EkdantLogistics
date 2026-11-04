@@ -266,7 +266,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-amber-950 flex items-center justify-between gap-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span>Cross-Document Discrepancies ({activeConflicts.length})</span>
+                  <span>Cross-Document Conflict Detected ({activeConflicts.length})</span>
                   <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-amber-200/70 text-amber-900 uppercase">
                     Operator Verification Required
                   </span>

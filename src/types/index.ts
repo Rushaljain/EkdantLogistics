@@ -43,6 +43,10 @@ export interface Pallet {
   palletNumber: string;       // e.g. "PLT-5644"
   packageCount: number;
   packageType: string;        // BOX, DRUM, CARTON, CRATE
+  innerPackageCount?: number; // e.g. 29, 75, 357 (Corrugated boxes inside pallet)
+  innerPackageType?: string;  // "BOX", "CARTON", "PAIL", "DRUM"
+  baseUnitCount?: number;     // e.g. 5, 9 (batteries/units)
+  baseUnitType?: string;      // "NOS", "PCS"
   grossWeightKg: number;
   netWeightKg: number;
   dimensions?: string;        // e.g. "1200 x 1000 x 1650 mm"
@@ -183,13 +187,21 @@ export interface ConvertedInvoice {
   gstAmount?: number;
   invoiceTotal: number;
   
-  // Manifest Totals
+  // Manifest Totals & Multi-Tier Packaging Hierarchy
   grossWeightKg: number;
   netWeightKg: number;
-  totalPackages: number;
-  packageType: string;
-  totalPallets: number;
+  totalPackages: number;      // Inner package count (e.g. 676 boxes)
+  packageType: string;        // "BOX" / "CARTON"
+  totalPallets: number;       // Outer packaging count (e.g. 22 pallets)
+  totalOuterPackages?: number;// e.g. 22
+  outerPackageType?: string;  // "PALLET" / "CRATE"
+  totalInnerPackages?: number;// e.g. 676
+  innerPackageType?: string;  // "CORRUGATED BOX"
+  totalBaseUnits?: number;    // Base pieces count
   hasDangerousGoods: boolean;
+  
+  // Field-Level Traceability & Provenance (Global SaaS Engine)
+  fieldTraceability?: Record<string, FieldTraceability>;
   
   // Template Selections
   selectedBolTemplateId: string;
@@ -229,4 +241,13 @@ export interface ExporterProfile {
   gstin: string;
   adCode: string;
   defaultPort: string;
+}
+
+export interface FieldTraceability<T = any> {
+  value: T;
+  sourceDoc?: string;         // e.g. "CHW000165B.xlsx"
+  sourceSheet?: string;       // e.g. "0232_INV", "0232_PKG", "HPFL NEWARK"
+  sourceAnchor?: string;      // e.g. "Exporter", "Invoice No", "Pallet Nos"
+  confidence: number;         // 0.0 - 1.0 confidence score
+  isUserOverride?: boolean;   // true if edited by operator in Manifest Bar
 }

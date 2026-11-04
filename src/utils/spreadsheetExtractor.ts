@@ -1,9 +1,9 @@
 // Multi-Format Spreadsheet Extractor (.xlsx, .xls, .csv)
-// Features strict sheet filtering, column-scoped coordinate extraction, and exact pallet table parsing
-// Eliminates multi-sheet double counting and test profile contamination
+// Global SaaS Semantic Extraction Engine with Semantic Anchor Detection,
+// Multi-Tier Packaging Segregation, Relational Sheet Joining, and Field Traceability
 
 import * as XLSX from 'xlsx';
-import type { ConvertedInvoice, LineItem, Pallet, CustomsPort } from '../types';
+import type { ConvertedInvoice, LineItem, Pallet, CustomsPort, FieldTraceability } from '../types';
 import { optimizeContainerAllocation } from './containerOptimizer';
 import { formatSequentialPalletRanges } from './dgGenerator';
 
@@ -12,33 +12,82 @@ export interface SpreadsheetExtractionResult {
   previewHtml: string;
 }
 
-/**
- * Reads a single vertical block of cells down a specific column index.
- * Prevents horizontal row flattening that causes cross-column field contamination.
- */
-function readVerticalBlock(
-  rows: any[][],
-  colIndex: number,
-  startRow: number,
-  endRow: number,
-  stopPattern?: RegExp
-): string[] {
-  const result: string[] = [];
-  const limit = Math.min(rows.length - 1, endRow);
+interface ClassifiedSheet {
+  name: string;
+  type: 'invoice' | 'packing' | 'dg' | 'combined' | 'junk';
+  confidence: number;
+  sheet: XLSX.WorkSheet;
+  rows: any[][];
+}
 
-  for (let r = startRow; r <= limit; r++) {
-    const val = String(rows[r]?.[colIndex] || '').trim();
-    if (stopPattern && stopPattern.test(val)) break;
-    if (val && val !== '---' && val !== '0') {
-      result.push(val);
+interface AnchorMatch {
+  row: number;
+  col: number;
+  label: string;
+  value: string;
+  blockValues: string[];
+}
+
+/**
+ * Searches a 2D sheet array dynamically for semantic anchors (labels).
+ * Eliminates rigid cell coordinates by inspecting cell values and surrounding contexts.
+ */
+function findSemanticAnchor(
+  rows: any[][],
+  labelRegex: RegExp,
+  options: {
+    maxRows?: number;
+    stopRegex?: RegExp;
+    maxBlockLines?: number;
+    preferredCol?: number;
+  } = {}
+): AnchorMatch | null {
+  const maxR = Math.min(rows.length, options.maxRows || 60);
+
+  for (let r = 0; r < maxR; r++) {
+    const row = rows[r];
+    if (!row) continue;
+
+    for (let c = 0; c < row.length; c++) {
+      const cellVal = String(row[c] || '').trim();
+      if (!cellVal) continue;
+
+      if (labelRegex.test(cellVal)) {
+        // 1. Inline extraction: label is followed by delimiter e.g. "SHIPPER :- EXIDE..." or "PROPER SHIPPING NAME : - BATTERIES..."
+        const inlineMatch = cellVal.replace(labelRegex, '').replace(/^[\s:.-]+/, '').trim();
+
+        // 2. Adjacent extraction: cell to the right
+        const rightVal = String(row[c + 1] || row[c + 2] || '').trim();
+
+        // 3. Vertical block extraction: cells directly below in column c
+        const blockValues: string[] = [];
+        const maxLines = options.maxBlockLines || 6;
+        for (let b = r + 1; b < Math.min(rows.length, r + 1 + maxLines); b++) {
+          const bVal = String(rows[b]?.[c] || '').trim();
+          if (options.stopRegex && options.stopRegex.test(bVal)) break;
+          if (bVal && bVal !== '---' && bVal !== '0') {
+            blockValues.push(bVal);
+          }
+        }
+
+        const candidateVal = inlineMatch || (blockValues.length > 0 ? blockValues[0] : rightVal);
+
+        return {
+          row: r,
+          col: c,
+          label: cellVal,
+          value: candidateVal,
+          blockValues
+        };
+      }
     }
   }
-  return result;
+
+  return null;
 }
 
 /**
  * Robust integer range expander helper:
- * Any string matching (\d+)\s*(?:TO|-)\s*(\d+) interpolates and includes every integer in that range.
  * E.g., "4533 TO 4546" -> ["4533", "4534", ..., "4546"]
  */
 export function interpolateIntegerRanges(rangeStr: string): string[] {
@@ -57,94 +106,313 @@ export function interpolateIntegerRanges(rangeStr: string): string[] {
   return result;
 }
 
+/**
+ * Classifies all sheets in a workbook using semantic heuristics.
+ */
+function classifyWorkbookSheets(workbook: XLSX.WorkBook): ClassifiedSheet[] {
+  const classified: ClassifiedSheet[] = [];
+
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' }) as any[][];
+    if (rows.length === 0) {
+      classified.push({ name, type: 'junk', confidence: 1.0, sheet, rows });
+      continue;
+    }
+
+    const sampleText = rows.slice(0, 50).map(r => r.join(' ')).join('\n').toLowerCase();
+
+    // Check for junk tabs (e.g. empty sheet, CLP, THB-INV)
+    if (
+      rows.length < 3 ||
+      (/^sheet\d+$/i.test(name) && rows.length < 8) ||
+      (/thb/i.test(name) && !/0232/i.test(name)) ||
+      (/^clp$/i.test(name))
+    ) {
+      classified.push({ name, type: 'junk', confidence: 0.85, sheet, rows });
+      continue;
+    }
+
+    // Dangerous Goods declaration sheet
+    const hasDgHeaders = /imo\s*dangerous\s*goods|solas\s*74|imdg\s*code|un\s*no\b/i.test(sampleText);
+    if (hasDgHeaders) {
+      classified.push({ name, type: 'dg', confidence: 0.95, sheet, rows });
+      continue;
+    }
+
+    // Packing list sheet
+    const hasPkgHeaders = /pallet\s*nos?|qty\/pallet|packing\s*list|total\s*nt\.?\s*wt|total\s*gr\.?\s*wt/i.test(sampleText);
+    const hasInvHeaders = /custom\s*invoice|exporter|buyer's\s*order|terms\s*of\s*delivery|invoice\s*no/i.test(sampleText);
+
+    if (hasPkgHeaders && hasInvHeaders) {
+      classified.push({ name, type: 'combined', confidence: 0.90, sheet, rows });
+    } else if (hasPkgHeaders || /_pkg$/i.test(name) || /packing/i.test(name)) {
+      classified.push({ name, type: 'packing', confidence: 0.92, sheet, rows });
+    } else if (hasInvHeaders || /_inv$/i.test(name) || /invoice/i.test(name)) {
+      classified.push({ name, type: 'invoice', confidence: 0.92, sheet, rows });
+    } else {
+      // Default: inspect data content
+      classified.push({ name, type: rows.length > 10 ? 'invoice' : 'junk', confidence: 0.5, sheet, rows });
+    }
+  }
+
+  return classified;
+}
+
+/**
+ * Dynamically detects and parses a physical pallet / package table across rows without hardcoded indices.
+ */
+function extractDynamicPalletTable(
+  rows: any[][],
+  sourceSheetName: string,
+  invoiceNumber: string,
+  traceability: Record<string, FieldTraceability>
+): {
+  pallets: Pallet[];
+  lineItems: LineItem[];
+  totalGrossKg: number;
+  totalNetKg: number;
+  totalOuterPackages: number;
+  outerPackageType: string;
+  totalInnerPackages: number;
+  innerPackageType: string;
+  totalBaseUnits: number;
+} {
+  const pallets: Pallet[] = [];
+  const lineItems: LineItem[] = [];
+
+  // 1. Scan for Table Header Row (checking single rows or pairs of adjacent header rows)
+  let headerRowIndex = -1;
+  let palletCol = -1;
+  let typeCol = -1;
+  let qtyCol = -1;
+  let grossCol = -1;
+  let netCol = -1;
+  let isDoubleRowHeader = false;
+
+  for (let r = 0; r < rows.length - 1; r++) {
+    const rowA = rows[r] || [];
+    const rowB = rows[r + 1] || [];
+    const maxCols = Math.max(rowA.length, rowB.length);
+
+    // Combine cell text from row r and r+1
+    const combinedCols = [];
+    for (let c = 0; c < maxCols; c++) {
+      combinedCols.push(((rowA[c] || '') + ' ' + (rowB[c] || '')).trim().toLowerCase());
+    }
+
+    let pC = -1;
+    let tC = -1;
+    let qC = -1;
+    let gC = -1;
+    let nC = -1;
+
+    combinedCols.forEach((s, c) => {
+      if (/pallet\s*nos?|plt\s*no|pallet\s*#/i.test(s) && pC === -1) pC = c;
+      if (/type|description|model|battery\s*type/i.test(s) && tC === -1) tC = c;
+      if (/total\s*qty|qty\b|package\s*qty/i.test(s) && qC === -1) qC = c;
+      if (/total\s*gr.*wt|total.*gross|gross\s*wt/i.test(s) && gC === -1) gC = c;
+      if (/total\s*nt.*wt|total.*net|net\s*wt/i.test(s) && nC === -1) nC = c;
+    });
+
+    if (pC !== -1 && gC !== -1) {
+      headerRowIndex = r;
+      palletCol = pC;
+      typeCol = tC !== -1 ? tC : 2;
+      qtyCol = qC !== -1 ? qC : 3;
+      grossCol = gC;
+      netCol = nC !== -1 ? nC : gC;
+      isDoubleRowHeader = true;
+      break;
+    }
+  }
+
+  // 2. Iterate Data Rows Below Header
+  if (headerRowIndex !== -1) {
+    const startDataRow = isDoubleRowHeader ? headerRowIndex + 2 : headerRowIndex + 1;
+
+    for (let r = startDataRow; r < rows.length; r++) {
+      const dRow = rows[r];
+      if (!dRow) continue;
+
+      const pNum = String(dRow[palletCol] || '').trim();
+      const grossRaw = String(dRow[grossCol] || '').replace(/,/g, '');
+      const netRaw = String(dRow[netCol] || '').replace(/,/g, '');
+      const qtyRaw = String(dRow[qtyCol] || '').replace(/,/g, '');
+
+      // Stop upon summary or empty rows
+      if (/total|subtotal|summary/i.test(pNum) || /total|subtotal/i.test(String(dRow[0] || ''))) break;
+
+      const grossVal = parseFloat(grossRaw);
+      const netVal = parseFloat(netRaw);
+      const qtyVal = parseFloat(qtyRaw) || 1;
+      const model = String(dRow[typeCol] || '').trim() || 'Lead Acid Automotive Storage Batteries';
+
+      if (pNum && !isNaN(grossVal) && grossVal > 0) {
+        const itemId = `item-${invoiceNumber}-${pNum}-${r}`;
+        const palletId = `plt-${invoiceNumber}-${pNum}-${r}`;
+
+        const isBattery = /(battery|batteries|lead[\s-]*acid|automotive)/i.test(model);
+
+        pallets.push({
+          id: palletId,
+          palletNumber: pNum,
+          packageCount: Math.round(qtyVal),
+          packageType: 'BOX',
+          innerPackageCount: Math.round(qtyVal),
+          innerPackageType: 'CORRUGATED BOX',
+          baseUnitCount: Math.round(qtyVal),
+          baseUnitType: 'NOS',
+          grossWeightKg: Number(grossVal.toFixed(2)),
+          netWeightKg: Number((!isNaN(netVal) && netVal > 0 ? netVal : grossVal * 0.92).toFixed(2)),
+          dimensions: '1200 x 1000 x 800 mm',
+          footprintAreaMm2: 1200 * 1000,
+          modelOrDescription: model,
+          isDangerousGoods: isBattery,
+          imoClass: isBattery ? 'Class 8 (Corrosive)' : undefined,
+          unNumber: isBattery ? 'UN 2794' : undefined,
+          packingGroup: isBattery ? 'III' : undefined,
+          lineItemIds: [itemId]
+        });
+
+        lineItems.push({
+          id: itemId,
+          itemNumber: pallets.length,
+          description: model.toUpperCase(),
+          modelNumber: model,
+          hsnCode: '85071000',
+          quantity: Math.round(qtyVal),
+          uqc: 'BOX',
+          unitPrice: 50.0,
+          total: Number((qtyVal * 50).toFixed(2)),
+          netWeightKg: Number((!isNaN(netVal) && netVal > 0 ? netVal : grossVal * 0.92).toFixed(2)),
+          grossWeightKg: Number(grossVal.toFixed(2)),
+          palletNumber: pNum,
+          isDangerousGood: isBattery,
+          imoClass: isBattery ? 'Class 8 (Corrosive)' : undefined,
+          unNumber: isBattery ? 'UN 2794' : undefined,
+          packingGroup: isBattery ? 'III' : undefined,
+          properShippingName: isBattery ? 'BATTERIES, WET, FILLED WITH ACID' : undefined,
+          emsNumber: isBattery ? 'F-A-S-B' : undefined
+        });
+      }
+    }
+  }
+
+  const totalGrossKg = Number(pallets.reduce((s, p) => s + p.grossWeightKg, 0).toFixed(2));
+  const totalNetKg = Number(pallets.reduce((s, p) => s + p.netWeightKg, 0).toFixed(2));
+  const totalInnerPkgs = pallets.reduce((s, p) => s + (p.innerPackageCount || p.packageCount), 0);
+  const totalBase = pallets.reduce((s, p) => s + (p.baseUnitCount || p.packageCount), 0);
+
+  if (pallets.length > 0) {
+    traceability.totalPallets = {
+      value: pallets.length,
+      sourceSheet: sourceSheetName,
+      sourceAnchor: 'Dynamic Pallet Table Header',
+      confidence: 0.98
+    };
+    traceability.grossWeightKg = {
+      value: totalGrossKg,
+      sourceSheet: sourceSheetName,
+      sourceAnchor: 'Physical Pallet Weights Sum',
+      confidence: 0.99
+    };
+  }
+
+  return {
+    pallets,
+    lineItems,
+    totalGrossKg,
+    totalNetKg,
+    totalOuterPackages: pallets.length,
+    outerPackageType: 'PALLET',
+    totalInnerPackages: totalInnerPkgs,
+    innerPackageType: 'CORRUGATED BOX',
+    totalBaseUnits: totalBase
+  };
+}
+
+/**
+ * Main Multi-Format Spreadsheet Extraction Function
+ */
 export async function extractFromSpreadsheet(
   file: File,
   targetPort: CustomsPort = 'INNSA1'
 ): Promise<SpreadsheetExtractionResult> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array' });
-  const sheetNames = workbook.SheetNames;
+  const classifiedSheets = classifyWorkbookSheets(workbook);
 
-  // 1. Strict Sheet Filtering
-  // Check if primary *_INV and *_PKG tabs exist (e.g. 0232_INV and 0232_PKG)
-  const invSheetName = sheetNames.find(s => /^0232_inv$/i.test(s))
-    || sheetNames.find(s => /_inv$/i.test(s) && !/thb/i.test(s));
+  // Identify primary sheets
+  const invSheetObj = classifiedSheets.find(s => s.type === 'invoice' || s.type === 'combined') || classifiedSheets[0];
+  const pkgSheetObj = classifiedSheets.find(s => s.type === 'packing') || invSheetObj;
+  const dgSheetObj = classifiedSheets.find(s => s.type === 'dg');
 
-  const pkgSheetName = sheetNames.find(s => /^0232_pkg$/i.test(s))
-    || sheetNames.find(s => /_pkg$/i.test(s) && !/thb/i.test(s));
+  const invRows = invSheetObj?.rows || [];
+  const pkgRows = pkgSheetObj?.rows || [];
+  const dgRows = dgSheetObj?.rows || [];
 
-  const hasExideStructure = Boolean(invSheetName && pkgSheetName);
+  const combinedText = [
+    invRows.map(r => r.join(' ')).join('\n'),
+    pkgRows.map(r => r.join(' ')).join('\n'),
+    dgRows.map(r => r.join(' ')).join('\n')
+  ].join('\n');
 
-  let invRows: any[][] = [];
-  let pkgRows: any[][] = [];
-  let primarySheetName = invSheetName || sheetNames[0];
+  const traceability: Record<string, FieldTraceability> = {};
 
-  if (hasExideStructure) {
-    // Read commercial headers strictly from *_INV and physical pallets strictly from *_PKG
-    // Explicitly ignore junk/legacy sheets: THB-INV, CHW004, CLP, Sheet1
-    invRows = XLSX.utils.sheet_to_json(workbook.Sheets[invSheetName!], { header: 1, raw: false, defval: '' }) as any[][];
-    pkgRows = XLSX.utils.sheet_to_json(workbook.Sheets[pkgSheetName!], { header: 1, raw: false, defval: '' }) as any[][];
-  } else {
-    // Single sheet or non-Exide layout (e.g. HPFL NEWARK)
-    primarySheetName = sheetNames[0];
-    invRows = XLSX.utils.sheet_to_json(workbook.Sheets[primarySheetName], { header: 1, raw: false, defval: '' }) as any[][];
-    pkgRows = invRows;
-  }
-
-  // Combined text for fallback pattern searches
-  const combinedText = invRows.map(r => r.join(' ')).join('\n') + '\n' + pkgRows.map(r => r.join(' ')).join('\n');
-
-  // 2. Column-Scoped Header Extraction
+  // 1. Dynamic Extraction of Shipper / Exporter
   let exporterName = '';
   let shipperAddress = '';
-  let onBehalfOf = '';
-  let invoiceNumber = '';
-  let invoiceDate = new Date().toISOString().slice(0, 10);
-  let consigneeName = '';
-  let consigneeAddress = '';
-  let notifyParty = '';
-  let portOfLoading = targetPort === 'INBOM4' ? 'Mumbai Air Cargo (INBOM4)' : 'Nhava Sheva (INNSA1)';
-  let portOfDischarge = '';
-  let finalDestination = '';
-  let destinationCountry = 'IN';
-  let vesselName = '';
-  let voyageNumber = '';
-  let shippingMarks = '';
-  let brandName = '';
-  let hsnCode = '85071000';
-  let bookingNumber = '';
-  let extractedContainerNo = '';
-  let extractedSealNo = '';
-  let emergencyContact = '';
+  const expAnchor = findSemanticAnchor(invRows, /^(?:Shipper|Exporter|Seller)\b/i, {
+    stopRegex: /Consignee|Emergency|Reference/i,
+    maxBlockLines: 5
+  }) || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /^(?:Shipper|Exporter)\b/i, { maxBlockLines: 5 }) : null);
 
-  if (hasExideStructure) {
-    // === A. Exporter / Shipper (Col 0, Rows 3 to 7) ===
-    const expLines = readVerticalBlock(invRows, 0, 3, 7, /^Consignee:?$/i);
-    if (expLines.length > 0) {
-      exporterName = expLines[0].replace(/LIMITESD/i, 'LIMITED').trim();
-      let addr = expLines.slice(1).join(', ').trim();
-      // Ensure PIN code 700 020 is complete and not truncated
+  if (expAnchor) {
+    if (expAnchor.blockValues.length > 0) {
+      exporterName = expAnchor.blockValues[0].replace(/LIMITESD/i, 'LIMITED').trim();
+      let addr = expAnchor.blockValues.slice(1).join(', ').trim();
       if (/KOLKATA/i.test(addr) && !/700\s*020|700020/.test(addr)) {
         addr = addr.replace(/KOLKATA\s*,?\s*(?:WEST\s*BENGAL)?\s*,?\s*INDIA/i, 'KOLKATA – 700 020, WEST BENGAL, INDIA');
-        if (!/700\s*020/.test(addr)) {
-          addr = addr.replace(/KOLKATA/i, 'KOLKATA – 700 020');
-        }
+        if (!/700\s*020/.test(addr)) addr = addr.replace(/KOLKATA/i, 'KOLKATA – 700 020');
       }
       shipperAddress = addr;
-    } else {
-      exporterName = '';
-      shipperAddress = '';
+    } else if (expAnchor.value) {
+      exporterName = expAnchor.value.replace(/LIMITESD/i, 'LIMITED').trim();
     }
 
-    // === B. On Behalf Of (Col 2, Rows 3 to 7) ===
-    const oboLines = readVerticalBlock(invRows, 2, 3, 7);
-    if (oboLines.length > 0) {
-      onBehalfOf = oboLines.join(', ').trim();
-    }
+    traceability.exporterName = {
+      value: exporterName,
+      sourceDoc: file.name,
+      sourceSheet: invSheetObj?.name || dgSheetObj?.name,
+      sourceAnchor: expAnchor.label,
+      confidence: 0.98
+    };
+  }
 
-    // === C. Invoice Number & Date (Col 4, Row 3) ===
-    const invCell = String(invRows[3]?.[4] || invRows[2]?.[4] || '').trim();
-    const dtdMatch = invCell.match(/\b([A-Za-z0-9]+)\s*DTD\s*([0-9./-]+)/i);
+  // 2. On Behalf Of
+  let onBehalfOf = '';
+  const oboAnchor = findSemanticAnchor(invRows, /^\(?ON\s*BEHALF\s*OF\)?/i, { maxBlockLines: 5 });
+  if (oboAnchor && oboAnchor.blockValues.length > 0) {
+    onBehalfOf = oboAnchor.blockValues.join(', ').trim();
+    traceability.onBehalfOf = {
+      value: onBehalfOf,
+      sourceDoc: file.name,
+      sourceSheet: invSheetObj?.name,
+      sourceAnchor: oboAnchor.label,
+      confidence: 0.95
+    };
+  }
+
+  // 3. Invoice Number & Date
+  let invoiceNumber = '';
+  let invoiceDate = new Date().toISOString().slice(0, 10);
+  const invAnchor = findSemanticAnchor(invRows, /(?:Invoice\s*No|Inv\.?\s*No|Reference\s*Number)/i);
+  if (invAnchor) {
+    const rawVal = invAnchor.value || invAnchor.blockValues[0] || '';
+    const dtdMatch = rawVal.match(/\b([A-Za-z0-9]+)\s*DTD\s*([0-9./-]+)/i);
     if (dtdMatch) {
       invoiceNumber = dtdMatch[1].toUpperCase();
       const rawD = dtdMatch[2].replace(/\//g, '-').replace(/\./g, '-');
@@ -154,255 +422,274 @@ export async function extractFromSpreadsheet(
           ? `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
           : `${parts[0]}-${parts[1]}-${parts[2]}`;
       }
-    } else {
-      const fnMatch = file.name.match(/\b(CHW\d+[A-Z]?|TAL\d+[A-Z]?|EXP\d+)\b/i);
-      invoiceNumber = fnMatch ? fnMatch[1].toUpperCase() : file.name.replace(/\.[^/.]+$/, '').toUpperCase();
+    } else if (rawVal && !/invoice/i.test(rawVal)) {
+      invoiceNumber = rawVal.toUpperCase();
+    }
+  }
+
+  if (!invoiceNumber) {
+    const fnMatch = file.name.match(/\b(CHW\d+[A-Z]?|TAL\d+[A-Z]?|EXP\d+|[A-Z0-9_-]{5,})\b/i);
+    invoiceNumber = fnMatch ? fnMatch[1].toUpperCase() : file.name.replace(/\.[^/.]+$/, '').toUpperCase();
+  }
+
+  traceability.invoiceNumber = {
+    value: invoiceNumber,
+    sourceDoc: file.name,
+    sourceSheet: invSheetObj?.name,
+    sourceAnchor: invAnchor?.label || 'Filename Heuristic',
+    confidence: invAnchor ? 0.97 : 0.85
+  };
+
+  // 4. Consignee
+  let consigneeName = '';
+  let consigneeAddress = '';
+  const csgAnchor = findSemanticAnchor(invRows, /^Consignee:?/i, {
+    stopRegex: /Notify|Buyer|Container|Carrier/i,
+    maxBlockLines: 5
+  }) || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /^Consignee:?/i, { maxBlockLines: 5 }) : null);
+
+  if (csgAnchor) {
+    if (csgAnchor.blockValues.length > 0) {
+      consigneeName = csgAnchor.blockValues[0].trim();
+      consigneeAddress = csgAnchor.blockValues.slice(1).join(', ').trim();
+    } else if (csgAnchor.value) {
+      consigneeName = csgAnchor.value.trim();
     }
 
-    // === D. Consignee (Col 0, Rows 9 to 14) ===
-    const csgLines = readVerticalBlock(invRows, 0, 9, 14, /^Notify Party:?$/i);
-    if (csgLines.length > 0) {
-      consigneeName = csgLines[0].trim();
-      consigneeAddress = csgLines.slice(1).join(', ').trim();
-    }
+    traceability.consigneeName = {
+      value: consigneeName,
+      sourceDoc: file.name,
+      sourceSheet: invSheetObj?.name || dgSheetObj?.name,
+      sourceAnchor: csgAnchor.label,
+      confidence: 0.96
+    };
+  }
 
-    // === E. Notify Party (Col 0, Rows 17 to 20) ===
-    const notifyLines = readVerticalBlock(invRows, 0, 17, 20);
-    if (notifyLines.length > 0) {
-      notifyParty = notifyLines.join(', ').trim();
-    } else {
-      notifyParty = consigneeName ? 'SAME AS CONSIGNEE' : '';
-    }
-
-    // === F. Routing (0232_INV Rows 25 to 28) ===
-    const rawPol = String(invRows[26]?.[2] || '').trim();
-    if (rawPol && rawPol !== '0' && rawPol !== '---') {
-      portOfLoading = rawPol;
-    }
-
-    const rawPod = String(invRows[28]?.[0] || invRows[27]?.[0] || '').trim();
-    if (rawPod && rawPod !== '0' && rawPod !== '---') {
-      portOfDischarge = rawPod;
-    } else {
-      const podMatch = combinedText.match(/(?:YANGON,\s*MYANMAR|YANGON)/i);
-      if (podMatch) portOfDischarge = podMatch[0];
-    }
-
-    const rawDest = String(invRows[28]?.[2] || invRows[27]?.[2] || '').trim();
-    if (rawDest && rawDest !== '0' && rawDest !== '---') {
-      finalDestination = rawDest;
-    } else {
-      finalDestination = portOfDischarge || '';
-    }
-
-    // Vessel / Voyage: If 0, "0", "---", or empty -> empty string (DO NOT hardcode!)
-    const rawVv = String(invRows[26]?.[0] || invRows[25]?.[0] || '').trim();
-    if (rawVv && rawVv !== '0' && rawVv !== '---' && !/vessel/i.test(rawVv)) {
-      const parts = rawVv.split('/');
-      vesselName = parts[0]?.trim() || '';
-      voyageNumber = parts[1]?.trim() || '';
-    } else {
-      vesselName = '';
-      voyageNumber = '';
-    }
-
-    // Destination Country
-    if (/MYANMAR|YANGON/i.test(portOfDischarge + finalDestination)) destinationCountry = 'MM';
-    else if (/JEDDAH|SAUDI|KSA/i.test(portOfDischarge + finalDestination)) destinationCountry = 'SA';
-    else if (/KUWAIT/i.test(portOfDischarge + finalDestination)) destinationCountry = 'KW';
-    else if (/ROTTERDAM|NETHERLANDS/i.test(portOfDischarge + finalDestination)) destinationCountry = 'NL';
-    else if (/HAMBURG|GERMANY/i.test(portOfDischarge + finalDestination)) destinationCountry = 'DE';
-
-    // === G. Commercial Marks & Brand (0232_INV Rows 31 to 34) ===
-    const markLines = readVerticalBlock(invRows, 0, 31, 33);
-    if (markLines.length > 0) {
-      shippingMarks = markLines.join('\n');
-    }
-
-    for (let r = 31; r <= 34; r++) {
-      for (let c = 2; c <= 6; c++) {
-        const val = String(invRows[r]?.[c] || '');
-        const bm = val.match(/BRAND\s*NAME\s*:\s*([A-Za-z0-9\s/]+)/i);
-        if (bm) brandName = bm[1].trim();
-      }
-    }
-
-    // HS Code
-    const hsMatch = combinedText.match(/\b(8507\d{4})\b/);
-    if (hsMatch) hsnCode = hsMatch[1];
+  // 5. Notify Party
+  let notifyParty = '';
+  const notifyAnchor = findSemanticAnchor(invRows, /^Notify\s*Party:?/i, { maxBlockLines: 4 });
+  if (notifyAnchor && notifyAnchor.blockValues.length > 0) {
+    notifyParty = notifyAnchor.blockValues.join(', ').trim();
   } else {
-    // Non-Exide single sheet parsing (e.g. HPFL NEWARK)
-    const expMatch = combinedText.match(/(?:Shipper|Exporter)\s*[:-]*\s*([^\n\r]+)/i);
-    exporterName = expMatch ? expMatch[1].trim() : 'EXIDE INDUSTRIES LIMITED';
+    notifyParty = consigneeName ? 'SAME AS CONSIGNEE' : '';
+  }
 
-    const addrMatch = combinedText.match(/(?:EXIDE HOUSE[^\n]+|[^\n]+(?:ROAD|STREET)[^\n]+(?:KOLKATA|MUMBAI)[^\n]*)/i);
-    shipperAddress = addrMatch ? addrMatch[0].trim() : '';
+  // 6. Routing (Ports, Final Destination, Country)
+  let portOfLoading = targetPort === 'INBOM4' ? 'Mumbai Air Cargo (INBOM4)' : 'Nhava Sheva (INNSA1)';
+  let portOfDischarge = '';
+  let finalDestination = '';
+  let destinationCountry = 'IN';
 
-    const csgMatch = combinedText.match(/(?:Consignee)\s*[:-]*\s*([^\n\r]+)/i);
-    consigneeName = csgMatch ? csgMatch[1].trim() : 'INTERNATIONAL CONSIGNEE';
+  const polAnchor = findSemanticAnchor(invRows, /Port\s*of\s*Loading/i) || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /Port\s*of\s*Loading/i) : null);
+  if (polAnchor && polAnchor.value && polAnchor.value !== '---' && polAnchor.value !== '0') {
+    portOfLoading = polAnchor.value;
+  }
 
-    const csgAddr = combinedText.match(/(?:AUTO\s*1[^\n]+|[^\n]+(?:KUWAIT|SAUDI|MYANMAR)[^\n]*)/i);
-    consigneeAddress = csgAddr ? csgAddr[0].trim() : '';
+  const podAnchor = findSemanticAnchor(invRows, /Port\s*of\s*Discharge/i) || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /Port\s*of\s*Discharge/i) : null);
+  if (podAnchor && podAnchor.value && podAnchor.value !== '---' && podAnchor.value !== '0') {
+    portOfDischarge = podAnchor.value;
+  } else {
+    const podMatch = combinedText.match(/(?:YANGON,\s*MYANMAR|YANGON|KUWAIT\s*PORT|JEDDAH\s*PORT[^\n]*)/i);
+    if (podMatch) portOfDischarge = podMatch[0].trim();
+  }
 
-    const fnMatch = file.name.match(/\b(CHW\d+[A-Z]?|TAL\d+[A-Z]?|EXP\d+|[A-Z0-9_-]+)\b/i);
-    invoiceNumber = fnMatch ? fnMatch[1].toUpperCase() : 'INV-ACTIVE';
+  const destAnchor = findSemanticAnchor(invRows, /Final\s*Destination|Final\s*Place\s*of\s*Delivery/i) || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /Final\s*Place\s*of\s*Delivery/i) : null);
+  if (destAnchor && destAnchor.value && destAnchor.value !== '---' && destAnchor.value !== '0') {
+    finalDestination = destAnchor.value;
+  } else {
+    finalDestination = portOfDischarge || '';
+  }
 
-    const vvMatch = combinedText.match(/(?:Ship(?:'s)?\s*Name\s*(?:and|&)?\s*Voyage\s*No\.?|Vessel\s*(?:&|\/)?\s*Voyage)\s*[:.]*\s*([A-Za-z0-9\s-]+?)(?:\s*\/\s*|\s+Voy\s*[:.]*\s*)([A-Za-z0-9]+)/i);
-    if (vvMatch) {
-      vesselName = vvMatch[1].trim();
-      voyageNumber = vvMatch[2].trim();
-    }
+  if (/MYANMAR|YANGON/i.test(portOfDischarge + finalDestination)) destinationCountry = 'MM';
+  else if (/JEDDAH|SAUDI|KSA/i.test(portOfDischarge + finalDestination)) destinationCountry = 'SA';
+  else if (/KUWAIT/i.test(portOfDischarge + finalDestination)) destinationCountry = 'KW';
+  else if (/ROTTERDAM|NETHERLANDS/i.test(portOfDischarge + finalDestination)) destinationCountry = 'NL';
+  else if (/HAMBURG|GERMANY/i.test(portOfDischarge + finalDestination)) destinationCountry = 'DE';
 
-    const podMatch = combinedText.match(/(?:Port\s*of\s*Discharge|Destination\s*Port)\s*[:.]*\s*([^\n,]{3,60})/i);
-    if (podMatch) portOfDischarge = podMatch[1].trim();
-    if (/KUWAIT/i.test(combinedText)) {
-      portOfDischarge = portOfDischarge || 'Kuwait Port';
-      destinationCountry = 'KW';
-    }
+  traceability.portOfDischarge = {
+    value: portOfDischarge,
+    sourceDoc: file.name,
+    sourceSheet: invSheetObj?.name || dgSheetObj?.name,
+    sourceAnchor: podAnchor?.label || 'Text Pattern Heuristic',
+    confidence: podAnchor ? 0.95 : 0.85
+  };
 
-    finalDestination = portOfDischarge;
+  // 7. Vessel / Voyage
+  let vesselName = '';
+  let voyageNumber = '';
+  const vvAnchor = findSemanticAnchor(invRows, /(?:Ship(?:'s)?\s*Name\s*(?:and|&)?\s*Voyage\s*No\.?|Vessel\s*(?:&|\/)?\s*Voyage|Vessel\/Flight\s*No)/i)
+    || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /(?:Ship(?:'s)?\s*Name\s*(?:and|&)?\s*Voyage\s*No\.?|Vessel\s*(?:&|\/)?\s*Voyage)/i) : null);
 
-    const bkgMatch = combinedText.match(/(?:Carrier(?:'s)?\s*Booking\s*Number|Reference\s*Number\(s\)|Booking\s*Ref)\s*[:.]*\s*([A-Za-z0-9-]+)/i);
-    if (bkgMatch) bookingNumber = bkgMatch[1].trim();
+  if (vvAnchor && vvAnchor.value && vvAnchor.value !== '---' && vvAnchor.value !== '0' && !/vessel/i.test(vvAnchor.value)) {
+    const parts = vvAnchor.value.split('/');
+    vesselName = parts[0]?.trim() || '';
+    voyageNumber = parts[1]?.trim() || '';
+  }
 
+  // 8. Carrier & Booking Reference
+  let carrierName = '';
+  let bookingNumber = '';
+  const carrierAnchor = findSemanticAnchor(dgRows.length > 0 ? dgRows : invRows, /^Carrier(?!\s*Booking)/i);
+  if (carrierAnchor && carrierAnchor.value) {
+    carrierName = carrierAnchor.value;
+  }
+
+  const bkgAnchor = findSemanticAnchor(dgRows.length > 0 ? dgRows : invRows, /(?:Carrier(?:'s)?\s*Booking\s*(?:Number|No)|Reference\s*Number\(s\)|Booking\s*Ref)/i);
+  if (bkgAnchor && bkgAnchor.value) {
+    bookingNumber = bkgAnchor.value;
+  }
+
+  // 9. Container & Seal Numbers
+  let extractedContainerNo = '';
+  let extractedSealNo = '';
+  const cntAnchor = findSemanticAnchor(dgRows.length > 0 ? dgRows : invRows, /Container\s*Number/i);
+  if (cntAnchor && cntAnchor.value) {
+    const cMatch = cntAnchor.value.match(/\b([A-Z]{4}\d{7})\b/);
+    if (cMatch) extractedContainerNo = cMatch[1];
+  }
+  if (!extractedContainerNo) {
     const cMatch = combinedText.match(/\b([A-Z]{4}\d{7})\b/);
     if (cMatch) extractedContainerNo = cMatch[1];
-
-    const sMatch = combinedText.match(/(?:SEAL\s*NO\.?)\s*[:.]*\s*([A-Za-z0-9-]+)/i);
-    if (sMatch) extractedSealNo = sMatch[1].trim();
   }
 
-  // 3. Extract Emergency Contact if present
-  const emgMatch = combinedText.match(/(?:Emergency\s*Contact[^\n]*Telephone[^\n]*|24\s*HRS\s*Emergency\s*Contact[^\n]*)\s*[:.]*\s*([^\n\r]+)/i);
-  if (emgMatch && emgMatch[1]) {
-    emergencyContact = emgMatch[1].trim();
+  const sealAnchor = findSemanticAnchor(dgRows.length > 0 ? dgRows : invRows, /SEAL\s*NO/i);
+  if (sealAnchor && sealAnchor.value) {
+    const sMatch = sealAnchor.value.match(/([A-Za-z0-9-]+)/);
+    if (sMatch) extractedSealNo = sMatch[1];
   }
 
-  // 4. Exact Pallet Table Extraction from 0232_PKG (Rows 35+)
-  const pallets: Pallet[] = [];
-  const lineItems: LineItem[] = [];
-  const unNumber = 'UN 2794';
-  const imoClass = 'Class 8 (Corrosive)';
-  const packingGroup = 'III';
-  const properShippingName = 'BATTERIES, WET, FILLED WITH ACID';
+  // 10. Emergency Contact & Signatory
+  let emergencyContact = '';
+  let dgDeclarantName = '';
+  let dgDeclarantStatus = '';
+  let dgDeclarationPlaceAndDate = '';
 
-  if (hasExideStructure) {
-    // Scan 0232_PKG rows starting from Row 35
-    for (let r = 0; r < pkgRows.length; r++) {
-      const row = pkgRows[r];
-      if (!row) continue;
-      const c0 = String(row[0] || '').trim();
+  const emgAnchor = findSemanticAnchor(dgRows.length > 0 ? dgRows : invRows, /(?:24\s*HRS\s*Emergency\s*Contact|Emergency\s*Contact)/i);
+  if (emgAnchor && emgAnchor.value) {
+    emergencyContact = emgAnchor.value;
+  }
 
-      // In 0232_PKG, each pallet row has Col 0 === '1' and Col 1 is the Pallet Number
-      if (c0 === '1' && row[1]) {
-        const pNum = String(row[1]).trim();
-        const model = String(row[2] || '').trim() || 'Lead Acid Automotive Storage Batteries';
-        const boxQty = parseFloat(String(row[4] || '').replace(/,/g, '')) || 1;
-        const netWt = parseFloat(String(row[6] || '').replace(/,/g, '')) || 0;
-        const grossWt = parseFloat(String(row[8] || '').replace(/,/g, '')) || 0;
+  const signatoryAnchor = findSemanticAnchor(dgRows.length > 0 ? dgRows : invRows, /Name\/Status.*Signatory/i);
+  if (signatoryAnchor && signatoryAnchor.value) {
+    const sigVal = signatoryAnchor.value;
+    const parts = sigVal.split(',');
+    dgDeclarantName = parts[0]?.trim() || sigVal;
+    dgDeclarantStatus = parts.slice(1).join(', ').trim();
+  }
 
-        const itemId = `item-${invoiceNumber}-${pNum}-${r}`;
-        const palletId = `plt-${invoiceNumber}-${pNum}-${r}`;
+  const placeDateAnchor = findSemanticAnchor(dgRows.length > 0 ? dgRows : invRows, /Place\s*and\s*Date/i);
+  if (placeDateAnchor && placeDateAnchor.value) {
+    dgDeclarationPlaceAndDate = placeDateAnchor.value;
+  }
 
-        const pallet: Pallet = {
-          id: palletId,
-          palletNumber: pNum,
-          packageCount: Math.round(boxQty),
-          packageType: 'BOX',
-          grossWeightKg: Number(grossWt.toFixed(2)),
-          netWeightKg: Number(netWt.toFixed(2)),
-          dimensions: '1200 x 1000 x 800 mm',
-          footprintAreaMm2: 1200 * 1000,
-          modelOrDescription: model,
-          isDangerousGoods: true,
-          imoClass,
-          unNumber,
-          packingGroup,
-          lineItemIds: [itemId]
-        };
+  // 11. Multi-Tier Packaging Segregation & Pallet Extraction
+  let pallets: Pallet[] = [];
+  let lineItems: LineItem[] = [];
+  let totalGrossWeight = 0;
+  let totalNetWeight = 0;
+  let totalOuterPackages = 0;
+  let outerPackageType = 'PALLET';
+  let totalInnerPackages = 0;
+  let innerPackageType = 'BOX';
+  let totalBaseUnits = 0;
 
-        const item: LineItem = {
-          id: itemId,
-          itemNumber: pallets.length + 1,
-          description: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
-          modelNumber: model,
-          hsnCode,
-          quantity: Math.round(boxQty),
-          uqc: 'BOX',
-          unitPrice: 50.0,
-          total: Number((boxQty * 50).toFixed(2)),
-          netWeightKg: Number(netWt.toFixed(2)),
-          grossWeightKg: Number(grossWt.toFixed(2)),
-          palletNumber: pNum,
-          isDangerousGood: true,
-          imoClass,
-          unNumber,
-          packingGroup,
-          properShippingName,
-          emergencyContact: emergencyContact || undefined,
-          emsNumber: 'F-A-S-B'
-        };
+  // Case A: Narrative Packaging Hierarchy in DG Declaration (e.g. "1200 FIBREBOARD BOXES IN 12 PALLETS")
+  const narrativePkgMatch = combinedText.match(/(\d+)\s+([A-Za-z\s]+?)\s+IN\s+(\d+)\s+([A-Za-z\s]+)/i);
+  if (narrativePkgMatch && dgRows.length > 0 && pkgRows.length <= 1) {
+    const innerQty = parseInt(narrativePkgMatch[1], 10);
+    const innerName = narrativePkgMatch[2].trim().toUpperCase();
+    const outerQty = parseInt(narrativePkgMatch[3], 10);
+    const outerName = narrativePkgMatch[4].trim().toUpperCase().replace(/S$/, '');
 
-        pallets.push(pallet);
-        lineItems.push(item);
-      }
+    totalInnerPackages = innerQty;
+    innerPackageType = innerName;
+    totalOuterPackages = outerQty;
+    outerPackageType = outerName;
+
+    // Base units e.g. "EACH BOX HAS 1 BATTERY"
+    const baseUnitMatch = combinedText.match(/EACH\s*([A-Za-z]+)\s*HAS\s*(\d+)\s*([A-Za-z]+)/i);
+    const unitsPerBox = baseUnitMatch ? parseInt(baseUnitMatch[2], 10) : 1;
+    totalBaseUnits = innerQty * unitsPerBox;
+
+    const grWtMatch = combinedText.match(/(?:GR\s*WT|GROSS\s*WEIGHT)\s*[:.]*\s*([0-9,.]+)/i);
+    const ntWtMatch = combinedText.match(/(?:NT\s*WT|NET\s*WEIGHT)\s*[:.]*\s*([0-9,.]+)/i);
+
+    totalGrossWeight = grWtMatch ? parseFloat(grWtMatch[1].replace(/,/g, '')) : 0;
+    totalNetWeight = ntWtMatch ? parseFloat(ntWtMatch[1].replace(/,/g, '')) : 0;
+
+    const boxesPerPallet = Math.round(innerQty / outerQty);
+    const grossPerPallet = Number((totalGrossWeight / outerQty).toFixed(2));
+    const netPerPallet = Number((totalNetWeight / outerQty).toFixed(2));
+
+    for (let p = 1; p <= outerQty; p++) {
+      const palletNo = `PLT-${String(p).padStart(2, '0')}`;
+      const itemId = `item-${invoiceNumber}-${p}`;
+      const palletId = `plt-${invoiceNumber}-${p}`;
+
+      pallets.push({
+        id: palletId,
+        palletNumber: palletNo,
+        packageCount: boxesPerPallet,
+        packageType: 'BOX',
+        innerPackageCount: boxesPerPallet,
+        innerPackageType: innerName,
+        baseUnitCount: boxesPerPallet * unitsPerBox,
+        baseUnitType: 'NOS',
+        grossWeightKg: grossPerPallet,
+        netWeightKg: netPerPallet,
+        dimensions: '1200 x 1000 x 800 mm',
+        footprintAreaMm2: 1200 * 1000,
+        modelOrDescription: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
+        isDangerousGoods: true,
+        imoClass: 'Class 8 (Corrosive)',
+        unNumber: 'UN 2794',
+        packingGroup: 'III',
+        lineItemIds: [itemId]
+      });
+
+      lineItems.push({
+        id: itemId,
+        itemNumber: p,
+        description: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
+        modelNumber: 'LEAD ACID BATTERIES',
+        hsnCode: '85071000',
+        quantity: boxesPerPallet,
+        uqc: 'BOX',
+        unitPrice: 50.0,
+        total: Number((boxesPerPallet * 50).toFixed(2)),
+        netWeightKg: netPerPallet,
+        grossWeightKg: grossPerPallet,
+        palletNumber: palletNo,
+        isDangerousGood: true,
+        imoClass: 'Class 8 (Corrosive)',
+        unNumber: 'UN 2794',
+        packingGroup: 'III',
+        properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
+        emergencyContact: emergencyContact || undefined,
+        emsNumber: 'F-A-S-B'
+      });
     }
+  } else {
+    // Case B: Tabular Pallet Parsing from Packing Sheet / Invoice Sheet
+    const tableResult = extractDynamicPalletTable(
+      pkgRows.length > 0 ? pkgRows : invRows,
+      pkgSheetObj?.name || invSheetObj?.name || 'Primary Sheet',
+      invoiceNumber,
+      traceability
+    );
+
+    pallets = tableResult.pallets;
+    lineItems = tableResult.lineItems;
+    totalGrossWeight = tableResult.totalGrossKg;
+    totalNetWeight = tableResult.totalNetKg;
+    totalOuterPackages = tableResult.totalOuterPackages;
+    outerPackageType = tableResult.outerPackageType;
+    totalInnerPackages = tableResult.totalInnerPackages;
+    innerPackageType = tableResult.innerPackageType;
+    totalBaseUnits = tableResult.totalBaseUnits;
   }
 
-  // Fallback for single sheet if no row matched
-  if (pallets.length === 0) {
-    const totalGrossMatch = combinedText.match(/(?:TOTAL\s*GR\.?\s*WT|TOTAL\s*GROSS\s*WEIGHT|GR\s*WT)\.?\s*[:.]*\s*([0-9,.]+)/i);
-    const parsedGross = totalGrossMatch ? parseFloat(totalGrossMatch[1].replace(/,/g, '')) : 0;
-    const totalNetMatch = combinedText.match(/(?:TOTAL\s*NET\s*WT|TOTAL\s*NET\s*WEIGHT|NT\s*WT)\.?\s*[:.]*\s*([0-9,.]+)/i);
-    const parsedNet = totalNetMatch ? parseFloat(totalNetMatch[1].replace(/,/g, '')) : 0;
-
-    const fallbackPallet: Pallet = {
-      id: `plt-${invoiceNumber}-1`,
-      palletNumber: 'PLT-01',
-      packageCount: 50,
-      packageType: 'BOX',
-      grossWeightKg: parsedGross,
-      netWeightKg: parsedNet,
-      dimensions: '1200 x 1000 x 800 mm',
-      modelOrDescription: 'Industrial Lead-Acid Storage Batteries',
-      isDangerousGoods: true,
-      imoClass,
-      unNumber,
-      packingGroup,
-      lineItemIds: [`item-${invoiceNumber}-1`]
-    };
-
-    pallets.push(fallbackPallet);
-    lineItems.push({
-      id: `item-${invoiceNumber}-1`,
-      itemNumber: 1,
-      description: 'Industrial Lead-Acid Storage Batteries',
-      hsnCode: '85071000',
-      quantity: 50,
-      uqc: 'BOX',
-      unitPrice: 50,
-      total: 2500,
-      netWeightKg: parsedNet,
-      grossWeightKg: parsedGross,
-      palletNumber: 'PLT-01',
-      isDangerousGood: true,
-      imoClass,
-      unNumber,
-      packingGroup,
-      properShippingName,
-      emergencyContact: emergencyContact || undefined,
-      emsNumber: 'F-A-S-B'
-    });
-  }
-
-  // Exact totals derived strictly from the extracted pallets
-  const totalGrossWeight = Number(pallets.reduce((s, p) => s + p.grossWeightKg, 0).toFixed(2));
-  const totalNetWeight = Number(pallets.reduce((s, p) => s + p.netWeightKg, 0).toFixed(2));
-  const totalBoxes = pallets.reduce((s, p) => s + p.packageCount, 0);
-
-  // 5. Container Allocation
-  // Pass extracted pallets directly with preservePalletOrder: true
-  // Double-stacked 20' GP container (maxPallets: 22, maxPayloadKg: 25000) fits 22 pallets cleanly
+  // 12. Container Allocation via LAFF Solver
   const { containers } = optimizeContainerAllocation(lineItems, pallets, {
     preferredContainerType: '20GP',
     preservePalletOrder: true
@@ -410,46 +697,13 @@ export async function extractFromSpreadsheet(
 
   if (extractedContainerNo && containers.length > 0) {
     containers[0].containerNumber = extractedContainerNo;
-    containers[0].pallets.forEach(p => p.assignedContainerId = containers[0].id);
+    containers[0].pallets.forEach(p => (p.assignedContainerId = containers[0].id));
   }
   if (extractedSealNo && containers.length > 0) {
     containers[0].sealNumber = extractedSealNo;
   }
 
-  // 6. Generate Clean HTML Preview for View Invoices carousel
-  // Render primary sheets only, skipping obsolete/junk tabs
-  const renderSheetTable = (sheet: XLSX.WorkSheet | null, name: string): string => {
-    if (!sheet) return '';
-    const rawHtml = XLSX.utils.sheet_to_html(sheet, { id: `table-${name}` });
-    return `
-      <div style="margin-bottom: 24px;">
-        <div style="font-size: 11px; font-weight: 700; color: #18181b; padding: 6px 10px; background: #f4f4f5; border: 1px solid #e4e4e7; border-bottom: none; font-family: monospace;">
-          SHEET: ${name}
-        </div>
-        <div style="overflow-x: auto; border: 1px solid #e4e4e7; background: #fff; max-height: 500px; font-size: 10.5px;">
-          ${rawHtml}
-        </div>
-      </div>
-    `;
-  };
-
-  const previewSheets = hasExideStructure
-    ? [
-        renderSheetTable(workbook.Sheets[invSheetName!], invSheetName!),
-        renderSheetTable(workbook.Sheets[pkgSheetName!], pkgSheetName!)
-      ]
-    : [renderSheetTable(workbook.Sheets[primarySheetName], primarySheetName)];
-
-  const previewHtml = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 12px; color: #09090b;">
-      <div style="margin-bottom: 12px; padding: 8px 12px; background: #fafafa; border: 1px solid #e4e4e7; border-radius: 6px; font-size: 11px; font-family: monospace;">
-        <strong>Document:</strong> ${file.name} | <strong>Invoice:</strong> ${invoiceNumber} | <strong>Pallets:</strong> ${pallets.length} | <strong>Gross:</strong> ${totalGrossWeight.toLocaleString()} kg
-      </div>
-      ${previewSheets.join('\n')}
-    </div>
-  `;
-
-  // Calculate exact sequential pallet range for this invoice
+  // 13. Sequential Pallet Range Calculation
   let invoicePalletRange: string | undefined;
   if (pallets.length > 0) {
     const rawNums = pallets.map(p => p.palletNumber).filter(Boolean);
@@ -475,6 +729,35 @@ export async function extractFromSpreadsheet(
     }
   }
 
+  // 14. Clean HTML Preview Rendering (filtering out junk tabs)
+  const renderSheetTable = (sheet: XLSX.WorkSheet | null, name: string): string => {
+    if (!sheet) return '';
+    const rawHtml = XLSX.utils.sheet_to_html(sheet, { id: `table-${name}` });
+    return `
+      <div style="margin-bottom: 24px;">
+        <div style="font-size: 11px; font-weight: 700; color: #18181b; padding: 6px 10px; background: #f4f4f5; border: 1px solid #e4e4e7; border-bottom: none; font-family: monospace;">
+          SHEET: ${name}
+        </div>
+        <div style="overflow-x: auto; border: 1px solid #e4e4e7; background: #fff; max-height: 500px; font-size: 10.5px;">
+          ${rawHtml}
+        </div>
+      </div>
+    `;
+  };
+
+  const previewSheets = classifiedSheets
+    .filter(s => s.type !== 'junk')
+    .map(s => renderSheetTable(s.sheet, s.name));
+
+  const previewHtml = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 12px; color: #09090b;">
+      <div style="margin-bottom: 12px; padding: 8px 12px; background: #fafafa; border: 1px solid #e4e4e7; border-radius: 6px; font-size: 11px; font-family: monospace;">
+        <strong>Document:</strong> ${file.name} | <strong>Invoice:</strong> ${invoiceNumber} | <strong>Outer Pallets:</strong> ${totalOuterPackages} | <strong>Inner Packages:</strong> ${totalInnerPackages} | <strong>Gross:</strong> ${totalGrossWeight.toLocaleString()} kg
+      </div>
+      ${previewSheets.join('\n')}
+    </div>
+  `;
+
   const invoice: ConvertedInvoice = {
     id: `inv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     fileName: file.name,
@@ -498,19 +781,25 @@ export async function extractFromSpreadsheet(
     destinationCountry,
     vesselName: vesselName || undefined,
     voyageNumber: voyageNumber || undefined,
-    shippingMarks: shippingMarks || undefined,
-    brandName: brandName || undefined,
-    hsnCode,
-    carrierName: 'ONE LINE',
+    shippingMarks: undefined,
+    brandName: undefined,
+    hsnCode: '85071000',
+    carrierName: carrierName || undefined,
     currency: 'USD',
     exchangeRate: 83.5,
     incoterm: 'CFR',
-    invoiceTotal: Number((totalBoxes * 50).toFixed(2)),
+    invoiceTotal: Number((totalInnerPackages * 50).toFixed(2)),
     grossWeightKg: totalGrossWeight,
     netWeightKg: totalNetWeight,
-    totalPackages: totalBoxes,
-    packageType: 'BOX',
-    totalPallets: pallets.length,
+    totalPackages: totalInnerPackages,
+    packageType: innerPackageType || 'BOX',
+    totalPallets: totalOuterPackages,
+    totalOuterPackages,
+    outerPackageType,
+    totalInnerPackages,
+    innerPackageType,
+    totalBaseUnits,
+    fieldTraceability: traceability,
     palletRanges: invoicePalletRange ? [invoicePalletRange] : undefined,
     statutoryDescription: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
     hasDangerousGoods: true,
@@ -519,7 +808,10 @@ export async function extractFromSpreadsheet(
     containers,
     pallets,
     lineItems,
-    emergencyContact: emergencyContact || undefined
+    emergencyContact: emergencyContact || undefined,
+    dgDeclarantName: dgDeclarantName || undefined,
+    dgDeclarantStatus: dgDeclarantStatus || undefined,
+    dgDeclarationPlaceAndDate: dgDeclarationPlaceAndDate || undefined
   };
 
   return {
