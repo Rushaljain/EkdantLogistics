@@ -478,6 +478,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               onDeleteContainer={handleDeleteContainer}
               onContainerTypeChange={handleContainerTypeChange}
               onContainerFieldChange={handleContainerFieldChange}
+              onUpdateInvoice={(updated: ConvertedInvoice) => {
+                setFormData(updated);
+                onSave(updated);
+              }}
               onLockAndGenerate={() => {
                 const recon = reconcileShipment(formData);
                 if (!recon.isValid) {

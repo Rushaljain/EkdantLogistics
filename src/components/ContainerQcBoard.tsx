@@ -6,9 +6,12 @@ import {
   Lock, 
   Flame, 
   Trash2, 
-  ArrowRightLeft,
-  ShieldAlert,
-  Info
+  ArrowRightLeft, 
+  ShieldAlert, 
+  Info,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal
 } from 'lucide-react';
 import type { 
   ContainerAllocation, 
@@ -36,6 +39,7 @@ interface ContainerQcBoardProps {
   onDeleteContainer?: (id: string) => void;
   onContainerTypeChange?: (id: string, type: ContainerType) => void;
   onContainerFieldChange?: (id: string, field: 'containerNumber' | 'sealNumber', val: string) => void;
+  onUpdateInvoice?: (updatedInvoice: ConvertedInvoice) => void;
   onLockAndGenerate: () => void;
   onQuickDownloadBol?: () => void;
   onQuickDownloadDg?: () => void;
@@ -54,6 +58,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
   onDeleteContainer,
   onContainerTypeChange,
   onContainerFieldChange,
+  onUpdateInvoice,
   onLockAndGenerate,
   onQuickDownloadBol: _onQuickDownloadBol,
   onQuickDownloadDg: _onQuickDownloadDg
@@ -64,6 +69,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
   const [dragOverContainerId, setDragOverContainerId] = useState<string | null>(null);
   const [violationNotice, setViolationNotice] = useState<string | null>(null);
   const [dismissedConflicts, setDismissedConflicts] = useState<Set<string>>(new Set());
+  const [isManifestOpen, setIsManifestOpen] = useState<boolean>(false);
 
   // Active Shipment representation for deterministic numerical reconciliation
   const activeShipment: ConvertedInvoice = useMemo(() => {
@@ -122,6 +128,16 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
   );
 
   const activeConflicts = rawConflicts.filter(c => !dismissedConflicts.has(c.id));
+
+  // Handler for updating manifest fields on activeShipment
+  const handleManifestFieldChange = (field: keyof ConvertedInvoice, value: any) => {
+    if (!onUpdateInvoice) return;
+    const updated: ConvertedInvoice = {
+      ...activeShipment,
+      [field]: value
+    };
+    onUpdateInvoice(updated);
+  };
 
   // Pallet transfer handler
   const movePallet = (palletId: string, fromContainerId: string, toContainerId: string) => {
@@ -318,7 +334,332 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
         </div>
       )}
 
-      {/* =========================================================================
+            {/* 4. Operator-Editable Shipment & Carrier Manifest Bar (Single Source of Truth) */}
+      <div className="border-b border-zinc-200 bg-white shrink-0 select-none">
+        <button
+          type="button"
+          onClick={() => setIsManifestOpen(!isManifestOpen)}
+          className="w-full px-5 py-2 flex items-center justify-between hover:bg-zinc-50 transition-colors cursor-pointer text-left"
+        >
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <SlidersHorizontal className="w-4 h-4 text-zinc-700 shrink-0" />
+            <div className="flex items-center space-x-2 min-w-0">
+              <span className="text-xs font-semibold text-zinc-900 tracking-tight">
+                Shipment & Carrier Manifest Bar
+              </span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-700 font-mono border border-zinc-200 shrink-0 font-medium">
+                Single Source of Truth
+              </span>
+              <span className="text-xs text-zinc-500 truncate hidden md:inline font-mono text-[11px]">
+                {activeShipment.carrierName || 'ONE LINE'} | BKG: {activeShipment.bookingNumber || 'MUMGA3747500'} | {activeShipment.vesselName || 'ONE HUMBER'} / {activeShipment.voyageNumber || '106E'} | {activeShipment.portOfLoading || 'NHAVA SHEVA'} → {activeShipment.portOfDischarge || 'YANGON'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-1.5 text-xs font-medium text-zinc-600 shrink-0">
+            <span>{isManifestOpen ? 'Hide Manifest' : 'Edit Manifest Fields'}</span>
+            {isManifestOpen ? (
+              <ChevronUp className="w-3.5 h-3.5 text-zinc-400" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+            )}
+          </div>
+        </button>
+
+        {isManifestOpen && (
+          <div className="px-5 py-3 border-t border-zinc-100 bg-zinc-50/70 max-h-72 overflow-y-auto space-y-3.5 text-xs">
+            {/* Section A: Carrier, Booking, Vessel & Voyage */}
+            <div>
+              <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-1.5 font-mono">
+                1. Carrier, Booking & Vessel
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Carrier</label>
+                  <input
+                    type="text"
+                    value={activeShipment.carrierName || ''}
+                    onChange={(e) => handleManifestFieldChange('carrierName', e.target.value)}
+                    placeholder="ONE LINE"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Booking Ref</label>
+                  <input
+                    type="text"
+                    value={activeShipment.bookingNumber || ''}
+                    onChange={(e) => handleManifestFieldChange('bookingNumber', e.target.value)}
+                    placeholder="MUMGA3747500"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Vessel Name</label>
+                  <input
+                    type="text"
+                    value={activeShipment.vesselName || ''}
+                    onChange={(e) => handleManifestFieldChange('vesselName', e.target.value)}
+                    placeholder="ONE HUMBER"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Voyage No</label>
+                  <input
+                    type="text"
+                    value={activeShipment.voyageNumber || ''}
+                    onChange={(e) => handleManifestFieldChange('voyageNumber', e.target.value)}
+                    placeholder="106E"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Movement Type</label>
+                  <input
+                    type="text"
+                    value={activeShipment.movementType || 'FCL / CY'}
+                    onChange={(e) => handleManifestFieldChange('movementType', e.target.value)}
+                    placeholder="FCL / CY"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Freight Terms</label>
+                  <input
+                    type="text"
+                    value={activeShipment.freightTerms || 'FREIGHT COLLECT'}
+                    onChange={(e) => handleManifestFieldChange('freightTerms', e.target.value)}
+                    placeholder="FREIGHT COLLECT"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section B: Routing & Transshipment */}
+            <div>
+              <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-1.5 font-mono">
+                2. Routing & Transshipment Ports
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Place of Receipt</label>
+                  <input
+                    type="text"
+                    value={activeShipment.placeOfReceipt || ''}
+                    onChange={(e) => handleManifestFieldChange('placeOfReceipt', e.target.value)}
+                    placeholder="NHAVA SHEVA"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Port of Loading (POL)</label>
+                  <input
+                    type="text"
+                    value={activeShipment.portOfLoading || ''}
+                    onChange={(e) => handleManifestFieldChange('portOfLoading', e.target.value)}
+                    placeholder="NHAVA SHEVA, INDIA"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Port of Discharge (BL)</label>
+                  <input
+                    type="text"
+                    value={activeShipment.portOfDischarge || ''}
+                    onChange={(e) => handleManifestFieldChange('portOfDischarge', e.target.value)}
+                    placeholder="YANGON"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">POD (DG Transshipment)</label>
+                  <input
+                    type="text"
+                    value={activeShipment.portOfDischargeDg || ''}
+                    onChange={(e) => handleManifestFieldChange('portOfDischargeDg', e.target.value)}
+                    placeholder="SINGAPORE"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Place of Delivery</label>
+                  <input
+                    type="text"
+                    value={activeShipment.placeOfDelivery || activeShipment.finalDestination || ''}
+                    onChange={(e) => {
+                      handleManifestFieldChange('placeOfDelivery', e.target.value);
+                      handleManifestFieldChange('finalDestination', e.target.value);
+                    }}
+                    placeholder="MYANMAR"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Section C: Customs & Commercial Metadata */}
+            <div>
+              <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-1.5 font-mono">
+                3. Customs, Marks & Commercial Clauses
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Shipping Marks</label>
+                  <textarea
+                    rows={2}
+                    value={activeShipment.shippingMarks || ''}
+                    onChange={(e) => handleManifestFieldChange('shippingMarks', e.target.value)}
+                    placeholder="KAUNG SWANN&#10;HTET TRADING&#10;MYANMAR"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Shipping Bills (Comma-Separated)</label>
+                  <textarea
+                    rows={2}
+                    value={activeShipment.shippingBillNumbers || ''}
+                    onChange={(e) => handleManifestFieldChange('shippingBillNumbers', e.target.value)}
+                    placeholder="SB NO. 7463800 DT. 05.10.2026, SB NO. 7464015 DT. 05.10.2026"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none resize-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <div>
+                    <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Brand Name</label>
+                    <input
+                      type="text"
+                      value={activeShipment.brandName || ''}
+                      onChange={(e) => handleManifestFieldChange('brandName', e.target.value)}
+                      placeholder="DYNEX MATRIX"
+                      className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">H.S. Code</label>
+                    <input
+                      type="text"
+                      value={activeShipment.hsnCode || ''}
+                      onChange={(e) => handleManifestFieldChange('hsnCode', e.target.value)}
+                      placeholder="85071000"
+                      className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div>
+                    <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Free Time Clause</label>
+                    <input
+                      type="text"
+                      value={activeShipment.freeTimeClause || ''}
+                      onChange={(e) => handleManifestFieldChange('freeTimeClause', e.target.value)}
+                      placeholder="14 DAYS FREE TIME DETENTION AT DESTINATION"
+                      className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">BL Declared Net Weight (kg)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={activeShipment.blDeclaredNetWeightKg ?? activeShipment.netWeightKg}
+                      onChange={(e) => handleManifestFieldChange('blDeclaredNetWeightKg', parseFloat(e.target.value) || 0)}
+                      placeholder="17970.70"
+                      className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section D: IMO Dangerous Goods & Signoff */}
+            <div>
+              <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider mb-1.5 font-mono">
+                4. IMO Dangerous Goods Declaration Signoff & Safety
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Declarant Name</label>
+                  <input
+                    type="text"
+                    value={activeShipment.dgDeclarantName || ''}
+                    onChange={(e) => handleManifestFieldChange('dgDeclarantName', e.target.value)}
+                    placeholder="SUJOY DUTTA"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Declarant Title</label>
+                  <input
+                    type="text"
+                    value={activeShipment.dgDeclarantStatus || ''}
+                    onChange={(e) => handleManifestFieldChange('dgDeclarantStatus', e.target.value)}
+                    placeholder="EXPORT MANAGER"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Place & Date</label>
+                  <input
+                    type="text"
+                    value={activeShipment.dgDeclarationPlaceAndDate || ''}
+                    onChange={(e) => handleManifestFieldChange('dgDeclarationPlaceAndDate', e.target.value)}
+                    placeholder="MUMBAI / 07.10.2026"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Emergency Contact</label>
+                  <input
+                    type="text"
+                    value={activeShipment.emergencyContactName || ''}
+                    onChange={(e) => handleManifestFieldChange('emergencyContactName', e.target.value)}
+                    placeholder="MR. SUJOY"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">Emergency Phone</label>
+                  <input
+                    type="text"
+                    value={activeShipment.emergencyContactPhone || ''}
+                    onChange={(e) => handleManifestFieldChange('emergencyContactPhone', e.target.value)}
+                    placeholder="9729899131"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">UN Package Code</label>
+                  <input
+                    type="text"
+                    value={activeShipment.unPackingCode || ''}
+                    onChange={(e) => handleManifestFieldChange('unPackingCode', e.target.value)}
+                    placeholder="4G/Z 30/S/IND/K/19700134"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-zinc-500 font-medium mb-0.5">EMS / Segregation</label>
+                  <input
+                    type="text"
+                    value={`${activeShipment.emsNumber || 'F-A-S-B'} | ${activeShipment.segregationGroup || 'SGG1'}`}
+                    onChange={(e) => {
+                      const parts = e.target.value.split('|').map(p => p.trim());
+                      handleManifestFieldChange('emsNumber', parts[0] || 'F-A-S-B');
+                      if (parts[1]) handleManifestFieldChange('segregationGroup', parts[1]);
+                    }}
+                    placeholder="F-A-S-B | SGG1"
+                    className="w-full px-2 py-1 text-xs bg-white border border-zinc-200 rounded font-mono text-zinc-900 focus:border-zinc-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+{/* =========================================================================
           COLUMN-BASED KANBAN TABLE LAYOUT
          ========================================================================= */}
       <div className="flex-1 min-h-0 overflow-x-auto p-4">

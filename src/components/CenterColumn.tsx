@@ -35,11 +35,11 @@ interface CenterColumnProps {
 
 export const CenterColumn: React.FC<CenterColumnProps> = ({
   documents,
-  selectedDocumentId: _selectedDocumentId,
+  selectedDocumentId,
   consolidatedInvoice,
   conversionMode = '',
   onConversionModeChange,
-  onSelectDocument: _onSelectDocument,
+  onSelectDocument,
   onFilesSelected,
   onConvertDocument,
   onConvertAll,
@@ -56,6 +56,8 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  const effectiveMode = conversionMode || (documents.length > 1 ? 'multiple' : 'single');
 
   return (
     <div className="w-[360px] lg:w-[380px] xl:w-[400px] h-full border-r border-zinc-200 bg-zinc-50/40 flex flex-col shrink-0 select-none overflow-hidden">
@@ -79,24 +81,23 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
          ========================================================================= */}
       <div className="flex-1 flex flex-col p-3.5 overflow-hidden">
         {/* Header: Title + Convert All Button + Clear */}
-        <div className="flex items-center justify-between pb-2.5 shrink-0">
+        <div className="flex items-center justify-between pb-2 shrink-0">
           <div className="flex items-center space-x-2">
             <h2 className="text-xs font-semibold text-zinc-900 tracking-tight uppercase">
               Shipment Invoices
             </h2>
+            {documents.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-200/80 text-zinc-700 font-mono">
+                {documents.length}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center space-x-1.5">
             {documents.length > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  if (!conversionMode) {
-                    alert('Please select whether this is a Single Invoice or Multiple Invoices conversion.');
-                    return;
-                  }
-                  onConvertAll();
-                }}
+                onClick={onConvertAll}
                 disabled={isBulkConverting}
                 className="px-2.5 py-1 text-[11px] font-semibold bg-zinc-900 hover:bg-zinc-800 text-white rounded-md shadow-2xs transition-colors flex items-center space-x-1.5 disabled:opacity-40 cursor-pointer"
                 title="Process staged invoices and generate Container Plan, DG & BL"
@@ -132,22 +133,29 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </div>
         </div>
 
-        {/* Conversion Mode Dropdown (Single Invoice vs Multiple Invoices) */}
+        {/* Auto-Verification Banner: Single vs. Multi-Invoice Mode */}
+        {documents.length > 0 && (
+          <div className="mb-2 px-2.5 py-1.5 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-800 text-[11px] font-mono flex items-center space-x-2 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-900 shrink-0" />
+            <span className="truncate">
+              {effectiveMode === 'multiple'
+                ? `Auto-Verified: Multi-Invoice Consolidation (${documents.length} Files Merged -> 1 DG & 1 BL)`
+                : `Auto-Verified: Single Invoice Mode (${documents.length} Invoice -> 1 DG & 1 BL)`}
+            </span>
+          </div>
+        )}
+
+        {/* Conversion Mode Selector */}
         {documents.length > 0 && (
           <div className="mb-2.5 shrink-0">
             <div className="relative">
               <select
-                value={conversionMode}
-                onChange={(e) => onConversionModeChange?.(e.target.value as 'single' | 'multiple' | '')}
-                className={`w-full appearance-none rounded-lg px-3 py-2 text-xs font-medium border transition-colors outline-none cursor-pointer pr-8 shadow-2xs ${
-                  conversionMode === ''
-                    ? 'bg-zinc-50/80 text-zinc-500 border-zinc-300 hover:border-zinc-400'
-                    : 'bg-white text-zinc-900 border-zinc-900'
-                }`}
+                value={effectiveMode}
+                onChange={(e) => onConversionModeChange?.(e.target.value as 'single' | 'multiple')}
+                className="w-full appearance-none rounded-lg px-2.5 py-1.5 text-xs font-medium border border-zinc-300 hover:border-zinc-400 bg-white text-zinc-900 transition-colors outline-none cursor-pointer pr-8 shadow-2xs"
               >
-                <option value="" disabled>Select Type</option>
-                <option value="multiple">Multiple Invoices</option>
-                <option value="single">Single Invoice</option>
+                <option value="multiple">Multi-Invoice Consolidation ({documents.length} Files → 1 DG & 1 BL)</option>
+                <option value="single">Single Invoice Mode (Process Independently)</option>
               </select>
               <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
                 <ChevronDown className="w-3.5 h-3.5" />
@@ -158,36 +166,53 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
 
         {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {conversionMode === 'multiple' && consolidatedInvoice && documents.length > 1 && (
-            <div className="p-2.5 rounded-lg border border-zinc-900 bg-zinc-900 text-white shadow-xs">
+          {effectiveMode === 'multiple' && consolidatedInvoice && documents.length > 1 && (
+            <div 
+              onClick={() => onSelectDocument('consolidated')}
+              className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
+                selectedDocumentId === 'consolidated'
+                  ? 'border-zinc-900 bg-zinc-900 text-white shadow-xs'
+                  : 'border-zinc-300 bg-zinc-50 hover:bg-zinc-100 text-zinc-900'
+              }`}
+            >
               <div className="flex items-center justify-between gap-1.5">
                 <div className="flex items-center space-x-1.5 min-w-0">
-                  <span className="font-semibold text-xs font-mono truncate text-white">
+                  <span className={`font-semibold text-xs font-mono truncate ${selectedDocumentId === 'consolidated' ? 'text-white' : 'text-zinc-900'}`}>
                     Consolidated Master ({documents.filter(d => d.status === 'processed').length} Invoices)
                   </span>
-                  <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 bg-zinc-800 text-zinc-200 border border-zinc-700">
+                  <span className={`inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 ${
+                    selectedDocumentId === 'consolidated'
+                      ? 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                      : 'bg-zinc-200 text-zinc-800 border border-zinc-300'
+                  }`}>
                     <CheckCircle2 className="w-2.5 h-2.5" />
                     <span>1 DG & 1 BL</span>
                   </span>
                 </div>
-                <span className="text-[10px] font-mono font-medium shrink-0 text-zinc-400">
+                <span className={`text-[10px] font-mono font-medium shrink-0 ${selectedDocumentId === 'consolidated' ? 'text-zinc-400' : 'text-zinc-500'}`}>
                   MASTER
                 </span>
               </div>
-              <div className="flex items-center justify-between mt-2 pt-1.5 text-[11px] gap-2 border-t border-zinc-800 text-zinc-300">
+              <div className={`flex items-center justify-between mt-2 pt-1.5 text-[11px] gap-2 border-t ${
+                selectedDocumentId === 'consolidated' ? 'border-zinc-800 text-zinc-300' : 'border-zinc-200 text-zinc-600'
+              }`}>
                 <div className="truncate min-w-0">
                   <span className="font-mono text-[10px]">
                     {consolidatedInvoice.containers?.length || 1} Cont • {Math.round(consolidatedInvoice.grossWeightKg || 0).toLocaleString()} kg • {consolidatedInvoice.totalPallets} Plts
                   </span>
                 </div>
-                <div className="flex items-center space-x-1 shrink-0">
+                <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"
                     onClick={() => {
                       const bol = generateMasterBol(consolidatedInvoice);
                       downloadDocumentHtml(bol);
                     }}
-                    className="px-2 py-0.5 text-[10px] font-medium rounded transition-colors bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 cursor-pointer"
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
+                      selectedDocumentId === 'consolidated'
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700'
+                        : 'bg-white hover:bg-zinc-50 text-zinc-700 border border-zinc-200 shadow-2xs'
+                    }`}
                     title="Download Master BOL"
                   >
                     BOL
@@ -199,7 +224,11 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         const dg = generateDgDeclaration(consolidatedInvoice);
                         downloadDocumentHtml(dg);
                       }}
-                      className="px-2 py-0.5 text-[10px] font-medium rounded transition-colors bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 cursor-pointer"
+                      className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors cursor-pointer ${
+                        selectedDocumentId === 'consolidated'
+                          ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700'
+                          : 'bg-white hover:bg-zinc-50 text-zinc-700 border border-zinc-200 shadow-2xs'
+                      }`}
                       title="Download Consolidated #DG Declaration"
                     >
                       #DG

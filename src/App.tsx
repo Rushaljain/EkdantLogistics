@@ -399,9 +399,10 @@ export function App() {
     }
 
     if (newDocs.length === 0) return;
-    setDocuments(prev => [...newDocs, ...prev]);
+    const allDocs = [...newDocs, ...documents];
+    setDocuments(allDocs);
     setSelectedDocumentId(newDocs[0].id);
-    setConversionMode('');
+    setConversionMode(allDocs.length > 1 ? 'multiple' : 'single');
   };
 
   // Convert a single document
@@ -538,7 +539,8 @@ export function App() {
 
     // Process data according to user-selected conversion mode (Single Invoice vs Multiple Invoices)
     const processedDocs = currentDocs.filter(d => d.status === 'processed' && d.invoice);
-    if (conversionMode === 'multiple' && processedDocs.length >= 2) {
+    const shouldConsolidate = conversionMode === 'multiple' || (!conversionMode && processedDocs.length >= 2);
+    if (shouldConsolidate && processedDocs.length >= 2) {
       const consolidated = buildConsolidatedInvoice(processedDocs.map(d => d.invoice!));
       setConsolidatedInvoice(consolidated);
       setSelectedDocumentId('consolidated');

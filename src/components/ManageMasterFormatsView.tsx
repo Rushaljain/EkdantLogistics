@@ -47,7 +47,7 @@ export const ManageMasterFormatsView: React.FC<ManageMasterFormatsViewProps> = (
       const file = e.target.files[0];
       setSelectedFile(file);
       if (!formatName) {
-        const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_\-]/g, ' ');
+        const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
         setFormatName(cleanName);
       }
     }
