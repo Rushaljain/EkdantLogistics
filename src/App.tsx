@@ -697,7 +697,7 @@ export function App() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-zinc-50 text-zinc-900 font-sans">
+    <div className="h-screen w-screen overflow-hidden bg-zinc-50 text-zinc-900 font-sans flex flex-col">
       {/* =========================================================================
           UNIFIED TOP NAVIGATION PANEL (Edge-to-edge, continuous, NO breaks or vertical dividers)
          ========================================================================= */}
@@ -723,43 +723,7 @@ export function App() {
         </div>
 
         {/* Right Section: Tab-dependent Header Controls */}
-        {activeTab === 'converter' ? (
-          <div className="flex items-center space-x-2 text-xs font-normal text-zinc-500">
-            {activeDocument ? (
-              <div className="flex items-center space-x-2">
-                <span className="text-zinc-400">Active Shipment:</span>
-                <span className="font-medium text-zinc-800 truncate max-w-[240px] lg:max-w-[380px]">
-                  {activeDocument.invoice?.invoiceNumber || activeDocument.fileName}
-                </span>
-                {activeDocument.invoice && (
-                  <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
-                    {activeDocument.invoice.containers?.length || 1} Cont • {Math.round(activeDocument.invoice.grossWeightKg || 0).toLocaleString()} kg
-                  </span>
-                )}
-                {activeDocument.invoice?.hasDangerousGoods && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200/60">
-                    #DG HazMat
-                  </span>
-                )}
-                {activeDocument.status === 'processed' && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                    Allocated
-                  </span>
-                )}
-                {activeDocument.status === 'pending' && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600 border border-zinc-200">
-                    Pending
-                  </span>
-                )}
-                {activeDocument.status === 'failed' && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200/60">
-                    Failed
-                  </span>
-                )}
-              </div>
-            ) : null}
-          </div>
-        ) : (
+        {activeTab === 'converter' ? null : (
           /* Files Repository Global Header Controls (Seamlessly aligned with NO vertical divider) */
           <div className="flex-1 flex items-center justify-between ml-6 min-w-0">
             {/* Title & Count */}

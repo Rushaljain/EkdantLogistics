@@ -5,7 +5,9 @@ import {
   Download, 
   Boxes, 
   Layers, 
-  Ship
+  Ship,
+  RefreshCw,
+  Plus
 } from 'lucide-react';
 import type { 
   ConvertedInvoice, 
@@ -184,7 +186,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       {/* =========================================================================
           TOP UNIFIED HEADER: VIEW SELECTOR DROPDOWN + MASTER FORMAT SELECTOR
          ========================================================================= */}
-      <div className="h-14 px-5 bg-white border-b border-zinc-200 flex items-center justify-between shrink-0 gap-3 select-none">
+      <div className="h-12 px-5 bg-white border-b border-zinc-200 flex items-center justify-between shrink-0 gap-3 select-none">
         {/* Left: View Selector + Master Format Selector */}
         <div className="flex items-center space-x-3 min-w-0">
           {/* 1. View Selector Dropdown */}
@@ -195,7 +197,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             <select
               value={activeView}
               onChange={(e) => onSelectView(e.target.value as RightPaneViewMode)}
-              className="text-xs font-semibold bg-white text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1.5 outline-none cursor-pointer hover:bg-zinc-50 shadow-2xs"
+              className="text-xs font-semibold bg-white text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1 outline-none cursor-pointer hover:bg-zinc-50 shadow-2xs"
             >
               <option value="invoices">View Invoices ({documents.length})</option>
               <option value="container_plan">Container Plan</option>
@@ -212,7 +214,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             <select
               value={selectedFormatId}
               onChange={(e) => onSelectFormat(e.target.value)}
-              className="text-xs font-medium bg-white text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1.5 outline-none cursor-pointer hover:bg-zinc-50 shadow-2xs max-w-[240px] truncate"
+              className="text-xs font-medium bg-white text-zinc-900 border border-zinc-200 rounded-lg px-2.5 py-1 outline-none cursor-pointer hover:bg-zinc-50 shadow-2xs max-w-[240px] truncate"
               title="Select Master BL & #DG layout format"
             >
               {masterFormats.map(fmt => (
@@ -240,7 +242,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               <button
                 type="button"
                 onClick={() => downloadDocumentHtml(generatedDg)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                className="inline-flex items-center space-x-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                 title="Download DG Declaration HTML"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -263,7 +265,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               <button
                 type="button"
                 onClick={() => downloadDocumentHtml(generatedBol)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                className="inline-flex items-center space-x-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                 title="Download Master BOL HTML"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -273,13 +275,25 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           )}
 
           {activeView === 'container_plan' && formData && (
-            <div className="flex items-center space-x-2 text-xs font-mono text-zinc-500">
-              <span className="px-2 py-1 bg-zinc-100 rounded border border-zinc-200">
-                {formData.containers.length} Container{formData.containers.length > 1 ? 's' : ''}
-              </span>
-              <span className="px-2 py-1 bg-zinc-100 rounded border border-zinc-200">
-                {formData.pallets.length} Pallets
-              </span>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => handleAutoReallocate('20GP')}
+                className="px-2.5 py-1 rounded-md text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Reset & Re-run 20' LAFF Optimizer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-zinc-500" />
+                <span>Reset to LAFF Optimal</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAddContainer('20GP')}
+                className="px-2.5 py-1 rounded-md text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              >
+                <Plus className="w-3.5 h-3.5 text-zinc-500" />
+                <span>Add Container</span>
+              </button>
             </div>
           )}
         </div>

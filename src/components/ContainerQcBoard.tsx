@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
 import { 
-  Boxes, 
   GripVertical, 
   AlertTriangle, 
   CheckCircle2, 
   Lock, 
   Flame, 
-  Plus, 
   Trash2, 
-  RefreshCw, 
-  Download, 
   ArrowRightLeft 
 } from 'lucide-react';
 import type { 
@@ -26,32 +22,32 @@ interface ContainerQcBoardProps {
   containers: ContainerAllocation[];
   pallets: Pallet[];
   lineItems: LineItem[];
-  hasDangerousGoods: boolean;
+  hasDangerousGoods?: boolean;
   onUpdateContainers: (updatedContainers: ContainerAllocation[], updatedPallets: Pallet[]) => void;
-  onAutoReallocate: (type?: ContainerType) => void;
+  onAutoReallocate?: (type?: ContainerType) => void;
   onAddContainer?: (type: ContainerType) => void;
   onDeleteContainer?: (id: string) => void;
   onContainerTypeChange?: (id: string, type: ContainerType) => void;
   onContainerFieldChange?: (id: string, field: 'containerNumber' | 'sealNumber', val: string) => void;
   onLockAndGenerate: () => void;
-  onQuickDownloadBol: () => void;
-  onQuickDownloadDg: () => void;
+  onQuickDownloadBol?: () => void;
+  onQuickDownloadDg?: () => void;
 }
 
 export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
   containers,
   pallets,
   lineItems,
-  hasDangerousGoods,
+  hasDangerousGoods: _hasDangerousGoods,
   onUpdateContainers,
-  onAutoReallocate,
-  onAddContainer,
+  onAutoReallocate: _onAutoReallocate,
+  onAddContainer: _onAddContainer,
   onDeleteContainer,
   onContainerTypeChange,
   onContainerFieldChange,
   onLockAndGenerate,
-  onQuickDownloadBol,
-  onQuickDownloadDg
+  onQuickDownloadBol: _onQuickDownloadBol,
+  onQuickDownloadDg: _onQuickDownloadDg
 }) => {
   // Drag & drop state
   const [draggedPalletId, setDraggedPalletId] = useState<string | null>(null);
@@ -170,70 +166,9 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-zinc-50/50 overflow-hidden">
-      {/* =========================================================================
-          QC BOARD HEADER & ACTION TOOLBAR
-         ========================================================================= */}
-      <div className="bg-white border-b border-zinc-200 px-6 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-900 tracking-tight flex items-center gap-2">
-            <Boxes className="w-4 h-4 text-zinc-700" />
-            <span>Container Distribution & Pallet QC</span>
-          </h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Drag pallet rows between containers to balance weight. Max 25,000 kg cap and 11-pallet floor limit per 20' container.
-          </p>
-        </div>
-
-        {/* Toolbar Controls */}
-        <div className="flex items-center space-x-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => onAutoReallocate('20GP')}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-            title="Reset & Re-run 20' LAFF Optimizer"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-zinc-500" />
-            <span>Reset to LAFF Optimal</span>
-          </button>
-
-          {onAddContainer && (
-            <button
-              type="button"
-              onClick={() => onAddContainer('20GP')}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5 text-zinc-500" />
-              <span>Add Container</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onQuickDownloadBol}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-            title="Download Master BOL"
-          >
-            <Download className="w-3.5 h-3.5 text-zinc-500" />
-            <span>Master BOL</span>
-          </button>
-
-          {hasDangerousGoods && (
-            <button
-              type="button"
-              onClick={onQuickDownloadDg}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-              title="Download #DG Declaration"
-            >
-              <Download className="w-3.5 h-3.5 text-zinc-500" />
-              <span>#DG Declaration</span>
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* Violation Alert Banner if applicable */}
       {violationNotice && (
-        <div className="px-6 py-2.5 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between text-xs text-amber-900">
+        <div className="px-6 py-2.5 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between text-xs text-amber-900 shrink-0">
           <div className="flex items-center space-x-2">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
             <span>{violationNotice}</span>
@@ -241,7 +176,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
           <button
             type="button"
             onClick={() => setViolationNotice(null)}
-            className="text-amber-800 hover:text-amber-950 font-medium px-2 py-0.5 rounded"
+            className="text-amber-800 hover:text-amber-950 font-medium px-2 py-0.5 rounded cursor-pointer"
           >
             Dismiss
           </button>
@@ -251,8 +186,8 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
       {/* =========================================================================
           COLUMN-BASED KANBAN TABLE LAYOUT
          ========================================================================= */}
-      <div className="flex-1 min-h-0 overflow-x-auto p-5">
-        <div className="flex items-start space-x-4 min-w-max h-full pb-2">
+      <div className="flex-1 min-h-0 overflow-x-auto p-4">
+        <div className="flex items-stretch space-x-4 min-w-max h-full pb-1">
           {containers.map((cont, cIdx) => {
             const spec = CONTAINER_SPECS[cont.containerType] || CONTAINER_SPECS['20GP'];
             const maxPayload = cont.maxPayloadKg || spec.maxPayloadKg;
@@ -272,7 +207,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                 onDragOver={(e) => handleDragOver(e, cont.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, cont.id)}
-                className={`w-[340px] flex flex-col max-h-full bg-white rounded-xl border p-3.5 shadow-xs transition-all duration-150 ${
+                className={`w-[340px] flex flex-col h-full bg-white rounded-xl border p-3.5 shadow-xs transition-all duration-150 ${
                   isDropTarget 
                     ? 'ring-2 ring-zinc-900 border-zinc-900 bg-zinc-50/50' 
                     : isWeightOver || isPalletOver
@@ -281,7 +216,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                 }`}
               >
                 {/* Column Table Header (Strict 2-Row Layout to Prevent Overlaps) */}
-                <div className="pb-3 border-b border-zinc-100 space-y-2">
+                <div className="shrink-0 pb-2.5 border-b border-zinc-100 space-y-1.5">
                   {/* Row 1: Container Number Badge + Container Type Dropdown + Delete Button */}
                   <div className="flex items-center justify-between gap-1.5">
                     <div className="flex items-center space-x-1.5 min-w-0">
@@ -361,7 +296,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                 </div>
 
                 {/* Draggable Pallet Cards Container */}
-                <div className="flex-1 overflow-y-auto py-2.5 space-y-2 min-h-[220px]">
+                <div className="flex-1 min-h-0 overflow-y-auto py-2 space-y-2 pr-0.5">
                   {cont.pallets.length === 0 ? (
                     <div className="h-32 border border-dashed border-zinc-200 rounded-lg flex flex-col items-center justify-center text-center p-4 text-zinc-400">
                       <ArrowRightLeft className="w-4 h-4 mb-1 opacity-40" />
@@ -444,7 +379,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                 </div>
 
                 {/* Real-Time Metrics & Capacity Bars (Column Footer) */}
-                <div className="pt-3 border-t border-zinc-100 space-y-2 text-xs">
+                <div className="shrink-0 pt-2.5 border-t border-zinc-100 space-y-1.5 text-xs">
                   {/* Metric A: Weight Payload Counter & Bar */}
                   <div>
                     <div className="flex items-center justify-between text-[11px] mb-1">
@@ -517,7 +452,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
       {/* =========================================================================
           LOCK SHIPMENT PLAN & GENERATE DOCUMENTS (STICKY FOOTER ACTION)
          ========================================================================= */}
-      <div className="h-14 bg-white border-t border-zinc-200 px-6 flex items-center justify-between shrink-0">
+      <div className="h-12 bg-white border-t border-zinc-200 px-5 flex items-center justify-between shrink-0 select-none">
         <div className="flex items-center space-x-6 text-xs">
           <div>
             <span className="text-zinc-400 block text-[10px] uppercase font-medium tracking-wider">Total Pallets</span>
