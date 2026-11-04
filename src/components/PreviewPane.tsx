@@ -396,7 +396,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               <Boxes className="w-10 h-10 mb-2 text-zinc-300" />
               <h3 className="text-xs font-semibold text-zinc-800">No Active Container Plan</h3>
               <p className="text-[11px] text-zinc-400 mt-1 max-w-sm">
-                Click <strong className="text-zinc-700">&ldquo;Convert to Output&rdquo;</strong> in the left panel to execute the LAFF solver and populate container allocations.
+                Click <strong className="text-zinc-700">&ldquo;Process Invoices&rdquo;</strong> in the left panel to execute the LAFF solver and populate container allocations.
               </p>
             </div>
           )}
