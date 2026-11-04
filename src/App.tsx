@@ -12,7 +12,6 @@ import type { ConvertedInvoice, CustomsPort, AppDocument, MasterFormat } from '.
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
 import { extractFromSpreadsheet } from './utils/spreadsheetExtractor';
 import { optimizeContainerAllocation } from './utils/containerOptimizer';
-import { SHIPMENT_MUMGA3747500 } from './data/profiles';
 import { PRESEEDED_MASTER_FORMATS } from './data/masterFormats';
 
 const LOCAL_STORAGE_DOCS_KEY = 'ekdant_customs_documents_v1';
@@ -63,22 +62,22 @@ export function App() {
   const [savedFiles, setSavedFiles] = useState<ConvertedInvoice[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_SAVED_FILES_KEY);
-      if (saved) {
+      if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
       // Migrate existing legacy converted invoices if any
       const legacyInvoices = localStorage.getItem(LOCAL_STORAGE_INVOICES_KEY);
-      if (legacyInvoices) {
+      if (legacyInvoices !== null) {
         const parsed = JSON.parse(legacyInvoices);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch {}
-    return [SHIPMENT_MUMGA3747500];
+    return [];
   });
 
   // Active Working Documents (upload queue & conversion board)
@@ -647,13 +646,27 @@ export function App() {
 
   // Delete a saved file from Files
   const handleDeleteSavedFile = (fileId: string) => {
-    setSavedFiles(prev => prev.filter(f => f.id !== fileId));
+    setSavedFiles(prev => {
+      const remaining = prev.filter(f => f.id !== fileId);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_SAVED_FILES_KEY, JSON.stringify(remaining));
+        localStorage.setItem(LOCAL_STORAGE_INVOICES_KEY, JSON.stringify(remaining));
+      } catch (err) {
+        console.warn('Failed to update localStorage on file deletion:', err);
+      }
+      return remaining;
+    });
   };
 
   // Clear all saved files
   const handleClearAllSavedFiles = () => {
     setSavedFiles([]);
-    localStorage.removeItem(LOCAL_STORAGE_SAVED_FILES_KEY);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_SAVED_FILES_KEY, JSON.stringify([]));
+      localStorage.setItem(LOCAL_STORAGE_INVOICES_KEY, JSON.stringify([]));
+    } catch (err) {
+      console.warn('Failed to clear files in localStorage:', err);
+    }
   };
 
   // Delete working document from converter
@@ -663,6 +676,11 @@ export function App() {
       if (selectedDocumentId === docId) {
         setSelectedDocumentId(remaining.length > 0 ? remaining[0].id : null);
       }
+      try {
+        localStorage.setItem(LOCAL_STORAGE_DOCS_KEY, JSON.stringify(remaining));
+      } catch (err) {
+        console.warn('Failed to update documents in localStorage:', err);
+      }
       return remaining;
     });
   };
@@ -671,7 +689,11 @@ export function App() {
   const handleClearAllDocuments = () => {
     setDocuments([]);
     setSelectedDocumentId(null);
-    localStorage.removeItem(LOCAL_STORAGE_DOCS_KEY);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_DOCS_KEY, JSON.stringify([]));
+    } catch (err) {
+      console.warn('Failed to clear documents in localStorage:', err);
+    }
   };
 
   return (
