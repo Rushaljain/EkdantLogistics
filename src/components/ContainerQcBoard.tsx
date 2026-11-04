@@ -169,7 +169,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
   const anyViolations = containers.some(c => c.isOverweight || c.isOverCapacity);
 
   return (
-    <div className="flex-1 flex flex-col bg-zinc-50/50 overflow-hidden select-none">
+    <div className="flex-1 min-h-0 flex flex-col bg-zinc-50/50 overflow-hidden">
       {/* =========================================================================
           QC BOARD HEADER & ACTION TOOLBAR
          ========================================================================= */}
@@ -265,7 +265,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
       {/* =========================================================================
           COLUMN-BASED KANBAN TABLE LAYOUT
          ========================================================================= */}
-      <div className="flex-1 overflow-x-auto p-5">
+      <div className="flex-1 min-h-0 overflow-x-auto p-5">
         <div className="flex items-start space-x-4 min-w-max h-full pb-2">
           {containers.map((cont, cIdx) => {
             const spec = CONTAINER_SPECS[cont.containerType] || CONTAINER_SPECS['20GP'];

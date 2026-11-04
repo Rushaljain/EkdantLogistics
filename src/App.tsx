@@ -755,7 +755,7 @@ export function App() {
           </header>
 
           {/* Main Body */}
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 min-h-0 flex overflow-hidden">
             <Sidebar 
               activeTab={activeTab}
               onSelectTab={setActiveTab}

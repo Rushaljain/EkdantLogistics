@@ -180,7 +180,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   };
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-white overflow-hidden select-none">
+    <div className="flex-1 min-h-0 h-full flex flex-col bg-white overflow-hidden">
       {/* =========================================================================
           TOP UNIFIED HEADER: VIEW SELECTOR DROPDOWN + MASTER FORMAT SELECTOR
          ========================================================================= */}
@@ -289,7 +289,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           VIEW 1: VIEW INVOICES (VERTICAL SCROLLING CAROUSEL OF ALL DOCUMENTS)
          ========================================================================= */}
       {activeView === 'invoices' && (
-        <div className="flex-1 overflow-y-auto p-5 space-y-6 bg-zinc-50/50">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-6 bg-zinc-50/50 pb-24">
           {documents.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-12 text-zinc-400">
               <FileText className="w-10 h-10 mb-2 text-zinc-300" />
@@ -370,7 +370,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           VIEW 2: CONTAINER PLAN (CONTAINER TABLE & DRAG-AND-DROP QC BOARD)
          ========================================================================= */}
       {activeView === 'container_plan' && (
-        <div className="flex-1 flex flex-col overflow-hidden bg-zinc-50/50">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-zinc-50/50">
           {formData && formData.containers.length > 0 ? (
             <ContainerQcBoard
               containers={formData.containers}
@@ -407,12 +407,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           VIEW 3: VIEW DG (IMO MULTIMODAL DANGEROUS GOODS DECLARATION)
          ========================================================================= */}
       {activeView === 'dg' && (
-        <div className="flex-1 overflow-auto p-6 flex justify-center bg-zinc-100/60">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 bg-zinc-100/60">
           {generatedDg ? (
-            <div 
-              className="bg-white rounded-xl shadow-xs border border-zinc-200 overflow-hidden w-full max-w-4xl"
-              dangerouslySetInnerHTML={{ __html: generatedDg.formattedHtml }}
-            />
+            <div className="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-xs border border-zinc-200 overflow-visible pb-16 mb-24">
+              <div 
+                dangerouslySetInnerHTML={{ __html: generatedDg.formattedHtml }}
+              />
+            </div>
           ) : (
             <div className="text-center py-24 text-zinc-400 text-xs">
               <Ship className="w-8 h-8 mx-auto mb-2 text-zinc-300" />
@@ -426,12 +427,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
           VIEW 4: VIEW BL (MASTER BILL OF LADING)
          ========================================================================= */}
       {activeView === 'bl' && (
-        <div className="flex-1 overflow-auto p-6 flex justify-center bg-zinc-100/60">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 bg-zinc-100/60">
           {generatedBol ? (
-            <div 
-              className="bg-white rounded-xl shadow-xs border border-zinc-200 overflow-hidden w-full max-w-4xl"
-              dangerouslySetInnerHTML={{ __html: generatedBol.formattedHtml }}
-            />
+            <div className="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-xs border border-zinc-200 overflow-visible pb-16 mb-24">
+              <div 
+                dangerouslySetInnerHTML={{ __html: generatedBol.formattedHtml }}
+              />
+            </div>
           ) : (
             <div className="text-center py-24 text-zinc-400 text-xs">
               <Layers className="w-8 h-8 mx-auto mb-2 text-zinc-300" />
