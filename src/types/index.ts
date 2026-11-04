@@ -120,6 +120,11 @@ export interface MasterFormat {
   brandName?: string;
   shippingMarks?: string;
   blDeclaredNetWeightKg?: number;
+  statutoryDescription?: string;
+  hsnCode?: string;
+  freeTimeClause?: string;
+  freightTerms?: string;
+  movementType?: string;
 }
 
 export interface DocumentTemplate {

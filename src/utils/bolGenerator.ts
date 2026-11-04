@@ -1,7 +1,7 @@
 // Master Bill of Lading (BOL) Document Generator
 // Formats multi-container & pallet breakdowns with corporate carrier layouts matching BL DRAFT specifications
 
-import type { ConvertedInvoice, DocumentOutput } from '../types';
+import type { ConvertedInvoice, DocumentOutput, MasterFormat } from '../types';
 import { DOCUMENT_TEMPLATES } from '../data/templates';
 import { PRESEEDED_MASTER_FORMATS } from '../data/masterFormats';
 import { formatSequentialPalletRanges } from './dgGenerator';
@@ -17,15 +17,16 @@ function numberToWords(num: number): string {
 
 export function generateMasterBol(
   invoice: ConvertedInvoice,
-  templateId: string = 'bol-standard'
+  templateId: string = 'bol-standard',
+  formats: MasterFormat[] = PRESEEDED_MASTER_FORMATS
 ): DocumentOutput {
   const template = DOCUMENT_TEMPLATES.find(t => t.id === templateId) || DOCUMENT_TEMPLATES[0];
   const templateTitle = template?.name?.toUpperCase() || 'MASTER BILL OF LADING FOR OCEAN TRANSPORT';
 
-  // Resolve active format defaults dynamically (e.g. fmt-one-line, fmt-cma-cgm)
-  const activeFormat = PRESEEDED_MASTER_FORMATS.find(f => f.id === templateId) ||
-                       PRESEEDED_MASTER_FORMATS.find(f => f.carrierName?.toLowerCase() === invoice.carrierName?.toLowerCase()) ||
-                       PRESEEDED_MASTER_FORMATS[0];
+  // Resolve active format dynamically without falling back to arbitrary hardcoded carrier defaults
+  const activeFormat: Partial<MasterFormat> = (templateId && formats.find(f => f.id === templateId)) ||
+                       (invoice.carrierName && formats.find(f => f.carrierName?.toLowerCase() === invoice.carrierName?.toLowerCase())) ||
+                       {};
 
   const bookingRef = invoice.bookingNumber || activeFormat.bookingNumber || '';
   const cleanInvNo = invoice.invoiceNumber ? invoice.invoiceNumber.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) : 'DRAFT';
@@ -39,13 +40,13 @@ export function generateMasterBol(
 
   const displayVessel = (invoice.vesselName && invoice.vesselName !== 'Port of Discharge' && invoice.vesselName !== '---')
     ? invoice.vesselName
-    : (activeFormat.vesselName || 'ONE HUMBER');
-  const displayVoyage = invoice.voyageNumber || activeFormat.voyageNumber || '106E';
-  const displayPol = invoice.portOfLoading || activeFormat.portOfLoading || 'NHAVA SHEVA, INDIA';
-  const displayPod = activeFormat.portOfDischarge || invoice.portOfDischarge || 'YANGON';
-  const displayDelivery = activeFormat.finalDestination || invoice.placeOfDelivery || invoice.finalDestination || 'YANGON, MYANMAR';
-  const displayReceipt = invoice.placeOfReceipt || activeFormat.placeOfReceipt || activeFormat.portOfLoading || 'NHAVA SHEVA';
-  const displayCarrier = invoice.carrierName || activeFormat.carrierName || 'ONE LINE';
+    : (activeFormat.vesselName || '—');
+  const displayVoyage = invoice.voyageNumber || activeFormat.voyageNumber || '';
+  const displayPol = invoice.portOfLoading || activeFormat.portOfLoading || '—';
+  const displayPod = activeFormat.portOfDischarge || invoice.portOfDischarge || '—';
+  const displayDelivery = activeFormat.finalDestination || invoice.placeOfDelivery || invoice.finalDestination || '—';
+  const displayReceipt = invoice.placeOfReceipt || activeFormat.placeOfReceipt || activeFormat.portOfLoading || '—';
+  const displayCarrier = invoice.carrierName || activeFormat.carrierName || '—';
 
   // Pallet ranges formatting
   const allPallets = invoice.containers.flatMap(c => c.pallets).length > 0
@@ -64,15 +65,15 @@ export function generateMasterBol(
     .filter(Boolean);
 
   // Goods description components (Statutory override with secondary model specifications)
-  const statutoryDescription = invoice.statutoryDescription || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES';
+  const statutoryDescription = invoice.statutoryDescription || activeFormat.statutoryDescription || '';
   const uniqueModels = Array.from(new Set(
     [
       ...invoice.lineItems.map(it => it.modelNumber),
       ...allPallets.map(p => p.modelOrDescription)
     ].filter(Boolean)
   )) as string[];
-  const brandName = invoice.brandName || activeFormat.brandName || 'DYNEX MATRIX';
-  const hsnCode = invoice.hsnCode || '85071000';
+  const brandName = invoice.brandName || activeFormat.brandName || '';
+  const hsnCode = invoice.hsnCode || activeFormat.hsnCode || '';
 
   let shippingBills = invoice.shippingBillNumbers
     ? invoice.shippingBillNumbers.split(/[\n,]/).map(s => s.trim()).filter(Boolean)
@@ -81,15 +82,15 @@ export function generateMasterBol(
     shippingBills = activeFormat.shippingBillNumbers.split('\n').map(s => s.trim()).filter(Boolean);
   }
 
-  const hazItem = invoice.lineItems.find(it => it.isDangerousGood) || (invoice.hasDangerousGoods ? { unNumber: '2794', imoClass: '8', packingGroup: 'III' } : null);
+  const hazItem = invoice.lineItems.find(it => it.isDangerousGood) || (invoice.hasDangerousGoods ? invoice.lineItems[0] : null);
 
   const declaredNetWeight = invoice.blDeclaredNetWeightKg || activeFormat.blDeclaredNetWeightKg || totalNet;
 
   // Ensure containers exhibit format-defined container & seal numbers when not provided in spreadsheet
   const activeContainers = invoice.containers.map((c, idx) => {
-    const isSynthetic = !c.containerNumber || c.containerNumber.startsWith('TEMU298') || c.containerNumber === '____________________';
-    const cNum = (idx === 0 && isSynthetic && activeFormat.containerNumber) ? activeFormat.containerNumber : c.containerNumber;
-    const sNum = (idx === 0 && isSynthetic && activeFormat.sealNumber) ? activeFormat.sealNumber : c.sealNumber;
+    const isBlank = !c.containerNumber || c.containerNumber === '____________________';
+    const cNum = (idx === 0 && isBlank && activeFormat.containerNumber) ? activeFormat.containerNumber : (c.containerNumber || '____________________');
+    const sNum = (idx === 0 && (!c.sealNumber || c.sealNumber === '__________') && activeFormat.sealNumber) ? activeFormat.sealNumber : (c.sealNumber || '__________');
     return { ...c, containerNumber: cNum, sealNumber: sNum };
   });
 
@@ -169,7 +170,7 @@ export function generateMasterBol(
           </div>
           <div style="margin-top: 4px;">
             <span class="label">Movement Type</span>
-            <span class="val" style="font-size: 10.5px; font-weight: 700;">${invoice.movementType || 'FCL / CY'}</span>
+            <span class="val" style="font-size: 10.5px; font-weight: 700;">${invoice.movementType || activeFormat.movementType || 'FCL / FCL'}</span>
           </div>
         </td>
       </tr>
@@ -273,20 +274,24 @@ export function generateMasterBol(
             ` : ''}
 
             <!-- Dangerous Goods / IMDG Notice -->
-            ${hazItem ? `
+            ${(hazItem && (hazItem.unNumber || hazItem.imoClass)) ? `
               <div style="font-family: monospace; font-size: 9.5px; font-weight: 700; color: #b91c1c; margin-bottom: 6px;">
-                UN NO. ${hazItem.unNumber || '2794'} &nbsp;&nbsp; IMCO CLASS: ${hazItem.imoClass || '8'}<br/>
-                PG: III
+                ${hazItem.unNumber ? `UN NO. ${hazItem.unNumber}` : ''} ${hazItem.imoClass ? `&nbsp;&nbsp; IMCO CLASS: ${hazItem.imoClass}` : ''}<br/>
+                ${hazItem.packingGroup ? `PG: ${hazItem.packingGroup}` : ''}
               </div>
             ` : ''}
 
             <!-- Freight Terms & Detention Clause -->
-            <div style="font-weight: 700; font-size: 10px; margin-bottom: 2px;">
-              ${invoice.freightTerms || 'FREIGHT COLLECT'}
-            </div>
-            <div style="font-style: italic; font-size: 9.5px; color: #1e293b; font-weight: 600;">
-              "${invoice.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION'}"
-            </div>
+            ${(invoice.freightTerms || activeFormat.freightTerms) ? `
+              <div style="font-weight: 700; font-size: 10px; margin-bottom: 2px;">
+                ${invoice.freightTerms || activeFormat.freightTerms}
+              </div>
+            ` : ''}
+            ${(invoice.freeTimeClause || activeFormat.freeTimeClause) ? `
+              <div style="font-style: italic; font-size: 9.5px; color: #1e293b; font-weight: 600;">
+                "${invoice.freeTimeClause || activeFormat.freeTimeClause}"
+              </div>
+            ` : ''}
           </td>
 
           <!-- Column 4: Gross & Net Weights -->
@@ -318,11 +323,11 @@ export function generateMasterBol(
       </div>
       <div>
         <span>Movement: </span>
-        <strong>${invoice.movementType || 'FCL / CY'}</strong>
+        <strong>${invoice.movementType || activeFormat.movementType || 'FCL / FCL'}</strong>
       </div>
       <div>
         <span>Freight: </span>
-        <strong>${invoice.freightTerms || 'FREIGHT COLLECT'}</strong>
+        <strong>${invoice.freightTerms || activeFormat.freightTerms || 'FREIGHT PREPAID / COLLECT AS AGREED'}</strong>
       </div>
     </div>
 

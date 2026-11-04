@@ -281,7 +281,7 @@ function extractDynamicPalletTable(
       const grossVal = parseFloat(grossRaw);
       const netVal = parseFloat(netRaw);
       const qtyVal = parseFloat(qtyRaw) || 1;
-      const model = String(dRow[typeCol] || '').trim() || 'Lead Acid Automotive Storage Batteries';
+      const model = String(dRow[typeCol] || '').trim() || (invoiceNumber ? `Cargo (${invoiceNumber})` : 'Export Goods');
 
       if (pNum && !isNaN(grossVal) && grossVal > 0) {
         const itemId = `item-${invoiceNumber}-${pNum}-${r}`;

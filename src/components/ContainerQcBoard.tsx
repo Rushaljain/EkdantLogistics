@@ -498,7 +498,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                               {pallet.isDangerousGoods ? (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded font-mono text-[9.5px] font-medium bg-zinc-100 text-zinc-800 border border-zinc-200 shrink-0">
                                   <Flame className="w-2.5 h-2.5 text-rose-500" />
-                                  <span>{pallet.unNumber || 'UN 2794'}</span>
+                                  <span>{pallet.unNumber ? (pallet.unNumber.startsWith('UN') ? pallet.unNumber : `UN ${pallet.unNumber}`) : 'HAZ'}</span>
                                 </span>
                               ) : (
                                 <span className="text-zinc-400">Net: {pallet.netWeightKg.toLocaleString()} kg</span>

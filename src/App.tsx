@@ -95,8 +95,22 @@ export function App() {
     return []; // Default to empty workspace on fresh load
   });
 
+  // Master Formats Library & Selected Format
+  const [masterFormats, setMasterFormats] = useState<MasterFormat[]>(() => {
+    try {
+      const saved = localStorage.getItem('ekdant_master_formats_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return PRESEEDED_MASTER_FORMATS;
+  });
+
+  const [selectedFormatId, setSelectedFormatId] = useState<string>('fmt-one-line');
+
   // Helper to build consolidated master invoice from multiple invoices
-  const buildConsolidatedInvoice = (invoices: ConvertedInvoice[]): ConvertedInvoice => {
+  const buildConsolidatedInvoice = (invoices: ConvertedInvoice[], formatIdOverride?: string): ConvertedInvoice => {
     const primary = invoices[0];
     const combinedLineItems = invoices.flatMap((inv, invIdx) => 
       inv.lineItems.map((item, itemIdx) => ({
@@ -114,7 +128,10 @@ export function App() {
     const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
 
     const allPallets = invoices.flatMap(inv => inv.pallets || []);
-    const defaultFormat = PRESEEDED_MASTER_FORMATS[0];
+    const targetFmtId = formatIdOverride || selectedFormatId;
+    const defaultFormat = (targetFmtId && masterFormats.find(f => f.id === targetFmtId)) ||
+                          (primary.carrierName && masterFormats.find(f => f.carrierName?.toLowerCase() === primary.carrierName?.toLowerCase())) ||
+                          ({} as Partial<MasterFormat>);
 
     const { containers, pallets } = allPallets.length > 0
       ? optimizeContainerAllocation(combinedLineItems, allPallets, {
@@ -148,7 +165,7 @@ export function App() {
     const shippingMarks = invoices.map(i => i.shippingMarks).filter(Boolean)[0] || defaultFormat.shippingMarks || '';
     const brandName = invoices.map(i => i.brandName).filter(Boolean)[0] || defaultFormat.brandName || '';
     const shippingBillNumbers = primary.shippingBillNumbers || defaultFormat.shippingBillNumbers || '';
-    const freeTimeClause = primary.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION';
+    const freeTimeClause = primary.freeTimeClause || defaultFormat.freeTimeClause || '';
     const dgDeclarantName = defaultFormat.dgDeclarantName || primary.dgDeclarantName || '';
     const dgDeclarantStatus = defaultFormat.dgDeclarantStatus || primary.dgDeclarantStatus || '';
     const dgDeclarationPlaceAndDate = defaultFormat.dgDeclarationPlaceAndDate || primary.dgDeclarationPlaceAndDate || '';
@@ -191,10 +208,10 @@ export function App() {
       carrierName,
       shippingMarks,
       brandName,
-      hsnCode: primary.hsnCode || '85071000',
+      hsnCode: primary.hsnCode || defaultFormat.hsnCode || '',
       shippingBillNumbers,
-      freightTerms: 'FREIGHT COLLECT',
-      movementType: 'FCL / CY',
+      freightTerms: (primary.freightTerms || defaultFormat.freightTerms || 'FREIGHT COLLECT') as 'FREIGHT COLLECT' | 'FREIGHT PREPAID',
+      movementType: primary.movementType || defaultFormat.movementType || 'FCL / FCL',
       freeTimeClause,
       blDeclaredNetWeightKg: blDeclaredNetWeightKg || primary.blDeclaredNetWeightKg || totalNet,
       dgPackingGroupOverride: primary.dgPackingGroupOverride || (hasDangerousGoods ? 'NA' : undefined),
@@ -225,7 +242,7 @@ export function App() {
       totalBaseUnits: invoices.reduce((s, i) => s + (i.totalBaseUnits || 0), 0) || totalPkgs,
       fieldTraceability: invoices.reduce((acc, inv) => ({ ...acc, ...(inv.fieldTraceability || {}) }), {}),
       palletRanges: finalPalletRanges,
-      statutoryDescription: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
+      statutoryDescription: primary.statutoryDescription || defaultFormat.statutoryDescription || '',
       hasDangerousGoods,
       selectedBolTemplateId: 'bol-standard',
       selectedDgTemplateId: 'dg-imo-standard',
@@ -271,20 +288,6 @@ export function App() {
 
   // Bulk conversion state
   const [isBulkConverting, setIsBulkConverting] = useState<boolean>(false);
-
-  // Master Formats Library & Selected Format
-  const [masterFormats, setMasterFormats] = useState<MasterFormat[]>(() => {
-    try {
-      const saved = localStorage.getItem('ekdant_master_formats_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return PRESEEDED_MASTER_FORMATS;
-  });
-
-  const [selectedFormatId, setSelectedFormatId] = useState<string>('fmt-one-line');
   const [activeRightView, setActiveRightView] = useState<RightPaneViewMode>('container_plan');
 
   // Active Selected Document in converter
@@ -324,7 +327,15 @@ export function App() {
       }
       return [format, ...prev];
     });
-    setSelectedFormatId(format.id);
+    handleSelectFormat(format.id);
+  };
+
+  const handleSelectFormat = (formatId: string) => {
+    setSelectedFormatId(formatId);
+    const processed = documents.filter(d => d.status === 'processed' && d.invoice);
+    if (processed.length >= 2) {
+      setConsolidatedInvoice(buildConsolidatedInvoice(processed.map(d => d.invoice!), formatId));
+    }
   };
 
   const handleReplaceMasterFormat = (formatId: string, updatedFormat: Partial<MasterFormat>) => {
@@ -826,7 +837,7 @@ export function App() {
               onPortChange={handlePortChange}
               masterFormats={masterFormats}
               selectedFormatId={selectedFormatId}
-              onSelectFormat={setSelectedFormatId}
+              onSelectFormat={handleSelectFormat}
               activeView={activeRightView}
               onSelectView={setActiveRightView}
               onOpenKeyModal={() => setIsKeyModalOpen(true)}

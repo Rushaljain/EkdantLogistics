@@ -79,13 +79,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // Generate Master BOL and DG outputs based on selected master format
   const generatedBol = useMemo(() => {
     if (!formData) return null;
-    return generateMasterBol(formData, selectedFormatId);
-  }, [formData, selectedFormatId]);
+    return generateMasterBol(formData, selectedFormatId, masterFormats);
+  }, [formData, selectedFormatId, masterFormats]);
 
   const generatedDg = useMemo(() => {
     if (!formData) return null;
-    return generateDgDeclaration(formData, selectedFormatId);
-  }, [formData, selectedFormatId]);
+    return generateDgDeclaration(formData, selectedFormatId, masterFormats);
+  }, [formData, selectedFormatId, masterFormats]);
 
   // Document preview & download modal state
   const [viewingPdfDoc, setViewingPdfDoc] = useState<AppDocument | null>(null);

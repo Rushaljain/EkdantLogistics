@@ -54,25 +54,25 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
             <div>
               <span className="text-[10px] font-mono text-zinc-400 block uppercase">Shipper / Exporter</span>
               <span className="font-semibold text-zinc-800 truncate block mt-0.5" title={invoice.exporterName}>
-                {invoice.exporterName || 'EXIDE INDUSTRIES LIMITED'}
+                {invoice.exporterName || '—'}
               </span>
             </div>
             <div>
               <span className="text-[10px] font-mono text-zinc-400 block uppercase">Consignee</span>
               <span className="font-semibold text-zinc-800 truncate block mt-0.5" title={invoice.consigneeName}>
-                {invoice.consigneeName || 'KAUNG SWANN HTET TRADING'}
+                {invoice.consigneeName || '—'}
               </span>
             </div>
             <div>
               <span className="text-[10px] font-mono text-zinc-400 block uppercase">Carrier Line</span>
               <span className="font-semibold text-zinc-800 truncate block mt-0.5">
-                {invoice.carrierName || 'ONE LINE'}
+                {invoice.carrierName || '—'}
               </span>
             </div>
             <div>
               <span className="text-[10px] font-mono text-zinc-400 block uppercase">Booking Number</span>
               <span className="font-semibold text-zinc-800 truncate block mt-0.5 font-mono">
-                {invoice.bookingNumber || 'MUMGA3747500'}
+                {invoice.bookingNumber || '—'}
               </span>
             </div>
           </div>
@@ -103,7 +103,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.bookingNumber || ''}
                 onChange={(e) => handleChange('bookingNumber', e.target.value)}
-                placeholder="MUMGA3747500"
+                placeholder="e.g. BKG1234567"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -113,7 +113,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.vesselName || ''}
                 onChange={(e) => handleChange('vesselName', e.target.value)}
-                placeholder="ONE HUMBER"
+                placeholder="e.g. VESSEL NAME"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -123,7 +123,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.voyageNumber || ''}
                 onChange={(e) => handleChange('voyageNumber', e.target.value)}
-                placeholder="106E"
+                placeholder="e.g. 001E"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -131,9 +131,9 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
               <label className="block text-[10px] text-zinc-500 font-medium mb-1">Movement Type</label>
               <input
                 type="text"
-                value={invoice.movementType || 'FCL / CY'}
+                value={invoice.movementType || ''}
                 onChange={(e) => handleChange('movementType', e.target.value)}
-                placeholder="FCL / CY"
+                placeholder="e.g. FCL / FCL or FCL / CY"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -141,9 +141,9 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
               <label className="block text-[10px] text-zinc-500 font-medium mb-1">Freight Terms</label>
               <input
                 type="text"
-                value={invoice.freightTerms || 'FREIGHT COLLECT'}
+                value={invoice.freightTerms || ''}
                 onChange={(e) => handleChange('freightTerms', e.target.value)}
-                placeholder="FREIGHT COLLECT"
+                placeholder="e.g. FREIGHT COLLECT"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -165,7 +165,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.placeOfReceipt || ''}
                 onChange={(e) => handleChange('placeOfReceipt', e.target.value)}
-                placeholder="NHAVA SHEVA"
+                placeholder="e.g. PLACE OF RECEIPT"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -175,7 +175,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.portOfLoading || ''}
                 onChange={(e) => handleChange('portOfLoading', e.target.value)}
-                placeholder="NHAVA SHEVA, INDIA"
+                placeholder="e.g. PORT OF LOADING"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -185,7 +185,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.portOfDischarge || ''}
                 onChange={(e) => handleChange('portOfDischarge', e.target.value)}
-                placeholder="YANGON"
+                placeholder="e.g. PORT OF DISCHARGE"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -195,7 +195,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.portOfDischargeDg || ''}
                 onChange={(e) => handleChange('portOfDischargeDg', e.target.value)}
-                placeholder="SINGAPORE"
+                placeholder="e.g. TRANSSHIPMENT PORT"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -230,7 +230,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 rows={3}
                 value={invoice.shippingMarks || ''}
                 onChange={(e) => handleChange('shippingMarks', e.target.value)}
-                placeholder="KAUNG SWANN&#10;HTET TRADING&#10;MYANMAR"
+                placeholder="e.g. SHIPPING MARKS&#10;& NUMBERS"
                 className="w-full p-2.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none resize-none transition-colors"
               />
             </div>
@@ -240,7 +240,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 rows={3}
                 value={invoice.shippingBillNumbers || ''}
                 onChange={(e) => handleChange('shippingBillNumbers', e.target.value)}
-                placeholder="SB NO. 7463800 DT. 05.10.2026, SB NO. 7464015 DT. 05.10.2026"
+                placeholder="e.g. SB NO. 123456 DT. 01.01.2026"
                 className="w-full p-2.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none resize-none transition-colors"
               />
             </div>
@@ -253,7 +253,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.brandName || ''}
                 onChange={(e) => handleChange('brandName', e.target.value)}
-                placeholder="DYNEX MATRIX"
+                placeholder="e.g. BRAND NAME"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -263,7 +263,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.hsnCode || ''}
                 onChange={(e) => handleChange('hsnCode', e.target.value)}
-                placeholder="85071000"
+                placeholder="e.g. HSN CODE"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -306,7 +306,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.dgDeclarantName || ''}
                 onChange={(e) => handleChange('dgDeclarantName', e.target.value)}
-                placeholder="SUJOY DUTTA"
+                placeholder="e.g. DECLARANT NAME"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -316,7 +316,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.dgDeclarantStatus || ''}
                 onChange={(e) => handleChange('dgDeclarantStatus', e.target.value)}
-                placeholder="EXPORT MANAGER"
+                placeholder="e.g. DESIGNATION"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -326,7 +326,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.dgDeclarationPlaceAndDate || ''}
                 onChange={(e) => handleChange('dgDeclarationPlaceAndDate', e.target.value)}
-                placeholder="MUMBAI / 07.10.2026"
+                placeholder="e.g. PLACE / DATE"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -336,7 +336,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.emergencyContactName || ''}
                 onChange={(e) => handleChange('emergencyContactName', e.target.value)}
-                placeholder="MR. SUJOY"
+                placeholder="e.g. CONTACT PERSON"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -346,7 +346,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.emergencyContactPhone || ''}
                 onChange={(e) => handleChange('emergencyContactPhone', e.target.value)}
-                placeholder="9729899131"
+                placeholder="e.g. +91 98765 43210"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -356,7 +356,7 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
                 type="text"
                 value={invoice.unPackingCode || ''}
                 onChange={(e) => handleChange('unPackingCode', e.target.value)}
-                placeholder="4G/Z 30/S/IND/K/19700134"
+                placeholder="e.g. 4G/Z 30/S/..."
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-900 outline-none transition-colors"
               />
             </div>
@@ -364,13 +364,13 @@ export const ShipmentManifestPane: React.FC<ShipmentManifestPaneProps> = ({
               <label className="block text-[10px] text-zinc-500 font-medium mb-1">EMS / Segregation</label>
               <input
                 type="text"
-                value={`${invoice.emsNumber || 'F-A-S-B'} | ${invoice.segregationGroup || 'SGG1'}`}
+                value={invoice.emsNumber ? `${invoice.emsNumber}${invoice.segregationGroup ? ` | ${invoice.segregationGroup}` : ''}` : ''}
                 onChange={(e) => {
                   const parts = e.target.value.split('|').map(p => p.trim());
-                  handleChange('emsNumber', parts[0] || 'F-A-S-B');
-                  if (parts[1]) handleChange('segregationGroup', parts[1]);
+                  handleChange('emsNumber', parts[0] || '');
+                  if (parts[1] !== undefined) handleChange('segregationGroup', parts[1]);
                 }}
-                placeholder="F-A-S-B | SGG1"
+                placeholder="e.g. F-A-S-B | SGG1"
                 className="w-full px-2.5 py-1.5 text-xs bg-white border border-zinc-200 rounded-lg font-mono text-zinc-900 focus:border-zinc-500 outline-none transition-colors"
               />
             </div>
