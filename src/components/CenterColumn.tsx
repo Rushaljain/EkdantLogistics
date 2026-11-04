@@ -10,9 +10,8 @@ import {
   CheckCircle2, 
   RefreshCw, 
   AlertCircle,
-  FolderArchive,
-  Layers,
-  Flame
+  Flame,
+  Layers
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
 import type { AppDocument, CustomsPort } from '../types';
@@ -45,11 +44,9 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
   onDeleteDocument,
   onClearAllDocuments,
   onPortChange,
-  onSaveAllToFiles,
-  onConsolidateBatch
+  onSaveAllToFiles: _onSaveAllToFiles,
+  onConsolidateBatch: _onConsolidateBatch
 }) => {
-  const pendingCount = documents.filter(d => d.status === 'pending' || d.status === 'failed').length;
-  const processedCount = documents.filter(d => d.status === 'processed' && d.invoice).length;
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -92,45 +89,18 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </div>
 
           <div className="flex items-center space-x-1.5">
-            {/* Consolidate Batch Button when multiple processed invoices exist */}
-            {processedCount >= 2 && onConsolidateBatch && (
-              <button
-                type="button"
-                onClick={onConsolidateBatch}
-                className="inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 shadow-2xs transition-colors cursor-pointer"
-                title="Consolidate multiple invoices into a single unified multi-container shipment"
-              >
-                <Layers className="w-3 h-3 text-zinc-500" />
-                <span>Consolidate ({processedCount})</span>
-              </button>
-            )}
-
-            {/* Save All to Files button for converted documents */}
-            {processedCount > 0 && onSaveAllToFiles && (
-              <button
-                type="button"
-                onClick={onSaveAllToFiles}
-                className="inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 shadow-2xs transition-colors cursor-pointer"
-                title="Save all allocated shipments to Files archive and clear board"
-              >
-                <FolderArchive className="w-3 h-3 text-zinc-500" />
-                <span>Save to Files</span>
-              </button>
-            )}
-
-            {/* Convert All Button for bulk processing */}
-            {pendingCount > 0 && (
+            {documents.length > 0 && (
               <button
                 type="button"
                 onClick={onConvertAll}
                 disabled={isBulkConverting}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
-                title="Process all uploaded invoices and packing lists"
+                className="px-2.5 py-1 text-[11px] font-semibold bg-zinc-900 hover:bg-zinc-800 text-white rounded-md shadow-2xs transition-colors flex items-center space-x-1.5 disabled:opacity-40 cursor-pointer"
+                title="Process staged invoices and generate Container Plan, DG & BL"
               >
                 {isBulkConverting ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin text-white" />
-                    <span>Processing Invoices...</span>
+                    <span>Processing...</span>
                   </>
                 ) : (
                   <>
@@ -148,7 +118,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                     onClearAllDocuments();
                   }
                 }}
-                className="text-[11px] text-zinc-400 hover:text-zinc-600 transition-colors flex items-center space-x-1 p-1"
+                className="text-[11px] text-zinc-400 hover:text-zinc-600 transition-colors flex items-center space-x-1 p-1 cursor-pointer"
                 title="Clear all documents"
               >
                 <Trash2 className="w-3 h-3" />
@@ -157,6 +127,18 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             )}
           </div>
         </div>
+
+        {/* Auto-Verification Banner: Single vs. Multi-Invoice Mode */}
+        {documents.length > 0 && (
+          <div className="mb-2.5 px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-800 text-[11px] font-mono flex items-center space-x-2 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-900 shrink-0" />
+            <span className="truncate">
+              {documents.length === 1
+                ? 'Auto-Verified: Single Invoice Mode (1 Invoice -> 1 DG & 1 BL)'
+                : `Auto-Verified: Multi-Invoice Consolidation (${documents.length} Files Merged -> 1 DG & 1 BL)`}
+            </span>
+          </div>
+        )}
 
         {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -375,6 +357,31 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             })
           )}
         </div>
+
+        {/* Primary High-Contrast "Process Invoices" Button directly beneath the upload queue */}
+        {documents.length > 0 && (
+          <div className="pt-2.5 border-t border-zinc-200 shrink-0">
+            <button
+              type="button"
+              onClick={onConvertAll}
+              disabled={isBulkConverting}
+              className="w-full py-2.5 px-4 rounded-lg text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-sm transition-all disabled:opacity-40 cursor-pointer flex items-center justify-center space-x-2"
+              title="Process staged files and generate Container Plan, DG Declaration, and Master BOL"
+            >
+              {isBulkConverting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>Processing Invoices...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-zinc-300" />
+                  <span>Process Invoices</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, FolderArchive } from 'lucide-react';
+import { Layers, FolderArchive, SlidersHorizontal } from 'lucide-react';
 
 export type NavTab = 'converter' | 'files';
 
@@ -8,6 +8,7 @@ interface SidebarProps {
   onSelectTab?: (tab: NavTab) => void;
   savedFilesCount?: number;
   onOpenKeyModal?: () => void;
+  onOpenFormatsModal?: () => void;
   showHeader?: boolean;
 }
 
@@ -15,6 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'converter',
   onSelectTab,
   savedFilesCount = 0,
+  onOpenFormatsModal,
   showHeader = false,
 }) => {
   return (
@@ -75,6 +77,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           )}
         </button>
+
+        {/* Manage Master Formats */}
+        {onOpenFormatsModal && (
+          <button
+            type="button"
+            onClick={onOpenFormatsModal}
+            className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 transition-all text-left cursor-pointer font-normal"
+          >
+            <SlidersHorizontal className="w-4 h-4 shrink-0 text-zinc-400" />
+            <span className="flex-1 truncate">Manage Master Formats</span>
+          </button>
+        )}
       </div>
 
       {/* Bottom System & Container Status Indicator */}

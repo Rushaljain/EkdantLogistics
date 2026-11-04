@@ -3,12 +3,16 @@ import { Sidebar } from './components/Sidebar';
 import type { NavTab } from './components/Sidebar';
 import { CenterColumn } from './components/CenterColumn';
 import { PreviewPane } from './components/PreviewPane';
+import type { RightPaneViewMode } from './components/PreviewPane';
 import { FilesView } from './components/FilesView';
 import { GeminiApiKeyModal } from './components/GeminiApiKeyModal';
-import type { ConvertedInvoice, CustomsPort, AppDocument } from './types';
+import { ManageMasterFormatsModal } from './components/ManageMasterFormatsModal';
+import type { ConvertedInvoice, CustomsPort, AppDocument, MasterFormat } from './types';
 import { extractInvoiceFromPdf } from './utils/geminiExtractor';
+import { extractFromSpreadsheet } from './utils/spreadsheetExtractor';
 import { optimizeContainerAllocation } from './utils/containerOptimizer';
 import { SHIPMENT_MUMGA3747500 } from './data/profiles';
+import { PRESEEDED_MASTER_FORMATS } from './data/masterFormats';
 
 const LOCAL_STORAGE_DOCS_KEY = 'ekdant_customs_documents_v1';
 const LOCAL_STORAGE_SAVED_FILES_KEY = 'ekdant_saved_files_v1';
@@ -117,6 +121,22 @@ export function App() {
   // Bulk conversion state
   const [isBulkConverting, setIsBulkConverting] = useState<boolean>(false);
 
+  // Master Formats Library & Selected Format
+  const [masterFormats, setMasterFormats] = useState<MasterFormat[]>(() => {
+    try {
+      const saved = localStorage.getItem('ekdant_master_formats_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return PRESEEDED_MASTER_FORMATS;
+  });
+
+  const [selectedFormatId, setSelectedFormatId] = useState<string>('fmt-one-line');
+  const [isFormatsModalOpen, setIsFormatsModalOpen] = useState<boolean>(false);
+  const [activeRightView, setActiveRightView] = useState<RightPaneViewMode>('container_plan');
+
   // Active Selected Document in converter
   const activeDocument = documents.find(d => d.id === selectedDocumentId) || (documents.length > 0 ? documents[0] : null);
 
@@ -127,6 +147,36 @@ export function App() {
       localStorage.setItem(LOCAL_STORAGE_KEY_KEY, newKey);
     } catch (err) {
       console.warn('Failed to save API key to localStorage:', err);
+    }
+  };
+
+  // Persist master formats whenever updated
+  useEffect(() => {
+    try {
+      localStorage.setItem('ekdant_master_formats_v1', JSON.stringify(masterFormats));
+    } catch (err) {
+      console.warn('Failed to save master formats to localStorage:', err);
+    }
+  }, [masterFormats]);
+
+  const handleSaveMasterFormat = (format: MasterFormat) => {
+    setMasterFormats(prev => {
+      const exists = prev.some(f => f.id === format.id);
+      if (exists) {
+        return prev.map(f => f.id === format.id ? format : f);
+      }
+      return [format, ...prev];
+    });
+    setSelectedFormatId(format.id);
+  };
+
+  const handleDeleteMasterFormat = (formatId: string) => {
+    setMasterFormats(prev => {
+      const filtered = prev.filter(f => f.id !== formatId);
+      return filtered.length > 0 ? filtered : PRESEEDED_MASTER_FORMATS;
+    });
+    if (selectedFormatId === formatId) {
+      setSelectedFormatId(PRESEEDED_MASTER_FORMATS[0].id);
     }
   };
 
@@ -159,36 +209,50 @@ export function App() {
     }
   }, [savedFiles]);
 
-  // Handle files selected (drag & drop or browse) - Multi-invoice batching with deduplication
-  const handleFilesSelected = (files: File[]) => {
-    setDocuments(prev => {
-      // Deduplicate against existing documents by file name and size
-      const existingFileKeys = new Set(prev.map(d => `${d.fileName}_${d.fileSize}`));
-      const newDocs: AppDocument[] = [];
+  // Handle files selected (drag & drop or browse) - Multi-invoice batching with deduplication (.pdf, .xlsx, .xls, .csv)
+  const handleFilesSelected = async (files: File[]) => {
+    // Deduplicate against existing documents by file name and size
+    const existingFileKeys = new Set(documents.map(d => `${d.fileName}_${d.fileSize}`));
+    const newDocs: AppDocument[] = [];
 
-      for (const file of files) {
-        const fileKey = `${file.name}_${file.size}`;
-        if (!existingFileKeys.has(fileKey)) {
-          existingFileKeys.add(fileKey);
-          const pdfUrl = typeof window !== 'undefined' && window.URL ? URL.createObjectURL(file) : undefined;
-          newDocs.push({
-            id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            fileName: file.name,
-            fileSize: file.size,
-            uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            status: 'pending' as const,
-            file,
-            pdfUrl
-          });
+    for (const file of files) {
+      const fileKey = `${file.name}_${file.size}`;
+      if (!existingFileKeys.has(fileKey)) {
+        existingFileKeys.add(fileKey);
+        const isPdf = /\.pdf$/i.test(file.name);
+        const isSpreadsheet = /\.xlsx$|\.xls$|\.csv$/i.test(file.name);
+        const pdfUrl = isPdf && typeof window !== 'undefined' && window.URL ? URL.createObjectURL(file) : undefined;
+
+        let previewHtml: string | undefined;
+        let preParsedInvoice: ConvertedInvoice | undefined;
+
+        if (isSpreadsheet) {
+          try {
+            const extracted = await extractFromSpreadsheet(file, DEFAULT_PORT);
+            previewHtml = extracted.previewHtml;
+            preParsedInvoice = extracted.invoice;
+          } catch (err) {
+            console.warn('Pre-parsing spreadsheet preview failed:', err);
+          }
         }
-      }
 
-      if (newDocs.length === 0) return prev;
-      if (newDocs.length > 0) {
-        setSelectedDocumentId(newDocs[0].id);
+        newDocs.push({
+          id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          fileName: file.name,
+          fileSize: file.size,
+          uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: 'pending' as const,
+          file,
+          pdfUrl,
+          previewHtml,
+          invoice: preParsedInvoice
+        });
       }
-      return [...newDocs, ...prev];
-    });
+    }
+
+    if (newDocs.length === 0) return;
+    setDocuments(prev => [...newDocs, ...prev]);
+    setSelectedDocumentId(newDocs[0].id);
   };
 
   // Convert a single document
@@ -197,24 +261,32 @@ export function App() {
     if (!doc) return;
 
     if (!doc.file) {
-      alert('Original PDF file is missing from the current browser session. Please re-upload the document.');
+      alert('Original file is missing from the current browser session. Please re-upload the document.');
       return;
     }
 
-    if (!apiKey) {
-      setIsKeyModalOpen(true);
-      setDocuments(prev => prev.map(d => d.id === docId ? {
-        ...d,
-        status: 'failed',
-        errorMessage: 'Gemini API key is required. Please enter an API key in settings.'
-      } : d));
-      return;
-    }
+    const isSpreadsheet = /\.xlsx$|\.xls$|\.csv$/i.test(doc.fileName);
 
     setDocuments(prev => prev.map(d => d.id === docId ? { ...d, status: 'processing', errorMessage: undefined } : d));
 
     try {
-      const converted = await extractInvoiceFromPdf(doc.file, apiKey, DEFAULT_PORT);
+      let converted: ConvertedInvoice;
+      if (isSpreadsheet) {
+        const extracted = await extractFromSpreadsheet(doc.file, DEFAULT_PORT);
+        converted = extracted.invoice;
+      } else {
+        if (!apiKey) {
+          setIsKeyModalOpen(true);
+          setDocuments(prev => prev.map(d => d.id === docId ? {
+            ...d,
+            status: 'failed',
+            errorMessage: 'Gemini API key is required. Please enter an API key in settings.'
+          } : d));
+          return;
+        }
+        converted = await extractInvoiceFromPdf(doc.file, apiKey, DEFAULT_PORT);
+      }
+
       if (doc.pdfUrl && !converted.pdfUrl) {
         converted.pdfUrl = doc.pdfUrl;
       }
@@ -227,6 +299,7 @@ export function App() {
       } : d));
 
       setSelectedDocumentId(docId);
+      setActiveRightView('container_plan');
     } catch (err: any) {
       const isAuthError = err.message && (err.message.includes('401') || err.message.includes('API key'));
       if (isAuthError) {
@@ -240,17 +313,18 @@ export function App() {
     }
   };
 
-  // Bulk convert all pending/failed documents at once
+  // Bulk convert all pending/failed documents at once ("Process Invoices")
   const handleConvertAll = async () => {
     const targets = documents.filter(d => d.status === 'pending' || d.status === 'failed');
     if (targets.length === 0 || isBulkConverting) return;
 
-    if (!apiKey) {
+    const hasPdfs = targets.some(t => /\.pdf$/i.test(t.fileName));
+    if (hasPdfs && !apiKey) {
       setIsKeyModalOpen(true);
       setDocuments(prev => prev.map(d => targets.some(t => t.id === d.id) ? {
         ...d,
         status: 'failed',
-        errorMessage: 'Gemini API key is required. Please enter an API key in settings.'
+        errorMessage: 'Gemini API key is required for PDF parsing. Please enter an API key.'
       } : d));
       return;
     }
@@ -265,6 +339,8 @@ export function App() {
       return d;
     }));
 
+    let currentDocs = [...documents];
+
     // Process targets sequentially
     for (const target of targets) {
       try {
@@ -272,31 +348,130 @@ export function App() {
           throw new Error('Original session file not found. Re-upload document.');
         }
 
-        const converted = await extractInvoiceFromPdf(target.file, apiKey, DEFAULT_PORT);
+        const isSpreadsheet = /\.xlsx$|\.xls$|\.csv$/i.test(target.fileName);
+        let converted: ConvertedInvoice;
+
+        if (isSpreadsheet) {
+          const extracted = await extractFromSpreadsheet(target.file, DEFAULT_PORT);
+          converted = extracted.invoice;
+        } else {
+          converted = await extractInvoiceFromPdf(target.file, apiKey, DEFAULT_PORT);
+        }
+
         if (target.pdfUrl && !converted.pdfUrl) {
           converted.pdfUrl = target.pdfUrl;
         }
 
-        setDocuments(prev => prev.map(d => d.id === target.id ? {
+        currentDocs = currentDocs.map(d => d.id === target.id ? {
           ...d,
           status: 'processed',
           invoice: converted,
           errorMessage: undefined
-        } : d));
+        } : d);
+
+        setDocuments(currentDocs);
       } catch (err: any) {
         const isAuthError = err.message && (err.message.includes('401') || err.message.includes('API key'));
         if (isAuthError) {
           setIsKeyModalOpen(true);
         }
-        setDocuments(prev => prev.map(d => d.id === target.id ? {
+        currentDocs = currentDocs.map(d => d.id === target.id ? {
           ...d,
           status: 'failed',
           errorMessage: err.message || 'Extraction failed'
-        } : d));
+        } : d);
+        setDocuments(currentDocs);
       }
     }
 
+    // Auto-consolidation if multiple invoices processed in batch
+    const processedDocs = currentDocs.filter(d => d.status === 'processed' && d.invoice);
+    if (processedDocs.length >= 2) {
+      const invoices = processedDocs.map(d => d.invoice!);
+      const primary = invoices[0];
+
+      const combinedLineItems = invoices.flatMap((inv, invIdx) => 
+        inv.lineItems.map((item, itemIdx) => ({
+          ...item,
+          id: `item-batch-${invIdx}-${itemIdx}-${item.id}`,
+          itemNumber: itemIdx + 1
+        }))
+      );
+
+      const totalGross = combinedLineItems.reduce((acc, it) => acc + (it.grossWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.grossWeightKg, 0);
+      const totalNet = combinedLineItems.reduce((acc, it) => acc + (it.netWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.netWeightKg, 0);
+      const totalPkgs = combinedLineItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
+      const totalPalletCount = invoices.reduce((s, i) => s + (i.totalPallets || i.pallets?.length || 1), 0);
+      const hasDangerousGoods = combinedLineItems.some(it => it.isDangerousGood) || invoices.some(i => i.hasDangerousGoods);
+      const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
+
+      const { containers, pallets } = optimizeContainerAllocation(combinedLineItems, undefined, {
+        preferredContainerType: '20GP',
+        explicitPalletCount: totalPalletCount
+      });
+
+      const consolidatedInvoice: ConvertedInvoice = {
+        id: `inv-batch-${Date.now()}`,
+        fileName: `Consolidated_Batch_${invoices.length}_Invoices.pdf`,
+        fileSize: invoices.reduce((s, i) => s + i.fileSize, 0),
+        convertedAt: `Today, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        rawTimestamp: Date.now(),
+        status: 'converted',
+        invoiceNumber: invoiceNumbers,
+        invoiceDate: primary.invoiceDate,
+        bookingNumber: primary.bookingNumber || `BKG-BATCH-${Date.now().toString().slice(-5)}`,
+        masterBolNumber: `BOL-EKD-BATCH${Date.now().toString().slice(-6)}`,
+        exporterName: primary.exporterName,
+        shipperAddress: primary.shipperAddress,
+        iec: primary.iec,
+        gstin: primary.gstin,
+        adCode: primary.adCode,
+        consigneeName: primary.consigneeName,
+        consigneeAddress: primary.consigneeAddress,
+        notifyParty: primary.notifyParty,
+        portOfLoading: primary.portOfLoading,
+        portOfDischarge: primary.portOfDischarge,
+        destinationCountry: primary.destinationCountry,
+        vesselName: primary.vesselName,
+        voyageNumber: primary.voyageNumber,
+        currency: primary.currency,
+        exchangeRate: primary.exchangeRate,
+        incoterm: primary.incoterm,
+        subtotal: invoices.reduce((s, i) => s + (i.subtotal || 0), 0),
+        gstAmount: invoices.reduce((s, i) => s + (i.gstAmount || 0), 0),
+        invoiceTotal: invoices.reduce((s, i) => s + (i.invoiceTotal || 0), 0),
+        grossWeightKg: totalGross,
+        netWeightKg: totalNet,
+        totalPackages: totalPkgs,
+        packageType: primary.packageType,
+        totalPallets: pallets.length || totalPalletCount,
+        hasDangerousGoods,
+        selectedBolTemplateId: 'bol-standard',
+        selectedDgTemplateId: 'dg-imo-standard',
+        containers,
+        pallets,
+        lineItems: combinedLineItems,
+        pdfUrl: primary.pdfUrl
+      };
+
+      const newDoc: AppDocument = {
+        id: `doc-batch-${Date.now()}`,
+        fileName: consolidatedInvoice.fileName,
+        fileSize: consolidatedInvoice.fileSize,
+        uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'processed',
+        invoice: consolidatedInvoice,
+        pdfUrl: primary.pdfUrl
+      };
+
+      const consolidatedIds = new Set(processedDocs.map(d => d.id));
+      const finalDocs = [newDoc, ...currentDocs.filter(d => !consolidatedIds.has(d.id))];
+      setDocuments(finalDocs);
+      setSelectedDocumentId(newDoc.id);
+    }
+
     setIsBulkConverting(false);
+    setActiveRightView('container_plan');
   };
 
   // Update port on document
@@ -586,6 +761,7 @@ export function App() {
               onSelectTab={setActiveTab}
               savedFilesCount={savedFiles.length}
               onOpenKeyModal={() => setIsKeyModalOpen(true)}
+              onOpenFormatsModal={() => setIsFormatsModalOpen(true)}
               showHeader={false}
             />
             <CenterColumn
@@ -603,10 +779,15 @@ export function App() {
               onConsolidateBatch={handleConsolidateBatch}
             />
             <PreviewPane
-              document={activeDocument}
+              documents={documents}
+              activeDocument={activeDocument}
               onSave={handleSaveInvoiceEdit}
               onPortChange={handlePortChange}
-              onConvert={handleConvertDocument}
+              masterFormats={masterFormats}
+              selectedFormatId={selectedFormatId}
+              onSelectFormat={setSelectedFormatId}
+              activeView={activeRightView}
+              onSelectView={setActiveRightView}
               onOpenKeyModal={() => setIsKeyModalOpen(true)}
             />
           </div>
@@ -621,6 +802,7 @@ export function App() {
             onSelectTab={setActiveTab}
             savedFilesCount={savedFiles.length}
             onOpenKeyModal={() => setIsKeyModalOpen(true)}
+            onOpenFormatsModal={() => setIsFormatsModalOpen(true)}
             showHeader={true}
           />
           <FilesView
@@ -639,6 +821,15 @@ export function App() {
         onClose={() => setIsKeyModalOpen(false)}
         currentKey={apiKey}
         onSaveKey={handleSaveApiKey}
+      />
+
+      {/* 4. Manage Master Formats Modal */}
+      <ManageMasterFormatsModal
+        isOpen={isFormatsModalOpen}
+        onClose={() => setIsFormatsModalOpen(false)}
+        formats={masterFormats}
+        onAddFormat={handleSaveMasterFormat}
+        onDeleteFormat={handleDeleteMasterFormat}
       />
     </div>
   );

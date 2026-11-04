@@ -77,6 +77,16 @@ export interface ContainerAllocation {
   hasDangerousGoods: boolean;
 }
 
+export interface MasterFormat {
+  id: string;
+  name: string;             // e.g. "ONE Line Multimodal (Myanmar/Yangon)", "CMA CGM Standard (Middle East/Jeddah)"
+  carrierOrClient: string;  // e.g. "ONE Line", "CMA CGM"
+  description: string;
+  isPreseeded?: boolean;
+  uploadedFileName?: string;
+  uploadedAt?: string;
+}
+
 export interface DocumentTemplate {
   id: string;
   name: string;
@@ -174,6 +184,7 @@ export interface AppDocument {
   errorMessage?: string;
   file?: File;
   pdfUrl?: string;
+  previewHtml?: string;
   invoice?: ConvertedInvoice;
 }
 

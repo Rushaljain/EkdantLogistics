@@ -27,22 +27,24 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const pdfFiles = Array.from(e.dataTransfer.files).filter(
-        f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
-      );
-      if (pdfFiles.length > 0) {
-        onFilesSelected(pdfFiles);
+      const validFiles = Array.from(e.dataTransfer.files).filter(f => {
+        const lower = f.name.toLowerCase();
+        return lower.endsWith('.pdf') || lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv');
+      });
+      if (validFiles.length > 0) {
+        onFilesSelected(validFiles);
       }
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const pdfFiles = Array.from(e.target.files).filter(
-        f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
-      );
-      if (pdfFiles.length > 0) {
-        onFilesSelected(pdfFiles);
+      const validFiles = Array.from(e.target.files).filter(f => {
+        const lower = f.name.toLowerCase();
+        return lower.endsWith('.pdf') || lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv');
+      });
+      if (validFiles.length > 0) {
+        onFilesSelected(validFiles);
       }
     }
     // reset input
@@ -64,7 +66,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/pdf"
+        accept=".pdf,.xlsx,.xls,.csv"
         multiple
         onChange={handleFileChange}
         className="hidden"
@@ -76,7 +78,7 @@ export const UploadZone: React.FC<UploadZoneProps> = ({
         </div>
 
         <h3 className="text-xs font-medium text-zinc-900">
-          Drop PDF documents here
+          Drop documents here (.pdf, .xlsx, .csv)
         </h3>
 
         <div className="mt-2.5 flex items-center space-x-2">

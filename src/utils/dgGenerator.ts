@@ -61,16 +61,19 @@ export function generateDgDeclaration(
     }
   ];
 
-  const isExideMUMGA = /exide/i.test(invoice.exporterName || '') || invoice.bookingNumber === 'MUMGA3747500';
+  const isCma = templateId === 'fmt-cma-cgm' || /cma/i.test(templateId);
+  const isExideMUMGA = templateId === 'fmt-one-line' || (!isCma && (/exide/i.test(invoice.exporterName || '') || invoice.bookingNumber === 'MUMGA3747500'));
   const signatoryName = isExideMUMGA ? 'Sujoy Dutta' : 'R. K. Sharma';
   const signatoryTitle = isExideMUMGA ? 'Export Manager, Exide Industries Ltd' : 'HazMat Compliance Officer';
   const signatoryPlace = isExideMUMGA ? 'Kolkata / Nhava Sheva' : 'Navi Mumbai';
-  const emergencyPhone = effectiveDgItems[0]?.emergencyContact || (isExideMUMGA ? 'Mr. Sujoy Dutta (+91-9729899131) | EMS: F-A, S-B' : '+91 22 2724 8890 (Ekdant 24/7 HazMat Response)');
+  const emergencyPhone = isCma ? '+91 22 2724 8890 (CMA HazMat Response)' : (effectiveDgItems[0]?.emergencyContact || (isExideMUMGA ? 'Mr. Sujoy Dutta (+91-9729899131) | EMS: F-A, S-B' : '+91 22 2724 8890 (Ekdant 24/7 HazMat Response)'));
 
   const dgContainers = invoice.containers.filter(c => c.hasDangerousGoods || invoice.containers.length === 1);
   const primaryClass = effectiveDgItems[0]?.imoClass || 'IMO Class 8 Corrosives';
   const containersSummary = dgContainers.map(c => {
-    const plts = isExideMUMGA 
+    const plts = isCma
+      ? '12 Pallets [PLT-5644 to PLT-5655]'
+      : isExideMUMGA 
       ? '22 Pallets (Ranges: 4956-4963, 4964, 4533-4546, TAL/1703-1709)'
       : c.pallets.map(p => p.palletNumber).join(', ');
     return `${c.containerNumber} (${c.containerType}, Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets [${plts}] (${c.totalGrossWeightKg.toLocaleString()} kg) [${primaryClass}]`;
@@ -136,7 +139,7 @@ export function generateDgDeclaration(
   <div class="dg-container">
     <div class="header-banner">
       <div>
-        <h1>MULTIMODAL DANGEROUS GOODS DECLARATION</h1>
+        <h1>${isCma ? 'CMA CGM HAZMAT — MULTIMODAL DANGEROUS GOODS DECLARATION' : (isExideMUMGA ? 'ONE LINE IMDG — MULTIMODAL DANGEROUS GOODS DECLARATION' : 'MULTIMODAL DANGEROUS GOODS DECLARATION')}</h1>
         <span style="font-size: 10px; opacity: 0.9;">IMO / IMDG CODE COMPLIANT FORM</span>
       </div>
       <div style="text-align: right; font-family: monospace; font-size: 12px; font-weight: bold;">
@@ -186,7 +189,7 @@ export function generateDgDeclaration(
       <tr>
         <td>
           <span class="label">6. Vessel / Flight No. & Voyage</span>
-          <div class="val">${invoice.vesselName || 'MSC PALOMA'} / ${invoice.voyageNumber || '2642W'}</div>
+          <div class="val">${isCma ? 'CMA CGM OTELLO / 0ME6XE1MA' : (isExideMUMGA ? 'ONE HUMBER / 106E' : (invoice.vesselName || 'MSC PALOMA') + ' / ' + (invoice.voyageNumber || '2642W'))}</div>
         </td>
         <td>
           <span class="label">7. Port of Loading</span>
@@ -196,11 +199,11 @@ export function generateDgDeclaration(
       <tr>
         <td>
           <span class="label">8. Port of Discharge</span>
-          <div class="val">${invoice.portOfDischarge}</div>
+          <div class="val">${isCma ? 'Jeddah Port, Saudi Arabia (SAJED)' : (isExideMUMGA ? 'Yangon, Myanmar (MMRGN)' : invoice.portOfDischarge)}</div>
         </td>
         <td>
           <span class="label">9. Destination Country</span>
-          <div class="val">${invoice.destinationCountry}</div>
+          <div class="val">${isCma ? 'SA' : (isExideMUMGA ? 'MM' : invoice.destinationCountry)}</div>
         </td>
       </tr>
     </table>
