@@ -17,7 +17,7 @@
 | **Phase 7** | `UNIFIED-BLOCK-LIST` | **Unified Cross-Document Block List & UI Cleanup** | • Draggable cards in `ContainerQcBoard.tsx` explicitly display all unified attributes: Pallet ID, Net & Gross weight side-by-side, Item Model, Box count, and UN 2794 HazMat badges<br>• Full UI cleanup: All legacy EDI, ICEGATE, and spreadsheet export buttons pruned from `PreviewPane.tsx` and toolbars; strictly retain Master BOL & #DG Declaration<br>• Multi-invoice batching: Deduplicated file upload ingestion + batch consolidation into unified Master Shipment | ✅ **Completed** |
 | **Phase 8** | `MUMGA-SHIPMENT` | **Exide Shipment MUMGA3747500 Allocation & #DG/BOL Generation** | • Configured Exide Myanmar export shipment (`Booking: MUMGA3747500`, Container `ONEU2878769`, Seal `IN2191248`)<br>• Expanded all 22 pallets across 676 corrugated boxes across 5 invoices (`CHW000213`, `CHW000213A`, `CHW000165B`, `TAL000172`, `TAL000172A`)<br>• Ingested 5 pallet serial ranges: `4956 TO 4963`, `4964`, `4533 TO 4546`, `TAL/1703/2026 TO TAL/1705/2026`, `TAL/1706/2026 TO TAL/1709/2026`<br>• Enforced 25-ton weight cap: Net `17,917.70 kg`, Gross `18,502.70 kg`, Tare `2,150 kg`, Total VGM `20,652.70 kg` (74.0% payload utilization, within 25T cap)<br>• Generated compliant IMDG #DG Declaration & Master BOL with Shipping Bill `7463800`, Declarant `Sujoy Dutta / Export Manager`, Emergency Contact `Mr. Sujoy Dutta (+91-9729899131)`, UN Packaging `4G/Z 30/S/IND/K/19700134`, Segregation `SGG1`, and EMS `F-A, S-B` | ✅ **Completed** |
 | **Phase 9** | `TEMPLATE-MGMT` | **Template Management & Custom Layouts** | • Dynamic template selector dropdown in header/action bar<br>• Client template schema definition & field mapping engine<br>• Custom header/logo injection for client-specific BOLs | 🟡 **In Progress** |
-| **Phase 10** | `DEPLOYMENT` | **Deployment & CI/CD Verification** | • Fix Vercel integration provisioning failure<br>• Ensure zero TypeScript errors (`tsc -b && vite build`)<br>• Verified build passes cleanly in production<br>• Live on Vercel and pushed to GitHub `main` | ✅ **Completed** |
+| **Phase 10** | `DEPLOYMENT` | **Deployment & CI/CD Verification** | • Fix Vercel syntax compilation error in `PreviewPane.tsx`<br>• Verified clean build with `npx vercel build` (Exit code 0)<br>• Ensure zero TypeScript errors (`tsc -b && vite build`)<br>• Live on Vercel and pushed to GitHub `main` (`0d1b9cd`) | ✅ **Completed** |
 
 ---
 
@@ -57,3 +57,9 @@
 - [x] Dangerous goods declaration with UN 2794, Class 8 Corrosive, PG III, Proper Shipping Name "BATTERIES, WET, FILLED WITH ACID", UN Packaging Code `4G/Z 30/S/IND/K/19700134`, Segregation Group `SGG1`, and EMS `F-A, S-B`.
 - [x] Declarant authorized signatory Sujoy Dutta (Export Manager, Exide Industries Ltd) and 24/7 Emergency Contact Mr. Sujoy Dutta (+91-9729899131).
 - [x] Master BOL citing Shipping Bill No. 7463800 (dated 07.10.2026), 5 invoice cross-references, ONE Line carrier routing (Nhava Sheva INNSA1 to Yangon MMRGN via Singapore).
+
+### 5. Production CI/CD & Vercel Build Verification (`PreviewPane.tsx`, `package.json`)
+- [x] Identified and fixed duplicate JSX closing tags and orphan buttons in `PreviewPane.tsx` that caused TypeScript compilation failure (`exit code 2`) on full clean build (`tsc -b`).
+- [x] Verified local full production build (`tsc -b && vite build`) and Vercel CLI simulation (`npx vercel build`) pass with 0 errors.
+- [x] Linter (`oxlint`) passes cleanly with 0 warnings and 0 errors across 20 files.
+- [x] Pushed clean commit `0d1b9cd` to `origin/main` to trigger clean Vercel deployment.
