@@ -9,9 +9,7 @@ import {
   ZoomIn, 
   ZoomOut, 
   Save, 
-  Sparkles, 
   Loader2, 
-  RefreshCw, 
   AlertCircle, 
   Key, 
   Boxes, 
@@ -50,7 +48,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   document,
   onSave,
   onPortChange,
-  onConvert,
+  onConvert: _onConvert,
   onOpenKeyModal
 }) => {
   if (!document) {
@@ -80,7 +78,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   return (
     <PendingPreviewPaneContent
       document={document}
-      onConvert={onConvert}
       onOpenKeyModal={onOpenKeyModal}
     />
   );
@@ -88,13 +85,11 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
 
 interface PendingContentProps {
   document: AppDocument;
-  onConvert?: (docId: string) => void;
   onOpenKeyModal?: () => void;
 }
 
 const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
   document,
-  onConvert,
   onOpenKeyModal
 }) => {
   const [zoom, setZoom] = useState<number>(100);
@@ -136,30 +131,11 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
           </div>
         </div>
 
-        {onConvert && (
-          <button
-            type="button"
-            onClick={() => onConvert(document.id)}
-            disabled={isProcessing}
-            className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Extracting...</span>
-              </>
-            ) : isFailed ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry Extraction</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5 text-zinc-300" />
-                <span>Extract Weights & Pallets</span>
-              </>
-            )}
-          </button>
+        {isProcessing && (
+          <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600" />
+            <span>Processing Invoices...</span>
+          </div>
         )}
       </div>
 
@@ -209,7 +185,7 @@ const PendingPreviewPaneContent: React.FC<PendingContentProps> = ({
                 Ready for Extraction
               </h3>
               <p className="text-xs text-zinc-500 leading-relaxed">
-                Click <strong className="text-zinc-800">Extract Weights & Pallets</strong> to parse line items, gross/net weights, auto-segregate pallets into containers, and generate #DG and Master BOL forms.
+                Click <strong className="text-zinc-800">Process Invoices</strong> to parse line items, gross/net weights, auto-segregate pallets into containers, and generate #DG and Master BOL forms.
               </p>
             </div>
           )}

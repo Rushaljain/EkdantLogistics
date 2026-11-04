@@ -124,18 +124,18 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 type="button"
                 onClick={onConvertAll}
                 disabled={isBulkConverting}
-                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
-                title="Extract weights, pallets, and HazMat attributes for all documents"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors disabled:opacity-50 cursor-pointer"
+                title="Process all uploaded invoices and packing lists"
               >
                 {isBulkConverting ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin text-white" />
-                    <span>Extracting...</span>
+                    <span>Processing Invoices...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-3 h-3 text-zinc-300" />
-                    <span>Convert All ({pendingCount})</span>
+                    <span>Process Invoices</span>
                   </>
                 )}
               </button>
@@ -295,7 +295,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         </span>
                         <span className="inline-flex items-center space-x-1 px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-100 text-zinc-700 border border-zinc-200 shrink-0">
                           <Loader2 className="w-2.5 h-2.5 animate-spin text-zinc-600" />
-                          <span>Extracting...</span>
+                          <span>Processing Invoices...</span>
                         </span>
                       </div>
 
@@ -357,15 +357,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                         </span>
 
                         <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => onConvertDocument(doc.id)}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors cursor-pointer"
-                            title="Extract weights, pallets, and HazMat attributes"
-                          >
-                            <Sparkles className="w-3 h-3 text-zinc-300" />
-                            <span>Convert</span>
-                          </button>
+
 
                           <button
                             onClick={() => onDeleteDocument(doc.id)}

@@ -18,6 +18,7 @@
 | **Phase 8** | `MUMGA-SHIPMENT` | **Exide Shipment MUMGA3747500 Allocation & #DG/BOL Generation** | • Configured Exide Myanmar export shipment (`Booking: MUMGA3747500`, Container `ONEU2878769`, Seal `IN2191248`)<br>• Expanded all 22 pallets across 676 corrugated boxes across 5 invoices (`CHW000213`, `CHW000213A`, `CHW000165B`, `TAL000172`, `TAL000172A`)<br>• Ingested 5 pallet serial ranges: `4956 TO 4963`, `4964`, `4533 TO 4546`, `TAL/1703/2026 TO TAL/1705/2026`, `TAL/1706/2026 TO TAL/1709/2026`<br>• Enforced 25-ton weight cap: Net `17,917.70 kg`, Gross `18,502.70 kg`, Tare `2,150 kg`, Total VGM `20,652.70 kg` (74.0% payload utilization, within 25T cap)<br>• Generated compliant IMDG #DG Declaration & Master BOL with Shipping Bill `7463800`, Declarant `Sujoy Dutta / Export Manager`, Emergency Contact `Mr. Sujoy Dutta (+91-9729899131)`, UN Packaging `4G/Z 30/S/IND/K/19700134`, Segregation `SGG1`, and EMS `F-A, S-B` | ✅ **Completed** |
 | **Phase 9** | `TEMPLATE-MGMT` | **Template Management & Custom Layouts** | • Dynamic template selector dropdown in header/action bar<br>• Client template schema definition & field mapping engine<br>• Custom header/logo injection for client-specific BOLs | 🟡 **In Progress** |
 | **Phase 10** | `DEPLOYMENT` | **Deployment & CI/CD Verification** | • Fix Vercel syntax compilation error in `PreviewPane.tsx`<br>• Verified clean build with `npx vercel build` (Exit code 0)<br>• Ensure zero TypeScript errors (`tsc -b && vite build`)<br>• Live on Vercel and pushed to GitHub `main` (`0d1b9cd`) | ✅ **Completed** |
+| **Phase 11** | `STREAMLINED-UX` | **Single-Button Process Invoices UX Streamlining** | • Removed individual per-document "Convert" buttons from each card row<br>• Removed redundant "Extract Weights & Pallets" button in the top right viewer<br>• Consolidated into a single unified "Process Invoices" button in the Shipment Invoices header<br>• Verified 0 errors across TypeScript compilation and oxlint | ✅ **Completed** |
 
 ---
 
@@ -63,3 +64,9 @@
 - [x] Verified local full production build (`tsc -b && vite build`) and Vercel CLI simulation (`npx vercel build`) pass with 0 errors.
 - [x] Linter (`oxlint`) passes cleanly with 0 warnings and 0 errors across 20 files.
 - [x] Pushed clean commit `0d1b9cd` to `origin/main` to trigger clean Vercel deployment.
+
+### 6. Unified Extraction UX & Button Streamlining (`CenterColumn.tsx`, `PreviewPane.tsx`)
+- [x] Removed individual per-document "Convert" buttons from each card row in `CenterColumn.tsx`.
+- [x] Removed redundant "Extract Weights & Pallets" button from the top right of `PreviewPane.tsx`.
+- [x] Replaced "Convert All" in the `SHIPMENT INVOICES` header with a single unified **"Process Invoices"** trigger button.
+- [x] Full static analysis (`oxlint`) and Vercel build (`npx vercel build`) validated with zero errors.
