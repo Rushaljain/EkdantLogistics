@@ -8,28 +8,45 @@ import { CONTAINER_SPECS } from '../types';
 export const DEFAULT_PALLET_DIMENSIONS = '1200 x 1000 x 1650 mm';
 export const DEFAULT_PALLET_AREA_MM2 = 1200 * 1000; // 1.2 m2
 
-const CONTAINER_PREFIX_POOL = ['TEMU', 'MSCU', 'TGHU', 'CMAU', 'MEDU', 'HLXU', 'EGLV'];
-const SEAL_PREFIX_POOL = ['EMC', 'MSC', 'CMA', 'HL', 'ONE', 'ZIM'];
+const CONTAINER_PREFIX_POOL = ['TEMU', 'MSCU', 'TGHU', 'CMAU', 'MEDU', 'HLXU', 'EGLV', 'ONEU'];
+const SEAL_PREFIX_POOL = ['EMC', 'MSC', 'CMA', 'HL', 'ONE', 'ZIM', 'IN'];
 
 /**
- * Generates an ISO 6346 compliant container number format (e.g., TEMU2523270).
+ * Computes ISO 6346 check digit for a 10-character container code (4-letter prefix + 6 serial digits).
  */
-export function generateIsoContainerNumber(index: number = 0, preferredPrefix?: string): string {
-  const prefix = preferredPrefix || CONTAINER_PREFIX_POOL[index % CONTAINER_PREFIX_POOL.length];
-  // Seed realistic 7-digit container serials
-  if (index === 0 && prefix === 'TEMU') return 'TEMU2523270';
-  if (index === 1 && prefix === 'TEMU') return 'TEMU4198205';
-  
-  const serial = Math.floor(2000000 + Math.random() * 7900000).toString().slice(0, 7);
-  return `${prefix}${serial}`;
+export function computeIso6346CheckDigit(container10: string): number {
+  const charValues: Record<string, number> = {
+    A: 10, B: 12, C: 13, D: 14, E: 15, F: 16, G: 17, H: 18, I: 19, J: 20,
+    K: 21, L: 23, M: 24, N: 25, O: 26, P: 27, Q: 28, R: 29, S: 30, T: 31,
+    U: 32, V: 34, W: 35, X: 36, Y: 37, Z: 38
+  };
+  let sum = 0;
+  for (let i = 0; i < 10; i++) {
+    const ch = container10[i].toUpperCase();
+    const val = charValues[ch] !== undefined ? charValues[ch] : parseInt(ch, 10);
+    sum += val * Math.pow(2, i);
+  }
+  return (sum % 11) % 10;
 }
 
 /**
- * Generates a high-security container bolt seal number (e.g., EMC883921).
+ * Generates a dynamic ISO 6346 compliant container number format without hardcoding.
+ */
+export function generateIsoContainerNumber(index: number = 0, preferredPrefix?: string): string {
+  const prefix = preferredPrefix || CONTAINER_PREFIX_POOL[index % CONTAINER_PREFIX_POOL.length];
+  // 6-digit serial based on deterministic pseudorandom seed from index and timestamp
+  const serialBase = Math.floor(210000 + ((Date.now() + index * 9973) % 780000));
+  const serial = String(serialBase).padStart(6, '0').slice(0, 6);
+  const checkDigit = computeIso6346CheckDigit(`${prefix}${serial}`);
+  return `${prefix}${serial}${checkDigit}`;
+}
+
+/**
+ * Generates a high-security container bolt seal number dynamically without hardcoding.
  */
 export function generateSealNumber(index: number = 0): string {
   const prefix = SEAL_PREFIX_POOL[index % SEAL_PREFIX_POOL.length];
-  const digits = Math.floor(100000 + Math.random() * 900000).toString().slice(0, 6);
+  const digits = Math.floor(100000 + ((Date.now() + index * 1237) % 899999));
   return `${prefix}${digits}`;
 }
 
@@ -75,7 +92,8 @@ export function parseFootprintAreaMm2(dimensions?: string): number {
 
 /**
  * Clusters raw line items into standard industrial pallets (1200 x 1000 mm footprint).
- * Detects pallet ranges (e.g. 5644-5655) and expands multi-pallet cargo into individual pallet entities.
+ * Dynamically detects pallet ranges (e.g. 4956 TO 4963 or 5644-5655) and expands multi-pallet cargo.
+ * Enforces strict mathematical balancing down to 0.00 kg variance against declared totals.
  */
 export function clusterLineItemsIntoPallets(
   lineItems: LineItem[],
@@ -83,17 +101,17 @@ export function clusterLineItemsIntoPallets(
 ): Pallet[] {
   if (!lineItems || lineItems.length === 0) return [];
 
-  // 1. Detect if any line item description or reference has an explicit pallet sequence (e.g. 5644 - 5655)
-  let basePalletNumber = 5644;
+  // 1. Detect if any line item description or reference has an explicit pallet sequence
+  let basePalletNumber: number | null = null;
   let detectedRangeCount = 0;
 
   for (const it of lineItems) {
     const desc = `${it.description || ''} ${it.palletNumber || ''}`;
-    const rangeMatch = desc.match(/(\d{4})\s*[-–to]+\s*(\d{4})/i);
+    const rangeMatch = desc.match(/(?:PLT[-_]?)?(\d{1,6})\s*[-–to]+\s*(?:PLT[-_]?)?(\d{1,6})/i);
     if (rangeMatch) {
       const startNum = parseInt(rangeMatch[1], 10);
       const endNum = parseInt(rangeMatch[2], 10);
-      if (endNum >= startNum && startNum >= 1000) {
+      if (endNum >= startNum) {
         basePalletNumber = startNum;
         detectedRangeCount = endNum - startNum + 1;
         break;
@@ -101,8 +119,8 @@ export function clusterLineItemsIntoPallets(
     }
   }
 
-  const totalGrossWeight = lineItems.reduce((acc, it) => acc + (it.grossWeightKg || it.quantity * 20), 0);
-  const totalNetWeight = lineItems.reduce((acc, it) => acc + (it.netWeightKg || (it.grossWeightKg ? it.grossWeightKg * 0.92 : it.quantity * 18)), 0);
+  const totalGrossWeight = Number(lineItems.reduce((acc, it) => acc + (it.grossWeightKg || it.quantity * 20), 0).toFixed(2));
+  const totalNetWeight = Number(lineItems.reduce((acc, it) => acc + (it.netWeightKg || (it.grossWeightKg ? it.grossWeightKg * 0.92 : it.quantity * 18)), 0).toFixed(2));
   const totalPackages = lineItems.reduce((acc, it) => acc + Math.max(1, Math.round(it.quantity || 1)), 0);
 
   // Target count: explicit pallet count, range count, or derived from total weight (~1,885 kg per heavy battery pallet)
@@ -120,28 +138,40 @@ export function clusterLineItemsIntoPallets(
     it.unNumber === 'UN 2794'
   );
 
+  const defaultDescription = primaryItem?.description || (isBattery ? 'Industrial Wet Storage Batteries' : 'Commercial Merchandise');
+
   // Case A: Multi-pallet expansion from single/few aggregated line items
-  // If line items count is less than targetPallets (e.g. 1 line item representing 12 pallets of 22,620 kg)
+  // Guarantees sum(pallet.grossWeightKg) === totalGrossWeight with 0.00 kg variance
   if (lineItems.length < targetPallets) {
-    const perPalletGross = Number((totalGrossWeight / targetPallets).toFixed(2));
-    const perPalletNet = Number((totalNetWeight / targetPallets).toFixed(2));
-    const perPalletPkgs = Math.max(1, Math.round(totalPackages / targetPallets));
+    const baseGross = Math.floor((totalGrossWeight / targetPallets) * 100) / 100;
+    const grossRemainder = Number((totalGrossWeight - (baseGross * targetPallets)).toFixed(2));
+
+    const baseNet = Math.floor((totalNetWeight / targetPallets) * 100) / 100;
+    const netRemainder = Number((totalNetWeight - (baseNet * targetPallets)).toFixed(2));
+
+    const basePkgs = Math.floor(totalPackages / targetPallets);
+    const pkgsRemainder = totalPackages - (basePkgs * targetPallets);
 
     for (let i = 0; i < targetPallets; i++) {
-      const palletSerial = basePalletNumber + i;
+      const isLast = i === targetPallets - 1;
+      const palletGross = isLast ? Number((baseGross + grossRemainder).toFixed(2)) : baseGross;
+      const palletNet = isLast ? Number((baseNet + netRemainder).toFixed(2)) : baseNet;
+      const palletPkgs = isLast ? (basePkgs + pkgsRemainder) : basePkgs;
+
+      const palletSerial = basePalletNumber !== null ? (basePalletNumber + i) : (i + 1);
       const palletNo = `PLT-${palletSerial}`;
       const dgItem = lineItems.find(it => it.isDangerousGood) || (isBattery ? primaryItem : undefined);
 
       pallets.push({
         id: `plt-${Date.now()}-${palletSerial}-${i + 1}`,
         palletNumber: palletNo,
-        packageCount: perPalletPkgs,
+        packageCount: palletPkgs,
         packageType: primaryItem?.uqc === 'DRUM' ? 'DRUM' : 'BOX',
-        grossWeightKg: perPalletGross,
-        netWeightKg: perPalletNet,
+        grossWeightKg: palletGross,
+        netWeightKg: palletNet,
         dimensions: DEFAULT_PALLET_DIMENSIONS,
         footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
-        modelOrDescription: primaryItem?.description || (isBattery ? 'EFB70-S95-D26L - Lead Acid Batteries' : 'Industrial Cargo Unit'),
+        modelOrDescription: defaultDescription,
         isDangerousGoods: Boolean(dgItem || isBattery),
         imoClass: dgItem?.imoClass || (isBattery ? 'Class 8 (Corrosive)' : undefined),
         unNumber: dgItem?.unNumber || (isBattery ? 'UN 2794' : undefined),
@@ -154,6 +184,7 @@ export function clusterLineItemsIntoPallets(
   }
 
   // Case B: Individual line items or pre-segregated items
+  const startNum = basePalletNumber !== null ? basePalletNumber : 1;
   for (let i = 0; i < lineItems.length; i++) {
     const item = lineItems[i];
     const itemGross = item.grossWeightKg > 0 ? item.grossWeightKg : Number((item.quantity * 18.5).toFixed(2));
@@ -163,12 +194,22 @@ export function clusterLineItemsIntoPallets(
     // If an individual item itself represents multiple pallets (weight > 2500 kg)
     const itemPalletCount = Math.max(1, Math.round(itemGross / 1885));
     if (itemPalletCount > 1) {
-      const subGross = Number((itemGross / itemPalletCount).toFixed(2));
-      const subNet = Number((itemNet / itemPalletCount).toFixed(2));
-      const subPkgs = Math.max(1, Math.round(pkgs / itemPalletCount));
+      const baseSubGross = Math.floor((itemGross / itemPalletCount) * 100) / 100;
+      const subGrossRemainder = Number((itemGross - (baseSubGross * itemPalletCount)).toFixed(2));
+
+      const baseSubNet = Math.floor((itemNet / itemPalletCount) * 100) / 100;
+      const subNetRemainder = Number((itemNet - (baseSubNet * itemPalletCount)).toFixed(2));
+
+      const baseSubPkgs = Math.floor(pkgs / itemPalletCount);
+      const subPkgsRemainder = pkgs - (baseSubPkgs * itemPalletCount);
 
       for (let s = 0; s < itemPalletCount; s++) {
-        const palletSerial = basePalletNumber + pallets.length;
+        const isSubLast = s === itemPalletCount - 1;
+        const subGross = isSubLast ? Number((baseSubGross + subGrossRemainder).toFixed(2)) : baseSubGross;
+        const subNet = isSubLast ? Number((baseSubNet + subNetRemainder).toFixed(2)) : baseSubNet;
+        const subPkgs = isSubLast ? (baseSubPkgs + subPkgsRemainder) : baseSubPkgs;
+
+        const palletSerial = startNum + pallets.length;
         const palletNo = `PLT-${palletSerial}`;
         item.palletNumber = palletNo;
 
@@ -181,7 +222,7 @@ export function clusterLineItemsIntoPallets(
           netWeightKg: subNet,
           dimensions: DEFAULT_PALLET_DIMENSIONS,
           footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
-          modelOrDescription: item.description || 'EFB70-S95-D26L - Lead Acid Batteries',
+          modelOrDescription: item.description || defaultDescription,
           isDangerousGoods: item.isDangerousGood,
           imoClass: item.imoClass,
           unNumber: item.unNumber,
@@ -190,8 +231,8 @@ export function clusterLineItemsIntoPallets(
         });
       }
     } else {
-      const palletSerial = basePalletNumber + pallets.length;
-      const palletNo = `PLT-${palletSerial}`;
+      const palletSerial = startNum + pallets.length;
+      const palletNo = item.palletNumber || `PLT-${palletSerial}`;
       item.palletNumber = palletNo;
 
       pallets.push({
@@ -203,7 +244,7 @@ export function clusterLineItemsIntoPallets(
         netWeightKg: itemNet,
         dimensions: DEFAULT_PALLET_DIMENSIONS,
         footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
-        modelOrDescription: item.description || 'EFB70-S95-D26L - Lead Acid Batteries',
+        modelOrDescription: item.description || defaultDescription,
         isDangerousGoods: item.isDangerousGood,
         imoClass: item.imoClass,
         unNumber: item.unNumber,
@@ -211,6 +252,19 @@ export function clusterLineItemsIntoPallets(
         lineItemIds: [item.id]
       });
     }
+  }
+
+  // Final mathematical reconciliation check on Case B
+  const sumGross = Number(pallets.reduce((s, p) => s + p.grossWeightKg, 0).toFixed(2));
+  const grossDiff = Number((totalGrossWeight - sumGross).toFixed(2));
+  if (Math.abs(grossDiff) > 0 && pallets.length > 0) {
+    pallets[pallets.length - 1].grossWeightKg = Number((pallets[pallets.length - 1].grossWeightKg + grossDiff).toFixed(2));
+  }
+
+  const sumNet = Number(pallets.reduce((s, p) => s + p.netWeightKg, 0).toFixed(2));
+  const netDiff = Number((totalNetWeight - sumNet).toFixed(2));
+  if (Math.abs(netDiff) > 0 && pallets.length > 0) {
+    pallets[pallets.length - 1].netWeightKg = Number((pallets[pallets.length - 1].netWeightKg + netDiff).toFixed(2));
   }
 
   return pallets;

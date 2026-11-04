@@ -106,33 +106,112 @@ export async function extractFromSpreadsheet(
     }
   }
 
-  // 3. Extract Exporter & Consignee
-  let exporterName = 'EXIDE INDUSTRIES LIMITED';
-  if (/APEX ENGINEERING/i.test(combinedText)) exporterName = 'APEX ENGINEERING EXPORTS PVT LTD';
-  else if (/MAHARASHTRA PRECISION/i.test(combinedText)) exporterName = 'MAHARASHTRA PRECISION VALVES & FLANGES LLP';
-  else if (/SAHYADRI/i.test(combinedText)) exporterName = 'SAHYADRI CHEMICALS & LIFE SCIENCES LTD';
-  else if (/TREASURE VALLEY/i.test(combinedText)) exporterName = 'EXIDE INDUSTRIES LIMITED (TREASURE VALLEY)';
+  // 3. Extract Exporter & Consignee dynamically from sheet
+  let exporterName = '';
+  let shipperAddress = '';
+  let iec = '';
+  let gstin = '';
+  let adCode = '';
 
-  let consigneeName = 'YUNN POE SAN EAIN COMPANY LIMITED';
-  if (/AL[\s-]BATEEN|AUTO[\s-]PARTS[\s-]CO|JEDDAH/i.test(combinedText)) {
-    consigneeName = 'AL BATEEN BATTERIES & AUTO SPARES TRADING LLC';
-  } else if (/YUNN POE SAN EAIN/i.test(combinedText)) {
-    consigneeName = 'YUNN POE SAN EAIN COMPANY LIMITED';
+  const expMatch = combinedText.match(/(?:Exporter|Shipper|Seller)\s*[:\n,-]*\s*([^\n,]{3,80})/i);
+  if (expMatch && expMatch[1] && !/^(on\s*behalf|ref|invoice|date)/i.test(expMatch[1].trim())) {
+    exporterName = expMatch[1].trim();
+  } else if (/EXIDE INDUSTRIES/i.test(combinedText)) {
+    exporterName = 'EXIDE INDUSTRIES LIMITED';
+  } else if (/APEX ENGINEERING/i.test(combinedText)) {
+    exporterName = 'APEX ENGINEERING EXPORTS PVT LTD';
+  } else if (/MAHARASHTRA PRECISION/i.test(combinedText)) {
+    exporterName = 'MAHARASHTRA PRECISION VALVES & FLANGES LLP';
+  } else if (/SAHYADRI/i.test(combinedText)) {
+    exporterName = 'SAHYADRI CHEMICALS & LIFE SCIENCES LTD';
+  } else {
+    exporterName = file.name.replace(/\.[^/.]+$/, '').replace(/[_\\-]/g, ' ').toUpperCase();
   }
 
-  // 4. Extract Vessel, Voyage & Ports
-  let vesselName = 'ONE HUMBER';
-  let voyageNumber = '106E';
-  if (/CMA CGM|OTELLO/i.test(combinedText)) {
-    vesselName = 'CMA CGM OTELLO';
-    voyageNumber = '0ME6XE1MA';
+  // Look for shipper address
+  const addrMatch = combinedText.match(/(?:EXIDE HOUSE[^\n]+|INDUSTRIAL ZONE[^\n]+|[^\n]+(?:ROAD|STREET|MIDC|NAGAR)[^\n]+(?:KOLKATA|MUMBAI|DELHI|CHENNAI)[^\n]*)/i);
+  if (addrMatch) {
+    shipperAddress = addrMatch[0].trim();
+  }
+
+  const iecMatch = combinedText.match(/\bIEC\s*[:.]*\s*([0-9]{10})\b/i);
+  if (iecMatch) iec = iecMatch[1];
+  const gstinMatch = combinedText.match(/\b(?:GSTIN|GST)\s*[:.]*\s*([0-9A-Z]{15})\b/i);
+  if (gstinMatch) gstin = gstinMatch[1];
+  const adMatch = combinedText.match(/\bAD\s*CODE\s*[:.]*\s*([0-9]{7})\b/i);
+  if (adMatch) adCode = adMatch[1];
+
+  let consigneeName = '';
+  let consigneeAddress = '';
+  const csgMatch = combinedText.match(/(?:Consignee|Buyer|Sold\s*To)\s*[:\n,-]*\s*([^\n,]{3,80})/i);
+  if (csgMatch && csgMatch[1] && !/^(buyer|same|order|ref|address)/i.test(csgMatch[1].trim())) {
+    consigneeName = csgMatch[1].trim();
+  } else if (/NICKEL\s*GLASS/i.test(combinedText)) {
+    consigneeName = 'NICKEL GLASS & BATTERIES FOR ALL CARS CO';
+  } else if (/YUNN POE SAN EAIN/i.test(combinedText)) {
+    consigneeName = 'YUNN POE SAN EAIN COMPANY LIMITED';
+  } else if (/AL[\s-]BATEEN/i.test(combinedText)) {
+    consigneeName = 'AL BATEEN BATTERIES & AUTO SPARES TRADING LLC';
+  } else {
+    consigneeName = 'INTERNATIONAL LOGISTICS CONSIGNEE';
+  }
+
+  const csgAddrMatch = combinedText.match(/(?:AUTO\s*1[^\n]+|NO\.\s*\(\d+\)[^\n]+|[^\n]+(?:STREET|QUARTER|TOWNSHIP|ROAD|AVENUE)[^\n]+(?:MYANMAR|KUWAIT|JEDDAH|YANGON|DUBAI)[^\n]*)/i);
+  if (csgAddrMatch) {
+    consigneeAddress = csgAddrMatch[0].trim();
+  }
+
+  // 4. Extract Vessel, Voyage & Ports dynamically from sheet
+  let vesselName = '';
+  let voyageNumber = '';
+  const vvMatch = combinedText.match(/(?:Ship(?:'s)?\s*Name\s*(?:and|&)?\s*Voyage\s*No\.?|Vessel\s*(?:&|\/)?\s*Voyage)\s*[:.]*\s*([A-Za-z0-9\s-]+?)(?:\s*\/\s*|\s+Voy\s*[:.]*\s*|\s+Voyage\s*[:.]*\s*)([A-Za-z0-9]+)/i);
+  if (vvMatch) {
+    vesselName = vvMatch[1].trim();
+    voyageNumber = vvMatch[2].trim();
+  } else {
+    const vMatch = combinedText.match(/(?:Vessel|Ship(?:'s)?\s*Name)\s*[:.]*\s*([A-Za-z0-9\s-]+)/i);
+    if (vMatch && !/^(and|voyage|port|no)/i.test(vMatch[1].trim())) {
+      vesselName = vMatch[1].trim();
+    }
+    const voyMatch = combinedText.match(/(?:Voyage\s*(?:No\.?)?)\s*[:.]*\s*([A-Za-z0-9-]+)/i);
+    if (voyMatch) {
+      voyageNumber = voyMatch[1].trim();
+    }
+  }
+
+  // Booking number / Container number / Seal Number from sheet if present
+  let bookingNumber = '';
+  const bkgMatch = combinedText.match(/(?:Carrier(?:'s)?\s*Booking\s*Number|Booking\s*(?:Ref|No\.?)|Reference\s*Number\(s\))\s*[:.]*\s*([A-Za-z0-9-]+)/i);
+  if (bkgMatch && bkgMatch[1]) {
+    bookingNumber = bkgMatch[1].trim();
+  }
+
+  let extractedContainerNo = '';
+  const contMatch = combinedText.match(/\b([A-Z]{4}\d{7})\b/);
+  if (contMatch) extractedContainerNo = contMatch[1];
+
+  let extractedSealNo = '';
+  const sealMatch = combinedText.match(/(?:SEAL\s*NO\.?)\s*[:.]*\s*([A-Za-z0-9-]+)/i);
+  if (sealMatch) extractedSealNo = sealMatch[1].trim();
+
+  let portOfDischarge = '';
+  const podMatch = combinedText.match(/(?:Port\s*of\s*Discharge|Final\s*Place\s*of\s*Delivery|Destination\s*Port)\s*[:.]*\s*([^\n,]{3,60})/i);
+  if (podMatch && podMatch[1] && !/^(and|final|loading)/i.test(podMatch[1].trim())) {
+    portOfDischarge = podMatch[1].trim();
+  } else if (/JEDDAH/i.test(combinedText)) {
+    portOfDischarge = 'Jeddah Port, KSA';
+  } else if (/YANGON/i.test(combinedText)) {
+    portOfDischarge = 'Yangon, Myanmar (MMRGN)';
   }
 
   const portOfLoading = targetPort === 'INBOM4' ? 'Mumbai Air Cargo (INBOM4)' : 'Nhava Sheva (INNSA1)';
-  let portOfDischarge = 'Yangon, Myanmar (MMRGN)';
-  if (/JEDDAH|SAUDI/i.test(combinedText)) {
-    portOfDischarge = 'Jeddah Port, Saudi Arabia (SAJED)';
-  }
+
+  let destinationCountry = 'IN';
+  if (/JEDDAH|SAUDI|KSA/i.test(portOfDischarge + combinedText)) destinationCountry = 'SA';
+  else if (/MYANMAR|YANGON/i.test(portOfDischarge + combinedText)) destinationCountry = 'MM';
+  else if (/KUWAIT/i.test(portOfDischarge + combinedText)) destinationCountry = 'KW';
+  else if (/ROTTERDAM|NETHERLANDS/i.test(portOfDischarge + combinedText)) destinationCountry = 'NL';
+  else if (/HAMBURG|GERMANY/i.test(portOfDischarge + combinedText)) destinationCountry = 'DE';
 
   // 5. Detect Dangerous Goods attributes
   const isLeadAcid = /(battery|batteries|lead[\s-]*acid|un\s*2794|imco\s*8)/i.test(combinedText);
@@ -140,6 +219,13 @@ export async function extractFromSpreadsheet(
   const imoClass = isLeadAcid ? 'Class 8 (Corrosive)' : 'Class 3 (Flammable Liquid)';
   const packingGroup = 'III';
   const properShippingName = isLeadAcid ? 'BATTERIES, WET, FILLED WITH ACID' : 'FLAMMABLE LIQUID, N.O.S.';
+
+  // Extract Emergency Contact if specified in sheet
+  let emergencyContact = '';
+  const emgMatch = combinedText.match(/(?:Emergency\s*Contact[^\n]*Telephone[^\n]*|Emergency\s*Contact)\s*[:.]*\s*([^\n\r]+)/i);
+  if (emgMatch && emgMatch[1]) {
+    emergencyContact = emgMatch[1].trim();
+  }
 
   // 6. Extract Line Items & Pallets from sheets
   const lineItems: LineItem[] = [];
@@ -156,16 +242,12 @@ export async function extractFromSpreadsheet(
     const row = scanRows[r];
     if (!row || row.length === 0) continue;
 
-    // Check if row contains a battery code or model (e.g. FDM0-DMA, DMA105D31L, FDC7-DMX, EFB70)
     const rowStr = row.filter(c => c !== null).join(' ');
-    const modelMatch = rowStr.match(/\b(FDM0-[A-Z0-9-]+|FDC7-[A-Z0-9-]+|DMA[A-Z0-9-]+|DIN\d{2}[A-Z]|EFB\d{2}[A-Z0-9-]+)\b/i);
-
-    // Look for numbers in the row
+    const modelMatch = rowStr.match(/\b(FDM0-[A-Z0-9-]+|FDC7-[A-Z0-9-]+|DMA[A-Z0-9-]+|DIN\d{2}[A-Z]|EFB\d{2}[A-Z0-9-]+|[A-Z]{3,4}\d{4,8}[A-Z0-9-]*)\b/i);
     const numbers = row.filter(c => typeof c === 'number' || (!isNaN(Number(c)) && typeof c === 'string' && c.trim() !== '')).map(Number);
 
     if (modelMatch) {
       const modelName = modelMatch[1].toUpperCase();
-      // Heuristic to find quantity, net weight, gross weight from numeric values
       const qty = numbers.find(n => n >= 1 && n <= 500 && Number.isInteger(n)) || 20;
       const rate = numbers.find(n => n > 20 && n < 200 && !Number.isInteger(n)) || 55.00;
       const netWt = numbers.find(n => n > 50 && n < 15000) || Number((qty * 18.5).toFixed(2));
@@ -191,62 +273,71 @@ export async function extractFromSpreadsheet(
         unNumber,
         packingGroup,
         properShippingName,
-        emergencyContact: 'Mr. Sujoy Dutta (+91-9729899131)',
+        emergencyContact: emergencyContact || undefined,
         emsNumber: 'F-A, S-B'
       });
     }
   }
 
   // Scan for explicit total summary if available in spreadsheet
-  const totalNetMatch = combinedText.match(/(?:TOTAL\s*NET\s*WT|TOTAL\s*NET\s*WEIGHT)\.?\s*[:.]*\s*([0-9,.]+)/i);
+  const totalNetMatch = combinedText.match(/(?:TOTAL\s*NET\s*WT|TOTAL\s*NET\s*WEIGHT|NT\s*WT)\.?\s*[:.]*\s*([0-9,.]+)/i);
   if (totalNetMatch && totalNetMatch[1]) {
     const parsedNet = parseFloat(totalNetMatch[1].replace(/,/g, ''));
     if (!isNaN(parsedNet) && parsedNet > 0) totalNetWeight = parsedNet;
   }
 
-  const totalGrossMatch = combinedText.match(/(?:TOTAL\s*GR\.?\s*WT|TOTAL\s*GROSS\s*WEIGHT)\.?\s*[:.]*\s*([0-9,.]+)/i);
+  const totalGrossMatch = combinedText.match(/(?:TOTAL\s*GR\.?\s*WT|TOTAL\s*GROSS\s*WEIGHT|GR\s*WT)\.?\s*[:.]*\s*([0-9,.]+)/i);
   if (totalGrossMatch && totalGrossMatch[1]) {
     const parsedGross = parseFloat(totalGrossMatch[1].replace(/,/g, ''));
     if (!isNaN(parsedGross) && parsedGross > 0) totalGrossWeight = parsedGross;
   }
 
-  const palletCountMatch = combinedText.match(/(\d{1,2})\s*(?:PALLETS?|PLTS?)/i);
+  const palletCountMatch = combinedText.match(/(\d{1,3})\s*(?:PALLETS?|PLTS?)/i);
   if (palletCountMatch && palletCountMatch[1]) {
     detectedPalletCount = parseInt(palletCountMatch[1], 10);
   }
 
-  // Fallback defaults if no specific line items parsed from row structure
+  // If no individual row model matched, synthesize items from discovered sheet metrics
   if (lineItems.length === 0) {
-    totalNetWeight = totalNetWeight || 17970.70;
-    totalGrossWeight = totalGrossWeight || 18502.70;
-    totalBoxCount = totalBoxCount || 676;
-    detectedPalletCount = detectedPalletCount || 22;
+    totalGrossWeight = totalGrossWeight > 0 ? totalGrossWeight : 1000;
+    totalNetWeight = totalNetWeight > 0 ? totalNetWeight : Number((totalGrossWeight * 0.95).toFixed(2));
+    totalBoxCount = totalBoxCount > 0 ? totalBoxCount : 50;
+    detectedPalletCount = detectedPalletCount > 0 ? detectedPalletCount : Math.max(1, Math.round(totalGrossWeight / 1885));
 
     lineItems.push({
       id: `item-synth-${Date.now()}`,
       itemNumber: 1,
-      description: 'FDC7-DMX / FDM0-DMA - Heavy Duty Lead Acid Storage Batteries',
-      hsnCode: '85071000',
+      description: isLeadAcid ? 'Lead Acid Wet Storage Batteries' : 'Commercial Industrial Freight Cargo',
+      hsnCode: isLeadAcid ? '85071000' : '84818090',
       quantity: totalBoxCount,
       uqc: 'BOX',
-      unitPrice: 75.00,
-      total: Number((totalBoxCount * 75).toFixed(2)),
+      unitPrice: 50.00,
+      total: Number((totalBoxCount * 50).toFixed(2)),
       netWeightKg: totalNetWeight,
       grossWeightKg: totalGrossWeight,
       isDangerousGood: isLeadAcid,
-      imoClass,
-      unNumber,
-      packingGroup,
-      properShippingName,
-      emergencyContact: 'Mr. Sujoy Dutta (+91-9729899131)',
-      emsNumber: 'F-A, S-B'
+      imoClass: isLeadAcid ? imoClass : undefined,
+      unNumber: isLeadAcid ? unNumber : undefined,
+      packingGroup: isLeadAcid ? packingGroup : undefined,
+      properShippingName: isLeadAcid ? properShippingName : undefined,
+      emergencyContact: emergencyContact || undefined,
+      emsNumber: isLeadAcid ? 'F-A, S-B' : undefined
     });
   }
 
   const finalPalletCount = detectedPalletCount || Math.max(1, Math.ceil(totalGrossWeight / 1885));
 
-  // 7. Run LAFF Container Solver
+  // 7. Run LAFF Container Solver with exact mathematical balancing
   const { containers, pallets } = allocateContainers(lineItems, '20GP', finalPalletCount);
+
+  // If specific container/seal numbers were found in the uploaded spreadsheet, bind them
+  if (extractedContainerNo && containers.length > 0) {
+    containers[0].containerNumber = extractedContainerNo;
+    containers[0].pallets.forEach(p => p.assignedContainerId = containers[0].id);
+  }
+  if (extractedSealNo && containers.length > 0) {
+    containers[0].sealNumber = extractedSealNo;
+  }
 
   // 8. Generate Clean HTML Preview of the spreadsheet for View Invoices carousel
   const renderSheetTable = (sheet: XLSX.WorkSheet | null, name: string): string => {
@@ -289,21 +380,21 @@ export async function extractFromSpreadsheet(
     status: 'converted',
     invoiceNumber,
     invoiceDate,
-    bookingNumber: `BKG-${invoiceNumber}`,
-    masterBolNumber: `BOL-EKD-${invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+    bookingNumber: bookingNumber || `BKG-${invoiceNumber}`,
+    masterBolNumber: `BOL-EKD-${(bookingNumber || invoiceNumber).replace(/[^a-zA-Z0-9]/g, '')}`,
     exporterName,
-    shipperAddress: 'Exide House, 59/E, Chowringhee Road, Kolkata - 700 020, West Bengal, India',
-    iec: '0288001004',
-    gstin: '19AAACE0650J1ZX',
-    adCode: '0140029',
+    shipperAddress: shipperAddress || undefined,
+    iec: iec || undefined,
+    gstin: gstin || undefined,
+    adCode: adCode || undefined,
     consigneeName,
-    consigneeAddress: 'No.(138), Si Pin Thar Yar Street, Nay Myint Quarter, Myitkyina, Kachin State, Myanmar 1011',
+    consigneeAddress: consigneeAddress || undefined,
     notifyParty: consigneeName,
     portOfLoading,
     portOfDischarge,
-    destinationCountry: 'MM',
-    vesselName,
-    voyageNumber,
+    destinationCountry,
+    vesselName: vesselName || undefined,
+    voyageNumber: voyageNumber || undefined,
     currency: 'USD',
     exchangeRate: 84.20,
     incoterm: 'CFR',

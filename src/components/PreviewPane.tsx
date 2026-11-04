@@ -7,7 +7,11 @@ import {
   Layers, 
   Ship,
   RefreshCw,
-  Plus
+  Plus,
+  FileSpreadsheet,
+  Eye,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import type { 
   ConvertedInvoice, 
@@ -80,6 +84,43 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     if (!formData) return null;
     return generateDgDeclaration(formData, selectedFormatId);
   }, [formData, selectedFormatId]);
+
+  // Document preview & download modal state
+  const [viewingPdfDoc, setViewingPdfDoc] = useState<AppDocument | null>(null);
+
+  const handleDownloadDocument = (doc: AppDocument) => {
+    if (doc.file) {
+      const url = URL.createObjectURL(doc.file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } else if (doc.pdfUrl) {
+      const a = document.createElement('a');
+      a.href = doc.pdfUrl;
+      a.download = doc.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else if (doc.previewHtml) {
+      const blob = new Blob([doc.previewHtml], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc.fileName}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  };
+
+  const handleViewPdf = (doc: AppDocument) => {
+    setViewingPdfDoc(doc);
+  };
 
   // Container update handlers for ContainerQcBoard
   const handleUpdateContainers = (updatedContainers: ConvertedInvoice['containers'], updatedPallets: ConvertedInvoice['pallets']) => {
@@ -306,82 +347,95 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
       </div>
 
       {/* =========================================================================
-          VIEW 1: VIEW INVOICES (VERTICAL SCROLLING CAROUSEL OF ALL DOCUMENTS)
+          VIEW 1: VIEW INVOICES (CLEAN 5-COLUMN GRID VIEW)
          ========================================================================= */}
       {activeView === 'invoices' && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-6 bg-zinc-50/50 pb-24">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 bg-zinc-50/50">
           {documents.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-12 text-zinc-400">
-              <FileText className="w-10 h-10 mb-2 text-zinc-300" />
-              <p className="text-xs font-medium text-zinc-600">No documents uploaded yet</p>
+              <FileText className="w-8 h-8 mb-2 text-zinc-300" />
+              <p className="text-xs font-medium text-zinc-600">No invoices uploaded yet</p>
               <p className="text-[11px] text-zinc-400 mt-0.5">Drop .pdf, .xlsx, or .csv files in the left panel</p>
             </div>
           ) : (
-            documents.map((doc, idx) => {
-              const isSpreadsheet = /\.xlsx$|\.xls$|\.csv$/i.test(doc.fileName);
-              return (
-                <div 
-                  key={doc.id}
-                  className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-xs"
-                >
-                  {/* Document Card Header */}
-                  <div className="px-4 py-3 bg-white border-b border-zinc-200 flex items-center justify-between">
-                    <div className="flex items-center space-x-2.5 min-w-0">
-                      <span className="w-5 h-5 rounded bg-zinc-100 border border-zinc-200 text-zinc-700 text-[10px] font-mono font-bold flex items-center justify-center">
-                        {idx + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <span className="text-xs font-semibold text-zinc-900 block truncate" title={doc.fileName}>
-                          {doc.fileName}
-                        </span>
-                        <div className="flex items-center space-x-2 text-[10px] text-zinc-400 font-mono mt-0.5">
-                          <span>{(doc.fileSize / 1024).toFixed(1)} KB</span>
-                          <span>•</span>
-                          <span className="uppercase">{isSpreadsheet ? 'Spreadsheet' : 'PDF Document'}</span>
-                          <span>•</span>
-                          <span className="capitalize">{doc.status}</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
+              {documents.map((doc) => {
+                const isSpreadsheet = /\.xlsx$|\.xls$|\.csv$/i.test(doc.fileName);
+                return (
+                  <div
+                    key={doc.id}
+                    className="bg-white border border-zinc-200 rounded-xl p-3.5 flex flex-col justify-between hover:border-zinc-300 transition-all shadow-2xs group min-h-[145px]"
+                  >
+                    {/* Top: Icon + Badge + Name */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                          isSpreadsheet 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' 
+                            : 'bg-zinc-100 text-zinc-700 border border-zinc-200'
+                        }`}>
+                          {isSpreadsheet ? (
+                            <FileSpreadsheet className="w-4 h-4" />
+                          ) : (
+                            <FileText className="w-4 h-4" />
+                          )}
                         </div>
+
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 uppercase font-medium">
+                          {isSpreadsheet ? 'Excel' : 'PDF'}
+                        </span>
+                      </div>
+
+                      <div className="min-w-0">
+                        <h4 
+                          className="text-xs font-semibold text-zinc-900 line-clamp-2 leading-snug break-words" 
+                          title={doc.fileName}
+                        >
+                          {doc.fileName}
+                        </h4>
+                        <span className="text-[10.5px] text-zinc-400 font-mono mt-1 block">
+                          {(doc.fileSize / 1024).toFixed(1)} KB
+                        </span>
                       </div>
                     </div>
 
-                    {doc.invoice && (
-                      <div className="flex items-center space-x-2 text-[10.5px] font-mono shrink-0">
-                        <span className="px-2 py-0.5 bg-zinc-100 rounded text-zinc-700 border border-zinc-200">
-                          Inv: {doc.invoice.invoiceNumber}
-                        </span>
-                        <span className="px-2 py-0.5 bg-zinc-100 rounded text-zinc-700 border border-zinc-200">
-                          Gross: {doc.invoice.grossWeightKg.toLocaleString()} kg
-                        </span>
-                        <span className="px-2 py-0.5 bg-zinc-100 rounded text-zinc-700 border border-zinc-200">
-                          {doc.invoice.totalPallets} Plts
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                    {/* Bottom: Action Buttons */}
+                    <div className="pt-2.5 border-t border-zinc-100 mt-2.5">
+                      {isSpreadsheet ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadDocument(doc)}
+                          className="w-full inline-flex items-center justify-center space-x-1.5 py-1.5 px-2.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download</span>
+                        </button>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleViewPdf(doc)}
+                            className="inline-flex items-center justify-center space-x-1 py-1.5 px-2 rounded-lg text-xs font-medium border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-zinc-500" />
+                            <span>View</span>
+                          </button>
 
-                  {/* Document Content View */}
-                  <div className="bg-zinc-50">
-                    {doc.previewHtml ? (
-                      <div 
-                        className="p-4 max-h-[550px] overflow-auto bg-white"
-                        dangerouslySetInnerHTML={{ __html: doc.previewHtml }}
-                      />
-                    ) : doc.pdfUrl ? (
-                      <iframe
-                        src={`${doc.pdfUrl}#toolbar=0`}
-                        className="w-full h-[600px] border-0 bg-white"
-                        title={doc.fileName}
-                      />
-                    ) : (
-                      <div className="p-8 text-center text-xs text-zinc-400 bg-white">
-                        <FileText className="w-6 h-6 mx-auto mb-1 text-zinc-300" />
-                        <span>Document staged for conversion. Click &ldquo;Convert to Output&rdquo; in the left panel.</span>
-                      </div>
-                    )}
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadDocument(doc)}
+                            className="inline-flex items-center justify-center space-x-1 py-1.5 px-2 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white shadow-2xs transition-colors cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -460,6 +514,92 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               <span>Process your shipment to view Master Bill of Lading.</span>
             </div>
           )}
+        </div>
+      )}
+      {/* =========================================================================
+          PDF DOCUMENT PREVIEW MODAL
+         ========================================================================= */}
+      {viewingPdfDoc && (
+        <div 
+          className="fixed inset-0 z-50 bg-zinc-900/50 backdrop-blur-xs flex items-center justify-center p-4 select-none"
+          onClick={() => setViewingPdfDoc(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl border border-zinc-200 w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="h-12 px-5 border-b border-zinc-200 flex items-center justify-between shrink-0 bg-white">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-semibold text-zinc-900 truncate max-w-md">
+                  {viewingPdfDoc.fileName}
+                </span>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  ({(viewingPdfDoc.fileSize / 1024).toFixed(1)} KB)
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = viewingPdfDoc.pdfUrl || (viewingPdfDoc.file ? URL.createObjectURL(viewingPdfDoc.file) : undefined);
+                    if (url) window.open(url, '_blank');
+                  }}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
+                  title="Open in new window"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDocument(viewingPdfDoc)}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg transition-colors cursor-pointer shadow-2xs"
+                  title="Download PDF"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download</span>
+                </button>
+
+                <div className="h-4 w-px bg-zinc-200 mx-1" />
+
+                <button
+                  type="button"
+                  onClick={() => setViewingPdfDoc(null)}
+                  className="p-1.5 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
+                  title="Close preview"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Embedded PDF or Preview */}
+            <div className="flex-1 min-h-0 bg-zinc-100 overflow-hidden relative">
+              {viewingPdfDoc.pdfUrl || viewingPdfDoc.file ? (
+                <iframe
+                  src={`${viewingPdfDoc.pdfUrl || URL.createObjectURL(viewingPdfDoc.file!)}#toolbar=1`}
+                  className="w-full h-full border-0 bg-white"
+                  title={viewingPdfDoc.fileName}
+                />
+              ) : viewingPdfDoc.previewHtml ? (
+                <div 
+                  className="w-full h-full overflow-auto p-6 bg-white"
+                  dangerouslySetInnerHTML={{ __html: viewingPdfDoc.previewHtml }}
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-zinc-400 text-xs">
+                  <FileText className="w-8 h-8 mb-2 text-zinc-300" />
+                  <span>Preview not available for this file.</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

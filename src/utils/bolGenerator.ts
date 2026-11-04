@@ -8,54 +8,38 @@ export function generateMasterBol(
   invoice: ConvertedInvoice,
   templateId: string = 'bol-standard'
 ): DocumentOutput {
-  const isCma = templateId === 'fmt-cma-cgm' || /cma/i.test(templateId);
-  const isOne = templateId === 'fmt-one-line' || (!isCma && (invoice.bookingNumber === 'MUMGA3747500' || /one/i.test(templateId)));
-
   const template = DOCUMENT_TEMPLATES.find(t => t.id === templateId) || DOCUMENT_TEMPLATES[0];
-  const templateTitle = isCma 
-    ? 'CMA CGM S.A. — BILL OF LADING FOR OCEAN TRANSPORT' 
-    : isOne 
-    ? 'OCEAN NETWORK EXPRESS (ONE) — MASTER BILL OF LADING' 
-    : 'EKDANT LOGISTICS — MASTER BILL OF LADING';
+  const templateTitle = template?.name?.toUpperCase() || 'MASTER BILL OF LADING FOR OCEAN TRANSPORT';
 
   const docNumber = invoice.masterBolNumber || `BOL-EKD-${invoice.invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`;
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  const totalGross = isCma ? 22620 : (invoice.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || invoice.grossWeightKg);
-  const totalPackages = isCma ? 480 : (invoice.containers.reduce((s, c) => s + c.totalPackages, 0) || invoice.totalPackages);
-  const totalPallets = isCma ? 12 : (invoice.containers.reduce((s, c) => s + c.pallets.length, 0) || invoice.totalPallets);
+  const totalGross = invoice.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || invoice.grossWeightKg;
+  const totalPackages = invoice.containers.reduce((s, c) => s + c.totalPackages, 0) || invoice.totalPackages;
+  const totalPallets = invoice.containers.reduce((s, c) => s + c.pallets.length, 0) || invoice.totalPallets;
 
-  const displayVessel = isCma ? 'CMA CGM OTELLO' : (isOne ? 'ONE HUMBER' : (invoice.vesselName || 'MSC PALOMA'));
-  const displayVoyage = isCma ? '0ME6XE1MA' : (isOne ? '106E' : (invoice.voyageNumber || '2642W'));
-  const displayPod = isCma ? 'Jeddah Port, Saudi Arabia (SAJED)' : (isOne ? 'Yangon, Myanmar (MMRGN)' : invoice.portOfDischarge);
+  const displayVessel = invoice.vesselName || 'TBN (To Be Nominated)';
+  const displayVoyage = invoice.voyageNumber || 'TBN';
+  const displayPod = invoice.portOfDischarge || 'To Be Nominated';
+  const displayPol = invoice.portOfLoading || 'Nhava Sheva (INNSA1)';
 
-  // Build containers summary text e.g. "MSCU7829104 (Seal EMC883921) - 4 Pallets (4,800 kg)"
+  // Build containers summary text e.g. "MSCU7829104 [20GP] (Seal: EMC883921) - 11 Pallets, 18,500 kg"
   const containersSummary = invoice.containers.map(c => 
     `${c.containerNumber} [${c.containerType}] (Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets, ${c.totalGrossWeightKg.toLocaleString()} kg`
   ).join('; ');
 
   const containerRowsHtml = invoice.containers.map((cont) => {
-    const isExideMUMGA = isOne || invoice.bookingNumber === 'MUMGA3747500' || cont.containerNumber === 'ONEU2878769';
-    const palletSerials = isCma
-      ? `<strong>Pallet Serials (12 Pallets Total):</strong><br/>• PLT-5644 to PLT-5655 (40 BOX / Pallet)`
-      : isExideMUMGA
-      ? `<strong>Pallet Serial Ranges (22 Pallets Total):</strong><br/>` +
-        `• 4956 TO 4963 (8 Pallets - 357 Boxes)<br/>` +
-        `• 4964 (1 Pallet - 75 Boxes)<br/>` +
-        `• 4533 TO 4546 (6 Pallets - 29 Boxes)<br/>` +
-        `• TAL/1703/2026 TO TAL/1705/2026 (3 Pallets - 95 Boxes)<br/>` +
-        `• TAL/1706/2026 TO TAL/1709/2026 (4 Pallets - 120 Boxes)`
-      : (cont.pallets.length > 0
-        ? cont.pallets.map(p => p.palletNumber).join(', ')
-        : 'PLT-5644 to PLT-5655');
+    const palletNumbers = cont.pallets.map(p => p.palletNumber).filter(Boolean);
+    const palletSerials = palletNumbers.length > 0
+      ? palletNumbers.join(', ')
+      : `${cont.pallets.length} Pallets Allocated`;
     const cbmEstimate = (cont.totalGrossWeightKg / 300).toFixed(2);
-    const shippingBillNote = isExideMUMGA
-      ? '<br/><span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: #e0f2fe; color: #0369a1; font-size: 9px; font-weight: 700; margin-top: 4px;">S/B: 7463800 Dt. 07.10.2026</span>'
-      : (isCma ? '<br/><span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: #f4f4f5; color: #18181b; font-size: 9px; font-weight: 700; margin-top: 4px;">CMA REF: HAZ-CHW000263</span>' : '');
     const vgmNote = cont.tareWeightKg
       ? `<br/><span style="font-size: 9px; color: #047857; font-weight: 600;">VGM (incl. tare): ${(cont.totalGrossWeightKg + cont.tareWeightKg).toLocaleString()} KGS</span>`
       : '';
+
+    const hazItem = invoice.lineItems.find(it => it.isDangerousGood);
 
     return `
       <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
@@ -64,7 +48,6 @@ export function generateMasterBol(
           <span style="font-weight: normal; color: #64748b; font-size: 10px;">Seal: ${cont.sealNumber}</span><br/>
           <span style="display: inline-block; padding: 2px 6px; border-radius: 4px; background: #e0e7ff; color: #3730a3; font-size: 9px; font-weight: 700; margin-top: 4px;">${cont.containerType}</span>
           ${cont.isSpillover ? '<br/><span style="display: inline-block; padding: 1px 5px; border-radius: 3px; background: #fef3c7; color: #b45309; font-size: 8px; font-weight: 700; margin-top: 2px;">SPILLOVER UNIT</span>' : ''}
-          ${shippingBillNote}
         </td>
         <td style="padding: 10px; font-family: monospace;">
           <strong>${cont.pallets.length} Pallets</strong><br/>
@@ -76,7 +59,9 @@ export function generateMasterBol(
         <td style="padding: 10px;">
           <strong>STC: ${invoice.lineItems[0]?.description || 'Commercial Merchandise'}</strong><br/>
           <span style="font-size: 10px; color: #64748b;">Invoices: ${invoice.invoiceNumber} | Incoterm: ${invoice.incoterm}</span><br/>
-          ${cont.hasDangerousGoods ? '<span style="color: #dc2626; font-weight: bold; font-size: 10px;">⚠ DANGEROUS GOODS (IMO CLASS 8 / UN 2794 / PG III)</span><br/><span style="font-size: 9px; color: #b91c1c;">BATTERIES, WET, FILLED WITH ACID (Technical: Lead Acid Storage Batteries)</span>' : '<span style="color: #16a34a; font-size: 10px;">Non-Hazardous General Cargo</span>'}
+          ${cont.hasDangerousGoods 
+            ? `<span style="color: #dc2626; font-weight: bold; font-size: 10px;">⚠ DANGEROUS GOODS (${hazItem?.imoClass || 'Class 8'} / ${hazItem?.unNumber || 'UN 2794'} / PG ${hazItem?.packingGroup || 'III'})</span><br/><span style="font-size: 9px; color: #b91c1c;">${hazItem?.properShippingName || 'HAZARDOUS CARGO'}</span>` 
+            : '<span style="color: #16a34a; font-size: 10px;">Non-Hazardous General Cargo</span>'}
         </td>
         <td style="padding: 10px; text-align: right; font-family: monospace; font-weight: bold;">
           ${cont.totalGrossWeightKg.toLocaleString()} KGS<br/>
@@ -174,7 +159,7 @@ export function generateMasterBol(
         </td>
         <td>
           <span class="label">Port of Loading</span>
-          <div class="val">${invoice.portOfLoading}</div>
+          <div class="val">${displayPol}</div>
         </td>
       </tr>
       <tr>
