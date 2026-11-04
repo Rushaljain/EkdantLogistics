@@ -32,6 +32,9 @@ export function App() {
   const [fileSearchQuery, setFileSearchQuery] = useState<string>('');
   const [filePortFilter, setFilePortFilter] = useState<'ALL' | string>('ALL');
 
+  // Conversion Mode: 'single' (1 invoice -> 1 DG/BL), 'multiple' (consolidated multi-invoice), or '' ('Select Type')
+  const [conversionMode, setConversionMode] = useState<'single' | 'multiple' | ''>('');
+
   // Gemini API Key Modal
   const [isKeyModalOpen, setIsKeyModalOpen] = useState<boolean>(false);
 
@@ -110,10 +113,15 @@ export function App() {
     const hasDangerousGoods = combinedLineItems.some(it => it.isDangerousGood) || invoices.some(i => i.hasDangerousGoods);
     const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
 
-    const { containers, pallets } = optimizeContainerAllocation(combinedLineItems, undefined, {
-      preferredContainerType: '20GP',
-      explicitPalletCount: totalPalletCount
-    });
+    const allPallets = invoices.flatMap(inv => inv.pallets || []);
+    const { containers, pallets } = allPallets.length > 0
+      ? optimizeContainerAllocation(combinedLineItems, allPallets, {
+          preferredContainerType: '20GP'
+        })
+      : optimizeContainerAllocation(combinedLineItems, undefined, {
+          preferredContainerType: '20GP',
+          explicitPalletCount: totalPalletCount
+        });
 
     return {
       id: `inv-batch-${Date.now()}`,
@@ -335,6 +343,7 @@ export function App() {
     if (newDocs.length === 0) return;
     setDocuments(prev => [...newDocs, ...prev]);
     setSelectedDocumentId(newDocs[0].id);
+    setConversionMode('');
   };
 
   // Convert a single document
@@ -469,15 +478,17 @@ export function App() {
     // Update all target documents in state
     setDocuments(currentDocs);
 
-    // Auto-consolidation if multiple invoices processed in batch
+    // Process data according to user-selected conversion mode (Single Invoice vs Multiple Invoices)
     const processedDocs = currentDocs.filter(d => d.status === 'processed' && d.invoice);
-    if (processedDocs.length >= 2) {
+    if (conversionMode === 'multiple' && processedDocs.length >= 2) {
       const consolidated = buildConsolidatedInvoice(processedDocs.map(d => d.invoice!));
       setConsolidatedInvoice(consolidated);
       setSelectedDocumentId('consolidated');
-    } else if (processedDocs.length === 1) {
+    } else {
       setConsolidatedInvoice(null);
-      setSelectedDocumentId(processedDocs[0].id);
+      if (processedDocs.length > 0) {
+        setSelectedDocumentId(processedDocs[0].id);
+      }
     }
 
     setIsBulkConverting(false);
@@ -782,6 +793,8 @@ export function App() {
               documents={documents}
               selectedDocumentId={selectedDocumentId}
               consolidatedInvoice={consolidatedInvoice}
+              conversionMode={conversionMode}
+              onConversionModeChange={setConversionMode}
               onSelectDocument={(id) => setSelectedDocumentId(id)}
               onFilesSelected={handleFilesSelected}
               onConvertDocument={handleConvertDocument}

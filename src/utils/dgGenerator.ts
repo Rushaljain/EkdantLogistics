@@ -1,81 +1,105 @@
 // Official IMO Multimodal Dangerous Goods Declaration Generator (#DG Document)
 // Compliant with SOLAS 74 Chapter VII, MARPOL 73/78 Annex III, and IMDG Code Chapter 5.4
 
-import type { ConvertedInvoice, DocumentOutput } from '../types';
+import type { ConvertedInvoice, DocumentOutput, LineItem } from '../types';
 import { DOCUMENT_TEMPLATES } from '../data/templates';
+
+// Helper to format pallet numbers compactly into ranges if sequential
+function formatPalletRanges(palletNumbers: string[]): string {
+  if (palletNumbers.length === 0) return 'None';
+  if (palletNumbers.length <= 4) return palletNumbers.join(', ');
+
+  // Try extracting numeric suffixes e.g. PLT-5644 -> 5644
+  const parsed = palletNumbers.map(p => {
+    const m = p.match(/^(.*?)(\d+)$/);
+    return m ? { prefix: m[1], num: parseInt(m[2], 10), raw: p } : { prefix: p, num: null, raw: p };
+  });
+
+  const canRange = parsed.every(p => p.num !== null && p.prefix === parsed[0].prefix);
+  if (canRange) {
+    const prefix = parsed[0].prefix;
+    const nums = parsed.map(p => p.num as number);
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    if (max - min + 1 === nums.length) {
+      return `${prefix}${min} to ${prefix}${max} (${nums.length} Pallets)`;
+    }
+  }
+
+  return `${palletNumbers.slice(0, 3).join(', ')} ... +${palletNumbers.length - 3} more (${palletNumbers.length} Pallets)`;
+}
 
 export function generateDgDeclaration(
   invoice: ConvertedInvoice,
   templateId: string = 'dg-imo-standard'
 ): DocumentOutput {
   const template = DOCUMENT_TEMPLATES.find(t => t.id === templateId) || DOCUMENT_TEMPLATES[4];
-  const docNumber = `DG-DECL-${invoice.invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`;
+  
+  // Clean doc number
+  const sanitizedInv = (invoice.invoiceNumber || 'EXP').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
+  const docNumber = `DG-DECL-${sanitizedInv || Date.now()}`;
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
-  // Filter hazardous items or synthesize standard HazMat declaration if none explicitly tagged
+  // Filter hazardous items or identify DG line items
   const dgItems = invoice.lineItems.filter(it => it.isDangerousGood);
   const isBatteryShipment = invoice.lineItems.some(it => 
     /(battery|batteries|lead[\s-]*acid|electric storage)/i.test(it.description || '') || it.unNumber === 'UN 2794'
   );
 
-  const effectiveDgItems = dgItems.length > 0 ? dgItems : [
+  const effectiveDgItems: LineItem[] = dgItems.length > 0 ? dgItems : [
     isBatteryShipment ? {
       id: 'dg-default-battery',
       itemNumber: 1,
-      description: 'Industrial Heavy Duty Lead-Acid Electric Storage Batteries',
-      hsnCode: '85071000',
-      quantity: 12,
-      uqc: 'BOX',
-      unitPrice: 1200,
-      total: 14400,
-      netWeightKg: 20810,
-      grossWeightKg: 22620,
+      description: invoice.lineItems[0]?.description || 'Industrial Lead-Acid Electric Storage Batteries',
+      hsnCode: invoice.lineItems[0]?.hsnCode || '85071000',
+      quantity: invoice.totalPackages || invoice.lineItems[0]?.quantity || 1,
+      uqc: invoice.packageType || 'BOX',
+      unitPrice: invoice.lineItems[0]?.unitPrice || 0,
+      total: invoice.invoiceTotal || 0,
+      netWeightKg: invoice.netWeightKg || 0,
+      grossWeightKg: invoice.grossWeightKg || 0,
       isDangerousGood: true,
-      imoClass: 'Class 8 (Corrosive Liquid)',
+      imoClass: 'Class 8 (Corrosive)',
       unNumber: 'UN 2794',
       packingGroup: 'III' as const,
-      properShippingName: 'BATTERIES, WET, FILLED WITH ACID, electric storage',
+      properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
       flashPoint: undefined,
       marinePollutant: false,
-      emergencyContact: '+91 22 2724 8890 (Ekdant 24/7 HazMat Response)'
+      emergencyContact: invoice.emergencyContact || '+91 22 2724 8890 (24/7 HazMat Response)'
     } : {
       id: 'dg-default',
       itemNumber: 1,
-      description: invoice.lineItems[0]?.description || 'Industrial Chemical Solvents & Coatings',
+      description: invoice.lineItems[0]?.description || 'Hazardous Chemical Material',
       hsnCode: invoice.lineItems[0]?.hsnCode || '38140010',
-      quantity: invoice.lineItems[0]?.quantity || 10,
-      uqc: 'DRUM',
-      unitPrice: 150,
-      total: 1500,
-      netWeightKg: 1800,
-      grossWeightKg: 2050,
+      quantity: invoice.lineItems[0]?.quantity || invoice.totalPackages || 1,
+      uqc: invoice.packageType || 'PKG',
+      unitPrice: invoice.lineItems[0]?.unitPrice || 0,
+      total: invoice.invoiceTotal || 0,
+      netWeightKg: invoice.netWeightKg || 0,
+      grossWeightKg: invoice.grossWeightKg || 0,
       isDangerousGood: true,
       imoClass: 'Class 3 (Flammable Liquid)',
       unNumber: 'UN 1993',
       packingGroup: 'II' as const,
-      properShippingName: 'FLAMMABLE LIQUID, N.O.S. (CONTAINS XYLENE AND ETHANOL)',
+      properShippingName: 'FLAMMABLE LIQUID, N.O.S.',
       flashPoint: '23°C c.c.',
       marinePollutant: false,
-      emergencyContact: '+91 22 2724 8890 (Ekdant 24/7 HazMat Response)'
+      emergencyContact: invoice.emergencyContact || '+91 22 2724 8890 (24/7 HazMat Response)'
     }
   ];
 
-  const isCma = templateId === 'fmt-cma-cgm' || /cma/i.test(templateId);
-  const isExideMUMGA = templateId === 'fmt-one-line' || (!isCma && (/exide/i.test(invoice.exporterName || '') || invoice.bookingNumber === 'MUMGA3747500'));
-  const signatoryName = isExideMUMGA ? 'Sujoy Dutta' : 'R. K. Sharma';
-  const signatoryTitle = isExideMUMGA ? 'Export Manager, Exide Industries Ltd' : 'HazMat Compliance Officer';
-  const signatoryPlace = isExideMUMGA ? 'Kolkata / Nhava Sheva' : 'Navi Mumbai';
-  const emergencyPhone = isCma ? '+91 22 2724 8890 (CMA HazMat Response)' : (effectiveDgItems[0]?.emergencyContact || (isExideMUMGA ? 'Mr. Sujoy Dutta (+91-9729899131) | EMS: F-A, S-B' : '+91 22 2724 8890 (Ekdant 24/7 HazMat Response)'));
+  // Dynamic signatory information - strictly derived from invoice or neutral defaults
+  const signatoryName = invoice.signatoryName || 'Authorized Signatory';
+  const signatoryTitle = invoice.signatoryTitle || 'Shipper / Authorized HazMat Officer';
+  const signatoryPlace = invoice.portOfLoading || invoice.placeOfReceipt || 'Nhava Sheva, India';
+  const emergencyPhone = invoice.emergencyContact || effectiveDgItems[0]?.emergencyContact || '+91 22 2724 8890 (24/7 Response)';
 
   const dgContainers = invoice.containers.filter(c => c.hasDangerousGoods || invoice.containers.length === 1);
   const primaryClass = effectiveDgItems[0]?.imoClass || 'IMO Class 8 Corrosives';
+  
   const containersSummary = dgContainers.map(c => {
-    const plts = isCma
-      ? '12 Pallets [PLT-5644 to PLT-5655]'
-      : isExideMUMGA 
-      ? '22 Pallets (Ranges: 4956-4963, 4964, 4533-4546, TAL/1703-1709)'
-      : c.pallets.map(p => p.palletNumber).join(', ');
+    const plts = formatPalletRanges(c.pallets.map(p => p.palletNumber));
     return `${c.containerNumber} (${c.containerType}, Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets [${plts}] (${c.totalGrossWeightKg.toLocaleString()} kg) [${primaryClass}]`;
   }).join('; ');
 
@@ -83,7 +107,7 @@ export function generateDgDeclaration(
     return `
       <tr style="border-bottom: 1px solid #cbd5e1; font-size: 11px;">
         <td style="padding: 10px; font-weight: bold; font-family: monospace; color: #b91c1c;">
-          ${item.unNumber || 'UN 1993'}
+          ${item.unNumber || 'UN 2794'}
         </td>
         <td style="padding: 10px;">
           <strong style="text-transform: uppercase;">${item.properShippingName || item.description}</strong><br/>
@@ -92,19 +116,19 @@ export function generateDgDeclaration(
         </td>
         <td style="padding: 10px; text-align: center; font-weight: bold;">
           <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #fee2e2; color: #991b1b; font-size: 11px;">
-            ${item.imoClass || 'Class 3'}
+            ${item.imoClass || 'Class 8'}
           </span>
         </td>
         <td style="padding: 10px; text-align: center; font-weight: bold; font-family: monospace;">
-          ${item.packingGroup ? `PG ${item.packingGroup}` : 'PG II'}
+          ${item.packingGroup ? (String(item.packingGroup).toUpperCase().includes('PG') ? item.packingGroup : `PG ${item.packingGroup}`) : 'NIL'}
         </td>
         <td style="padding: 10px; font-size: 10px;">
           ${item.palletNumber ? `Pallet: ${item.palletNumber}<br/>` : ''}
-          ${item.quantity} ${item.uqc || 'DRUMS'}
+          ${item.quantity ? `${item.quantity.toLocaleString()} ${item.uqc || 'BOX'}` : ''}
         </td>
         <td style="padding: 10px; text-align: right; font-family: monospace; font-size: 11px;">
-          Gross: <strong>${item.grossWeightKg?.toLocaleString() || '2,050'} kg</strong><br/>
-          <span style="color: #64748b; font-size: 10px;">Net: ${item.netWeightKg?.toLocaleString() || '1,800'} kg</span>
+          Gross: <strong>${item.grossWeightKg ? item.grossWeightKg.toLocaleString() : '—'} kg</strong><br/>
+          <span style="color: #64748b; font-size: 10px;">Net: ${item.netWeightKg ? item.netWeightKg.toLocaleString() : '—'} kg</span>
         </td>
       </tr>
     `;
@@ -139,7 +163,7 @@ export function generateDgDeclaration(
   <div class="dg-container">
     <div class="header-banner">
       <div>
-        <h1>${isCma ? 'CMA CGM HAZMAT — MULTIMODAL DANGEROUS GOODS DECLARATION' : (isExideMUMGA ? 'ONE LINE IMDG — MULTIMODAL DANGEROUS GOODS DECLARATION' : 'MULTIMODAL DANGEROUS GOODS DECLARATION')}</h1>
+        <h1>MULTIMODAL DANGEROUS GOODS DECLARATION</h1>
         <span style="font-size: 10px; opacity: 0.9;">IMO / IMDG CODE COMPLIANT FORM</span>
       </div>
       <div style="text-align: right; font-family: monospace; font-size: 12px; font-weight: bold;">
@@ -153,16 +177,16 @@ export function generateDgDeclaration(
           <span class="label">1. Shipper / Consignor (Name, address, contact)</span>
           <div class="val">${invoice.exporterName}</div>
           <div style="font-size: 10px; color: #475569; margin-top: 2px;">
-            ${invoice.shipperAddress || 'Industrial Zone, Phase II, Taloja MIDC, Navi Mumbai, Maharashtra 410208, India'}<br/>
-            GSTIN: ${invoice.gstin || '27AAACA9921E1Z8'} | Tel: +91 22 2724 8800
+            ${invoice.shipperAddress ? `${invoice.shipperAddress}<br/>` : ''}
+            ${[invoice.gstin ? `GSTIN: ${invoice.gstin}` : '', invoice.iec ? `IEC: ${invoice.iec}` : ''].filter(Boolean).join(' | ')}
           </div>
         </td>
         <td style="width: 50%;">
           <span class="label">2. Transport Document Reference</span>
           <div class="val" style="font-family: monospace; color: #4338ca;">
-            ${invoice.masterBolNumber || `BKG-${invoice.invoiceNumber}`}
+            ${invoice.masterBolNumber || `BOL-${docNumber.replace('DG-DECL-', '')}`}
             ${invoice.bookingNumber ? `<br/><span style="font-size: 10px; color: #0284c7;">Booking Ref: ${invoice.bookingNumber}</span>` : ''}
-            ${isExideMUMGA ? `<br/><span style="font-size: 10px; color: #047857; font-weight: 700;">Shipping Bill No: 7463800 Dt. 07.10.2026</span>` : ''}
+            ${invoice.shippingBillNumber ? `<br/><span style="font-size: 10px; color: #047857; font-weight: 700;">Shipping Bill No: ${invoice.shippingBillNumber}</span>` : ''}
           </div>
           <div style="margin-top: 6px;">
             <span class="label">3. 24-Hour Emergency Response Contact</span>
@@ -177,7 +201,7 @@ export function generateDgDeclaration(
           <span class="label">4. Consignee</span>
           <div class="val">${invoice.consigneeName}</div>
           <div style="font-size: 10px; color: #475569; margin-top: 2px;">
-            ${invoice.consigneeAddress || 'Port Industrial Park, Havenlaan 102, 3000 Rotterdam, Netherlands'}
+            ${invoice.consigneeAddress || ''}
           </div>
         </td>
         <td>
@@ -189,7 +213,7 @@ export function generateDgDeclaration(
       <tr>
         <td>
           <span class="label">6. Vessel / Flight No. & Voyage</span>
-          <div class="val">${isCma ? 'CMA CGM OTELLO / 0ME6XE1MA' : (isExideMUMGA ? 'ONE HUMBER / 106E' : (invoice.vesselName || 'MSC PALOMA') + ' / ' + (invoice.voyageNumber || '2642W'))}</div>
+          <div class="val">${[invoice.vesselName, invoice.voyageNumber].filter(Boolean).join(' / ') || 'TO BE NOMINATED'}</div>
         </td>
         <td>
           <span class="label">7. Port of Loading</span>
@@ -199,11 +223,11 @@ export function generateDgDeclaration(
       <tr>
         <td>
           <span class="label">8. Port of Discharge</span>
-          <div class="val">${isCma ? 'Jeddah Port, Saudi Arabia (SAJED)' : (isExideMUMGA ? 'Yangon, Myanmar (MMRGN)' : invoice.portOfDischarge)}</div>
+          <div class="val">${invoice.portOfDischarge}</div>
         </td>
         <td>
           <span class="label">9. Destination Country</span>
-          <div class="val">${isCma ? 'SA' : (isExideMUMGA ? 'MM' : invoice.destinationCountry)}</div>
+          <div class="val">${invoice.destinationCountry}</div>
         </td>
       </tr>
     </table>
@@ -234,33 +258,24 @@ export function generateDgDeclaration(
           <span class="label">CONTAINER / VEHICLE IDENTIFICATION & ALLOCATED PALLETS</span>
           <div class="val" style="font-family: monospace; font-size: 11px; color: #0284c7; line-height: 1.5;">
             ${dgContainers.map(c => {
-              const isExide = isExideMUMGA || c.containerNumber === 'ONEU2878769';
-              const palletList = isExide
-                ? `<div style="margin-top: 3px; color: #1e40af; font-size: 9.5px; line-height: 1.4;">` +
-                  `<strong>Pallet Serial Ranges (22 Pallets / 676 Boxes):</strong><br/>` +
-                  `• 4956 TO 4963 (8 Pallets - 357 Boxes)<br/>` +
-                  `• 4964 (1 Pallet - 75 Boxes)<br/>` +
-                  `• 4533 TO 4546 (6 Pallets - 29 Boxes)<br/>` +
-                  `• TAL/1703/2026 TO TAL/1705/2026 (3 Pallets - 95 Boxes)<br/>` +
-                  `• TAL/1706/2026 TO TAL/1709/2026 (4 Pallets - 120 Boxes)` +
-                  `</div>`
-                : `<span style="color: #475569; font-size: 10px;">Pallets (${c.pallets.length}): ${c.pallets.map(p => p.palletNumber).join(', ') || 'PLT-5644 to PLT-5655'}</span>`;
+              const palletList = `<div style="color: #475569; font-size: 10px; margin-top: 2px;">` +
+                `<strong>Pallets (${c.pallets.length}):</strong> ${formatPalletRanges(c.pallets.map(p => p.palletNumber))}` +
+                `</div>`;
               return `<div>` +
-                `<strong>${c.containerNumber}</strong> [${c.containerType}] (Seal: ${c.sealNumber}) ${c.isSpillover ? '<span style="color:#b45309;font-size:9px;">[SPILLOVER]</span>' : ''}<br/>` +
+                `<strong>${c.containerNumber}</strong> [${c.containerType}] (Seal: ${c.sealNumber || 'N/A'}) ${c.isSpillover ? '<span style="color:#b45309;font-size:9px;">[SPILLOVER]</span>' : ''}<br/>` +
                 palletList +
                 `<div style="margin-top: 4px; font-size: 10px; color: #334155;">` +
                   `<strong>Cargo Net:</strong> ${c.totalNetWeightKg.toLocaleString()} kg | <strong>Cargo Gross:</strong> ${c.totalGrossWeightKg.toLocaleString()} kg` +
                   (c.tareWeightKg ? ` | <strong>Tare:</strong> ${c.tareWeightKg.toLocaleString()} kg | <strong style="color: #047857;">Total VGM: ${(c.totalGrossWeightKg + c.tareWeightKg).toLocaleString()} kg</strong>` : '') +
                 `</div>` +
               `</div>`;
-            }).join('<div style="margin: 8px 0; border-top: 1px dashed #cbd5e1;"></div>') || 'TEMU2523270 (Seal: EXD98201)'}
+            }).join('<div style="margin: 8px 0; border-top: 1px dashed #cbd5e1;"></div>')}
           </div>
         </td>
         <td style="width: 50%;">
           <span class="label">PACKING CERTIFICATE & DANGEROUS GOODS CONTROL</span>
           <div style="font-size: 9px; color: #475569; line-height: 1.45;">
             I hereby declare that the goods mentioned above have been packed into the container/vehicle in accordance with the applicable provisions of IMDG Code 5.4.2.<br/><br/>
-            <strong>UN Packaging Code:</strong> 4G/Z 30/S/IND/K/19700134<br/>
             <strong>Segregation Group:</strong> SGG1 (Acids)<br/>
             <strong>EMS Numbers:</strong> F-A, S-B (Spillage: S-B, Fire: F-A)<br/>
             <strong>Emergency Contact:</strong> ${emergencyPhone}

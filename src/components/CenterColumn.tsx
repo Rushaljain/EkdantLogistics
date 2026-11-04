@@ -2,15 +2,12 @@ import React from 'react';
 import { 
   Inbox, 
   Trash2, 
-  Ship, 
-  Plane, 
   ChevronDown, 
   Sparkles, 
   Loader2, 
   CheckCircle2, 
   RefreshCw, 
   AlertCircle,
-  Flame,
   Layers
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
@@ -22,6 +19,8 @@ interface CenterColumnProps {
   documents: AppDocument[];
   selectedDocumentId: string | null;
   consolidatedInvoice?: ConvertedInvoice | null;
+  conversionMode?: 'single' | 'multiple' | '';
+  onConversionModeChange?: (mode: 'single' | 'multiple' | '') => void;
   onSelectDocument: (docId: string) => void;
   onFilesSelected: (files: File[]) => void;
   onConvertDocument: (docId: string) => void;
@@ -38,6 +37,8 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
   documents,
   selectedDocumentId,
   consolidatedInvoice,
+  conversionMode = '',
+  onConversionModeChange,
   onSelectDocument,
   onFilesSelected,
   onConvertDocument,
@@ -45,7 +46,7 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
   isBulkConverting = false,
   onDeleteDocument,
   onClearAllDocuments,
-  onPortChange,
+  onPortChange: _onPortChange,
   onSaveAllToFiles: _onSaveAllToFiles,
   onConsolidateBatch: _onConsolidateBatch
 }) => {
@@ -83,18 +84,19 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             <h2 className="text-xs font-semibold text-zinc-900 tracking-tight uppercase">
               Shipment Invoices
             </h2>
-            {documents.length > 0 && (
-              <span className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-200/80 text-zinc-700 font-mono">
-                {documents.length}
-              </span>
-            )}
           </div>
 
           <div className="flex items-center space-x-1.5">
             {documents.length > 0 && (
               <button
                 type="button"
-                onClick={onConvertAll}
+                onClick={() => {
+                  if (!conversionMode) {
+                    alert('Please select whether this is a Single Invoice or Multiple Invoices conversion.');
+                    return;
+                  }
+                  onConvertAll();
+                }}
                 disabled={isBulkConverting}
                 className="px-2.5 py-1 text-[11px] font-semibold bg-zinc-900 hover:bg-zinc-800 text-white rounded-md shadow-2xs transition-colors flex items-center space-x-1.5 disabled:opacity-40 cursor-pointer"
                 title="Process staged invoices and generate Container Plan, DG & BL"
@@ -130,21 +132,33 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
           </div>
         </div>
 
-        {/* Auto-Verification Banner: Single vs. Multi-Invoice Mode */}
+        {/* Conversion Mode Dropdown (Single Invoice vs Multiple Invoices) */}
         {documents.length > 0 && (
-          <div className="mb-2.5 px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-200 text-zinc-800 text-[11px] font-mono flex items-center space-x-2 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-zinc-900 shrink-0" />
-            <span className="truncate">
-              {documents.length === 1
-                ? 'Auto-Verified: Single Invoice Mode (1 Invoice -> 1 DG & 1 BL)'
-                : `Auto-Verified: Multi-Invoice Consolidation (${documents.length} Files Merged -> 1 DG & 1 BL)`}
-            </span>
+          <div className="mb-2.5 shrink-0">
+            <div className="relative">
+              <select
+                value={conversionMode}
+                onChange={(e) => onConversionModeChange?.(e.target.value as 'single' | 'multiple' | '')}
+                className={`w-full appearance-none rounded-lg px-3 py-2 text-xs font-medium border transition-colors outline-none cursor-pointer pr-8 shadow-2xs ${
+                  conversionMode === ''
+                    ? 'bg-zinc-50/80 text-zinc-500 border-zinc-300 hover:border-zinc-400'
+                    : 'bg-white text-zinc-900 border-zinc-900'
+                }`}
+              >
+                <option value="" disabled>Select Type</option>
+                <option value="multiple">Multiple Invoices</option>
+                <option value="single">Single Invoice</option>
+              </select>
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
+                <ChevronDown className="w-3.5 h-3.5" />
+              </div>
+            </div>
           </div>
         )}
 
         {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {consolidatedInvoice && documents.length > 1 && (
+          {conversionMode === 'multiple' && consolidatedInvoice && documents.length > 1 && (
             <div
               onClick={() => onSelectDocument('consolidated')}
               className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
@@ -246,102 +260,28 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
                 >
                   {isProcessed && inv ? (
                     <>
-                      {/* Top Line: Invoice Number + Processed Badge + Port Selector */}
+                      {/* Top Line: Invoice Number + Delete Action */}
                       <div className="flex items-center justify-between gap-1.5">
-                        <div className="flex items-center space-x-1.5 min-w-0">
-                          <span className="font-semibold text-zinc-900 text-xs font-mono truncate" title={inv.invoiceNumber}>
-                            {inv.invoiceNumber}
-                          </span>
-                          <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60 shrink-0">
-                            <CheckCircle2 className="w-2.5 h-2.5" />
-                            <span>Allocated</span>
-                          </span>
-                          {inv.hasDangerousGoods && (
-                            <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[9px] font-medium bg-rose-50 text-rose-700 border border-rose-200/60 shrink-0" title="Contains Dangerous Goods">
-                              <Flame className="w-2.5 h-2.5 text-rose-500" />
-                              <span>#DG</span>
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Port Selector Dropdown */}
-                        <div 
-                          className="relative inline-flex items-center shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <select
-                            value={inv.portOfLoading?.includes('INBOM4') ? 'INBOM4' : 'INNSA1'}
-                            onChange={(e) => onPortChange(doc.id, e.target.value as CustomsPort)}
-                            className="appearance-none bg-zinc-50 hover:bg-zinc-100 text-zinc-700 text-[10px] font-medium pl-4.5 pr-4 py-0.5 rounded border border-zinc-200 focus:outline-none cursor-pointer"
-                          >
-                            <option value="INNSA1">INNSA1</option>
-                            <option value="INBOM4">INBOM4</option>
-                          </select>
-                          <div className="absolute left-1 pointer-events-none text-zinc-600">
-                            {inv.portOfLoading?.includes('INBOM4') ? (
-                              <Plane className="w-2.5 h-2.5" />
-                            ) : (
-                              <Ship className="w-2.5 h-2.5" />
-                            )}
-                          </div>
-                          <div className="absolute right-1 pointer-events-none text-zinc-400">
-                            <ChevronDown className="w-2.5 h-2.5" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Row 2: Shipper / Weights & Pallets Breakdown */}
-                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-zinc-100 text-[11px] gap-2">
-                        <div className="truncate min-w-0">
-                          <span className="font-medium text-zinc-700 block truncate" title={inv.exporterName}>
-                            {inv.exporterName}
-                          </span>
-                          <span className="text-[10px] text-zinc-400 font-mono">
-                            {inv.containers?.length || 1} Cont ({inv.containers?.[0]?.containerType || '40HC'}) • {Math.round(inv.grossWeightKg || 0).toLocaleString()} kg
-                          </span>
-                        </div>
-
-                        {/* Direct Document Generation Actions */}
-                        <div 
-                          className="flex items-center space-x-1 shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {/* 1-Click Master BOL Download */}
+                        <span className="font-semibold text-zinc-900 text-xs font-mono truncate min-w-0" title={inv.invoiceNumber}>
+                          {inv.invoiceNumber}
+                        </span>
+                        <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => {
-                              const bol = generateMasterBol(inv);
-                              downloadDocumentHtml(bol);
-                            }}
-                            className="px-2 py-0.5 text-[10px] font-medium text-zinc-700 hover:text-zinc-900 border border-zinc-200 bg-white hover:bg-zinc-100 rounded transition-colors"
-                            title="Generate & Download Master BOL"
-                          >
-                            BOL
-                          </button>
-
-                          {/* 1-Click #DG Document Download (if hazmat) */}
-                          {inv.hasDangerousGoods && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const dg = generateDgDeclaration(inv);
-                                downloadDocumentHtml(dg);
-                              }}
-                              className="px-2 py-0.5 text-[10px] font-medium text-zinc-700 hover:text-zinc-900 border border-zinc-200 bg-white hover:bg-zinc-100 rounded transition-colors"
-                              title="Generate & Download #DG Document"
-                            >
-                              #DG
-                            </button>
-                          )}
-
-                          <button
                             onClick={() => onDeleteDocument(doc.id)}
-                            className="p-1 text-zinc-300 hover:text-rose-600 rounded transition-colors"
-                            title="Remove"
+                            className="p-1 text-zinc-300 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                            title="Remove invoice"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                      </div>
+
+                      {/* Row 2: Shipper / Exporter Name */}
+                      <div className="mt-1 pt-1 border-t border-zinc-100 text-[11px]">
+                        <span className="font-normal text-zinc-600 block truncate" title={inv.exporterName}>
+                          {inv.exporterName || 'Shipper / Exporter'}
+                        </span>
                       </div>
                     </>
                   ) : isProcessing ? (
@@ -432,31 +372,6 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
             })
           )}
         </div>
-
-        {/* Primary High-Contrast "Process Invoices" Button directly beneath the upload queue */}
-        {documents.length > 0 && (
-          <div className="pt-2.5 border-t border-zinc-200 shrink-0">
-            <button
-              type="button"
-              onClick={onConvertAll}
-              disabled={isBulkConverting}
-              className="w-full py-2.5 px-4 rounded-lg text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-sm transition-all disabled:opacity-40 cursor-pointer flex items-center justify-center space-x-2"
-              title="Process staged files and generate Container Plan, DG Declaration, and Master BOL"
-            >
-              {isBulkConverting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                  <span>Processing Invoices...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-zinc-300" />
-                  <span>Process Invoices</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

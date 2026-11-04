@@ -217,7 +217,9 @@ export async function extractFromSpreadsheet(
   const isLeadAcid = /(battery|batteries|lead[\s-]*acid|un\s*2794|imco\s*8)/i.test(combinedText);
   const unNumber = isLeadAcid ? 'UN 2794' : 'UN 1993';
   const imoClass = isLeadAcid ? 'Class 8 (Corrosive)' : 'Class 3 (Flammable Liquid)';
-  const packingGroup = 'III';
+  const rawPgMatch = combinedText.match(/(?:UN\s*PACKING\s*GROUP|PACKING\s*GROUP)\s*[:.-]*\s*([A-Za-z0-9/-]+)/i);
+  const rawPg = rawPgMatch ? rawPgMatch[1].trim().toUpperCase() : '';
+  const packingGroup = rawPg === 'NIL' || rawPg === 'NA' || rawPg === 'NONE' ? rawPg : (rawPg || (isLeadAcid ? 'III' : 'II'));
   const properShippingName = isLeadAcid ? 'BATTERIES, WET, FILLED WITH ACID' : 'FLAMMABLE LIQUID, N.O.S.';
 
   // Extract Emergency Contact if specified in sheet

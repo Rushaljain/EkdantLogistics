@@ -25,6 +25,7 @@ import { generateDgDeclaration } from '../utils/dgGenerator';
 import { ContainerQcBoard } from './ContainerQcBoard';
 import { recalculateContainer, createEmptyContainer } from '../utils/containerAllocator';
 import { optimizeContainerAllocation } from '../utils/containerOptimizer';
+import { reconcileShipment } from '../utils/reconciliationEngine';
 
 export type RightPaneViewMode = 'invoices' | 'container_plan' | 'dg' | 'bl';
 
@@ -288,7 +289,16 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
 
               <button
                 type="button"
-                onClick={() => downloadDocumentHtml(generatedDg)}
+                onClick={() => {
+                  if (formData) {
+                    const recon = reconcileShipment(formData);
+                    if (!recon.isValid) {
+                      alert(`Cannot download DG: Numerical reconciliation discrepancy detected.\n\n${recon.errors.join('\n')}`);
+                      return;
+                    }
+                  }
+                  downloadDocumentHtml(generatedDg);
+                }}
                 className="inline-flex items-center space-x-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                 title="Download DG Declaration HTML"
               >
@@ -311,7 +321,16 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
 
               <button
                 type="button"
-                onClick={() => downloadDocumentHtml(generatedBol)}
+                onClick={() => {
+                  if (formData) {
+                    const recon = reconcileShipment(formData);
+                    if (!recon.isValid) {
+                      alert(`Cannot download BL: Numerical reconciliation discrepancy detected.\n\n${recon.errors.join('\n')}`);
+                      return;
+                    }
+                  }
+                  downloadDocumentHtml(generatedBol);
+                }}
                 className="inline-flex items-center space-x-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
                 title="Download Master BOL HTML"
               >
@@ -451,18 +470,41 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               pallets={formData.pallets}
               lineItems={formData.lineItems}
               hasDangerousGoods={formData.hasDangerousGoods}
+              invoice={formData}
+              rawDocumentText={activeDocument?.previewHtml || ''}
               onUpdateContainers={handleUpdateContainers}
               onAutoReallocate={handleAutoReallocate}
               onAddContainer={handleAddContainer}
               onDeleteContainer={handleDeleteContainer}
               onContainerTypeChange={handleContainerTypeChange}
               onContainerFieldChange={handleContainerFieldChange}
-              onLockAndGenerate={() => onSelectView('dg')}
+              onLockAndGenerate={() => {
+                const recon = reconcileShipment(formData);
+                if (!recon.isValid) {
+                  alert(`Cannot lock plan: Discrepancy detected.\n\n${recon.errors[0]}`);
+                  return;
+                }
+                onSelectView('dg');
+              }}
               onQuickDownloadBol={() => {
-                if (generatedBol) downloadDocumentHtml(generatedBol);
+                if (generatedBol) {
+                  const recon = reconcileShipment(formData);
+                  if (!recon.isValid) {
+                    alert(`Cannot download BL: ${recon.errors[0]}`);
+                    return;
+                  }
+                  downloadDocumentHtml(generatedBol);
+                }
               }}
               onQuickDownloadDg={() => {
-                if (generatedDg) downloadDocumentHtml(generatedDg);
+                if (generatedDg) {
+                  const recon = reconcileShipment(formData);
+                  if (!recon.isValid) {
+                    alert(`Cannot download DG: ${recon.errors[0]}`);
+                    return;
+                  }
+                  downloadDocumentHtml(generatedDg);
+                }
               }}
             />
           ) : (

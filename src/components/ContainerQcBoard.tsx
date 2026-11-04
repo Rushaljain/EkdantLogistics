@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   GripVertical, 
   AlertTriangle, 
@@ -6,23 +6,30 @@ import {
   Lock, 
   Flame, 
   Trash2, 
-  ArrowRightLeft 
+  ArrowRightLeft,
+  ShieldAlert,
+  Info
 } from 'lucide-react';
 import type { 
   ContainerAllocation, 
   ContainerType, 
   LineItem, 
-  Pallet 
+  Pallet,
+  ConvertedInvoice
 } from '../types';
 import { CONTAINER_SPECS } from '../types';
 import { recalculateContainer } from '../utils/containerAllocator';
 import { DEFAULT_PALLET_DIMENSIONS } from '../utils/containerOptimizer';
+import { reconcileShipment } from '../utils/reconciliationEngine';
+import { detectCrossDocumentConflicts } from '../utils/conflictDetector';
 
 interface ContainerQcBoardProps {
   containers: ContainerAllocation[];
   pallets: Pallet[];
   lineItems: LineItem[];
   hasDangerousGoods?: boolean;
+  invoice?: ConvertedInvoice;
+  rawDocumentText?: string;
   onUpdateContainers: (updatedContainers: ContainerAllocation[], updatedPallets: Pallet[]) => void;
   onAutoReallocate?: (type?: ContainerType) => void;
   onAddContainer?: (type: ContainerType) => void;
@@ -39,6 +46,8 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
   pallets,
   lineItems,
   hasDangerousGoods: _hasDangerousGoods,
+  invoice,
+  rawDocumentText,
   onUpdateContainers,
   onAutoReallocate: _onAutoReallocate,
   onAddContainer: _onAddContainer,
@@ -54,6 +63,65 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
   const [sourceContainerId, setSourceContainerId] = useState<string | null>(null);
   const [dragOverContainerId, setDragOverContainerId] = useState<string | null>(null);
   const [violationNotice, setViolationNotice] = useState<string | null>(null);
+  const [dismissedConflicts, setDismissedConflicts] = useState<Set<string>>(new Set());
+
+  // Active Shipment representation for deterministic numerical reconciliation
+  const activeShipment: ConvertedInvoice = useMemo(() => {
+    if (invoice) {
+      return {
+        ...invoice,
+        containers,
+        pallets,
+        lineItems
+      };
+    }
+    const totalG = containers.reduce((s, c) => s + c.totalGrossWeightKg, 0);
+    const totalN = containers.reduce((s, c) => s + c.totalNetWeightKg, 0);
+    const totalP = containers.reduce((s, c) => s + c.totalPackages, 0);
+
+    return {
+      id: 'active-qc-session',
+      fileName: 'active-session.pdf',
+      fileSize: 1024,
+      convertedAt: 'Today',
+      rawTimestamp: 0,
+      status: 'converted' as const,
+      invoiceNumber: 'ACTIVE',
+      invoiceDate: '2026-11-04',
+      exporterName: 'Declared Shipper',
+      consigneeName: 'Declared Consignee',
+      portOfLoading: 'INNSA1',
+      portOfDischarge: 'DEHAM',
+      finalDestination: 'DE',
+      destinationCountry: 'DE',
+      incoterm: 'FOB' as const,
+      currency: 'USD',
+      exchangeRate: 1,
+      invoiceTotal: 0,
+      grossWeightKg: totalG,
+      netWeightKg: totalN,
+      totalPackages: totalP,
+      packageType: 'BOX',
+      totalPallets: pallets.length,
+      hasDangerousGoods: Boolean(_hasDangerousGoods),
+      selectedBolTemplateId: 'bol-standard',
+      selectedDgTemplateId: 'dg-imo-standard',
+      containers,
+      pallets,
+      lineItems
+    };
+  }, [invoice, containers, pallets, lineItems, _hasDangerousGoods]);
+
+  // Run Deterministic Numerical Reconciliation Engine
+  const reconciliation = useMemo(() => reconcileShipment(activeShipment), [activeShipment]);
+
+  // Run Cross-Document Conflict Exception Engine
+  const rawConflicts = useMemo(() => 
+    detectCrossDocumentConflicts(activeShipment, rawDocumentText || ''), 
+    [activeShipment, rawDocumentText]
+  );
+
+  const activeConflicts = rawConflicts.filter(c => !dismissedConflicts.has(c.id));
 
   // Pallet transfer handler
   const movePallet = (palletId: string, fromContainerId: string, toContainerId: string) => {
@@ -148,14 +216,12 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
         movePallet(data.palletId, data.contId, toContainerId);
       }
     } catch {
-      // Fallback to active state
       if (draggedPalletId && sourceContainerId) {
         movePallet(draggedPalletId, sourceContainerId, toContainerId);
       }
     }
   };
 
-  // Quick move to next/previous container
   const handleDirectMove = (palletId: string, currentContId: string, targetContId: string) => {
     movePallet(palletId, currentContId, targetContId);
   };
@@ -166,11 +232,80 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-zinc-50/50 overflow-hidden">
-      {/* Violation Alert Banner if applicable */}
+      {/* 1. Numerical Reconciliation Alert Banner (Mandatory Invariant Check) */}
+      {!reconciliation.isValid && (
+        <div className="px-5 py-2.5 bg-rose-50 border-b border-rose-200 text-rose-900 text-xs shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start space-x-2">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-semibold text-rose-950">
+                  Numerical Reconciliation Discrepancy Detected — Document Export Locked
+                </div>
+                <div className="text-[11px] text-rose-800 mt-0.5 space-y-0.5 font-mono">
+                  {reconciliation.errors.map((err, i) => (
+                    <div key={i}>• {err}</div>
+                  ))}
+                </div>
+                <div className="text-[10px] text-rose-700 mt-1 font-mono">
+                  Pallet Gross Sum: {reconciliation.palletGrossSum.toLocaleString()} kg | Declared Gross: {reconciliation.declaredGrossKg.toLocaleString()} kg (Variance: {reconciliation.grossVarianceKg.toFixed(2)} kg) | Pallets: {reconciliation.allocatedPalletCount}/{reconciliation.declaredPalletCount}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Cross-Document Conflict Exception Handling Banner */}
+      {activeConflicts.length > 0 && (
+        <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 text-xs shrink-0">
+          <div className="flex items-start space-x-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-amber-950 flex items-center gap-1.5">
+                <span>Cross-Document Conflict Detected ({activeConflicts.length})</span>
+                <span className="text-[10px] font-normal px-1.5 py-0.2 rounded bg-amber-200/70 text-amber-900 uppercase">
+                  Operator Verification Required
+                </span>
+              </div>
+              <div className="mt-1 space-y-1.5">
+                {activeConflicts.map(conf => (
+                  <div key={conf.id} className="p-2 rounded bg-white/80 border border-amber-200/60 text-[11px]">
+                    <div className="flex items-center justify-between font-mono text-zinc-900 font-medium">
+                      <span>{conf.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDismissedConflicts(prev => new Set([...prev, conf.id]))}
+                        className="text-[10px] text-amber-700 hover:text-amber-950 underline cursor-pointer"
+                      >
+                        Acknowledge & Dismiss
+                      </button>
+                    </div>
+                    <div className="mt-0.5 text-zinc-600 text-[10.5px]">
+                      {conf.description}
+                    </div>
+                    <div className="mt-1 font-mono text-[10px] text-zinc-500 flex items-center gap-3">
+                      <span>Source A: <strong>{conf.valueA}</strong></span>
+                      <span>Source B: <strong>{conf.valueB}</strong></span>
+                      {conf.recommendedValue && (
+                        <span className="text-emerald-700 font-semibold">
+                          Recommended: {conf.recommendedValue}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Drag-and-Drop Local Warning Notice */}
       {violationNotice && (
-        <div className="px-6 py-2.5 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between text-xs text-amber-900 shrink-0">
+        <div className="px-5 py-2 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between text-xs text-amber-900 shrink-0">
           <div className="flex items-center space-x-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
             <span>{violationNotice}</span>
           </div>
           <button
@@ -307,7 +442,7 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
                     cont.pallets.map((pallet) => {
                       const isDragging = draggedPalletId === pallet.id;
                       const lineItem = lineItems.find(it => pallet.lineItemIds.includes(it.id));
-                      const modelText = pallet.modelOrDescription || lineItem?.description || 'EFB70-S95-D26L - Lead Acid Batteries';
+                      const modelText = pallet.modelOrDescription || lineItem?.description || 'Export Cargo Goods';
 
                       return (
                         <div
@@ -477,17 +612,34 @@ export const ContainerQcBoard: React.FC<ContainerQcBoardProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
-          {anyViolations && (
+          {!reconciliation.isValid ? (
+            <span className="text-xs text-rose-600 font-medium flex items-center gap-1">
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+              <span>Reconciliation variance &gt; 0.01 kg. Resolve before locking.</span>
+            </span>
+          ) : anyViolations ? (
             <span className="text-xs text-rose-600 font-medium flex items-center gap-1">
               <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
               <span>Limits breached. Adjust before locking.</span>
             </span>
-          )}
+          ) : null}
 
           <button
             type="button"
+            disabled={!reconciliation.isValid || anyViolations}
             onClick={onLockAndGenerate}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-950 text-white shadow-2xs transition-all cursor-pointer"
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+              !reconciliation.isValid || anyViolations
+                ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed shadow-none'
+                : 'bg-zinc-900 hover:bg-zinc-800 active:bg-zinc-950 text-white shadow-2xs cursor-pointer'
+            }`}
+            title={
+              !reconciliation.isValid 
+                ? 'Mathematical reconciliation must have ≤ 0.01 kg variance to lock' 
+                : anyViolations 
+                ? 'Resolve container weight/pallet limit breaches before locking' 
+                : 'Lock plan and proceed to DG & Master BOL generation'
+            }
           >
             <Lock className="w-3.5 h-3.5" />
             <span>Lock Plan & Generate Documents</span>

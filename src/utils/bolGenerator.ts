@@ -111,8 +111,8 @@ export function generateMasterBol(
           <span class="label">1. Shipper / Exporter</span>
           <div class="val">${invoice.exporterName}</div>
           <div style="font-size: 10px; color: #475569; margin-top: 2px;">
-            ${invoice.shipperAddress || 'Industrial Zone, Phase II, Taloja MIDC, Navi Mumbai, Maharashtra 410208, India'}<br/>
-            IEC: ${invoice.iec || '0391048291'} | GSTIN: ${invoice.gstin || '27AAACA9921E1Z8'}
+            ${invoice.shipperAddress ? `${invoice.shipperAddress}<br/>` : ''}
+            ${[invoice.iec ? `IEC: ${invoice.iec}` : '', invoice.gstin ? `GSTIN: ${invoice.gstin}` : ''].filter(Boolean).join(' | ')}
           </div>
         </td>
         <td style="width: 50%;">
@@ -133,7 +133,7 @@ export function generateMasterBol(
           <span class="label">2. Consignee (or Order of)</span>
           <div class="val">${invoice.consigneeName}</div>
           <div style="font-size: 10px; color: #475569; margin-top: 2px;">
-            ${invoice.consigneeAddress || 'Port Industrial Park, Havenlaan 102, 3000 Rotterdam, Netherlands'}
+            ${invoice.consigneeAddress || ''}
           </div>
         </td>
         <td>
@@ -149,7 +149,7 @@ export function generateMasterBol(
         </td>
         <td>
           <span class="label">Place of Receipt</span>
-          <div class="val">CFS Mulund / JNPT Nhava Sheva, India</div>
+          <div class="val">${invoice.placeOfReceipt || invoice.portOfLoading || 'Nhava Sheva, India'}</div>
         </td>
       </tr>
       <tr>
@@ -169,7 +169,7 @@ export function generateMasterBol(
         </td>
         <td>
           <span class="label">Place of Delivery</span>
-          <div class="val">${displayPod} Container Terminal</div>
+          <div class="val">${invoice.finalDestination || displayPod}</div>
         </td>
       </tr>
     </table>

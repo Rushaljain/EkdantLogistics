@@ -14,7 +14,7 @@ export interface DangerousGoodsInfo {
   isDangerousGood: boolean;
   imoClass?: string;          // e.g. "Class 3 - Flammable Liquid", "Class 8 - Corrosives"
   unNumber?: string;          // e.g. "UN 1993", "UN 1263", "UN 3082"
-  packingGroup?: 'I' | 'II' | 'III';
+  packingGroup?: 'I' | 'II' | 'III' | 'NIL' | 'NA' | string;
   properShippingName?: string; // e.g. "FLAMMABLE LIQUID, N.O.S."
   flashPoint?: string;        // e.g. "23°C c.c."
   marinePollutant?: boolean;
@@ -50,7 +50,7 @@ export interface Pallet {
   isDangerousGoods: boolean;
   imoClass?: string;
   unNumber?: string;
-  packingGroup?: 'I' | 'II' | 'III';
+  packingGroup?: 'I' | 'II' | 'III' | 'NIL' | 'NA' | string;
   assignedContainerId?: string;
   lineItemIds: string[];
 }
@@ -134,12 +134,18 @@ export interface ConvertedInvoice {
   consigneeAddress?: string;
   notifyParty?: string;
   
-  // Routing
+  // Routing & Shipping References
   portOfLoading: string;      // e.g. "Nhava Sheva (INNSA1)"
   portOfDischarge: string;    // e.g. "Rotterdam (NLRTM)"
+  placeOfReceipt?: string;
+  finalDestination?: string;
   destinationCountry: string; // 2-letter ISO (DE, US, NL, etc.)
   vesselName?: string;
   voyageNumber?: string;
+  shippingBillNumber?: string;
+  emergencyContact?: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
   
   // Financial
   currency: string;
