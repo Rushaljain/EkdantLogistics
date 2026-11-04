@@ -29,12 +29,12 @@ export function generateMasterBol(
   const totalNet = invoice.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || invoice.netWeightKg;
   const totalPallets = invoice.containers.reduce((s, c) => s + c.pallets.length, 0) || invoice.totalPallets;
 
-  const displayVessel = invoice.vesselName || 'ONE HUMBER';
-  const displayVoyage = invoice.voyageNumber || '106E';
-  const displayPol = invoice.portOfLoading || 'NHAVA SHEVA, INDIA';
-  const displayPod = invoice.portOfDischarge || 'YANGON';
-  const displayDelivery = invoice.placeOfDelivery || invoice.finalDestination || 'MYANMAR';
-  const displayReceipt = invoice.placeOfReceipt || 'NHAVA SHEVA';
+  const displayVessel = invoice.vesselName || '—';
+  const displayVoyage = invoice.voyageNumber || '—';
+  const displayPol = invoice.portOfLoading || '—';
+  const displayPod = invoice.portOfDischarge || '—';
+  const displayDelivery = invoice.placeOfDelivery || invoice.finalDestination || '—';
+  const displayReceipt = invoice.placeOfReceipt || invoice.portOfLoading || '—';
 
   // Pallet ranges formatting
   const allPallets = invoice.containers.flatMap(c => c.pallets).length > 0
@@ -46,7 +46,7 @@ export function generateMasterBol(
     : formatSequentialPalletRanges(palletNumbers);
 
   // Marks and numbers block
-  const marksLines = (invoice.shippingMarks || 'KAUNG SWANN\nHTET TRADING\nMYANMAR')
+  const marksLines = (invoice.shippingMarks || '')
     .split('\n')
     .map(line => line.trim())
     .filter(Boolean);
@@ -59,7 +59,7 @@ export function generateMasterBol(
       ...allPallets.map(p => p.modelOrDescription)
     ].filter(Boolean)
   )) as string[];
-  const brandName = invoice.brandName || 'DYNEX MATRIX';
+  const brandName = invoice.brandName || '';
   const hsnCode = invoice.hsnCode || '85071000';
   const shippingBills = invoice.shippingBillNumbers
     ? invoice.shippingBillNumbers.split(',').map(s => s.trim()).filter(Boolean)
@@ -130,7 +130,7 @@ export function generateMasterBol(
           <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.shipperAddress}</div>
           ${invoice.onBehalfOf ? `<div style="font-size: 9.5px; color: #475569; margin-top: 3px;"><strong>(ON BEHALF OF):</strong> ${invoice.onBehalfOf}</div>` : ''}
           <div style="font-family: monospace; font-size: 10.5px; font-weight: 700; color: #0f172a; margin-top: 4px;">
-            BOOKING NO: ${invoice.bookingNumber || 'MUMGA3747500'}
+            BOOKING NO: ${invoice.bookingNumber || '—'}
           </div>
         </td>
         <td style="width: 45%;">
@@ -141,7 +141,7 @@ export function generateMasterBol(
           </div>
           <div style="margin-top: 4px;">
             <span class="label">Carrier & Service</span>
-            <span class="val" style="font-size: 10.5px;">${invoice.carrierName || 'ONE LINE'} (Ocean Container Service)</span>
+            <span class="val" style="font-size: 10.5px;">${invoice.carrierName ? `${invoice.carrierName} (Ocean Container Service)` : 'Ocean Container Service'}</span>
           </div>
           <div style="margin-top: 4px;">
             <span class="label">Movement Type</span>

@@ -125,42 +125,32 @@ export function App() {
           preservePalletOrder: true
         });
 
-    const isMyanmarBatch = invoices.some(i => /YUNN POE|MYANMAR|KAUNG SWANN/i.test(i.consigneeName + (i.shippingMarks || '')));
-
     const allPalletRanges = invoices.flatMap(i => i.palletRanges || []).filter(Boolean);
     const finalPalletRanges = allPalletRanges.length > 0
       ? allPalletRanges
       : formatSequentialPalletRanges(allPallets.map(p => p.palletNumber).filter(Boolean));
 
-    const bookingNumber = primary.bookingNumber || (isMyanmarBatch ? 'MUMGA3747500' : `BKG-BATCH-${Date.now().toString().slice(-5)}`);
-    const vesselName = primary.vesselName || (isMyanmarBatch ? 'ONE HUMBER' : '');
-    const voyageNumber = primary.voyageNumber || (isMyanmarBatch ? '106E' : '');
-    const carrierName = primary.carrierName || 'ONE LINE';
-    const placeOfReceipt = primary.placeOfReceipt || 'NHAVA SHEVA';
-    const portOfDischargeDg = primary.portOfDischargeDg || (isMyanmarBatch ? 'SINGAPORE' : (primary.portOfDischarge || 'YANGON'));
-    const placeOfDelivery = primary.placeOfDelivery || primary.finalDestination || 'YANGON, MYANMAR';
+    const bookingNumber = primary.bookingNumber || '';
+    const vesselName = primary.vesselName || '';
+    const voyageNumber = primary.voyageNumber || '';
+    const carrierName = primary.carrierName || '';
+    const placeOfReceipt = primary.placeOfReceipt || primary.portOfLoading || '';
+    const portOfDischargeDg = primary.portOfDischargeDg || primary.portOfDischarge || '';
+    const placeOfDelivery = primary.placeOfDelivery || primary.finalDestination || '';
     const finalDestination = primary.finalDestination || placeOfDelivery;
-    const portOfDischarge = primary.portOfDischarge || 'YANGON';
-    const shippingMarks = primary.shippingMarks || (isMyanmarBatch ? 'KAUNG SWANN\nHTET TRADING\nMYANMAR' : undefined);
-    const brandName = primary.brandName || (isMyanmarBatch ? 'DYNEX MATRIX' : undefined);
-    const shippingBillNumbers = primary.shippingBillNumbers || (isMyanmarBatch ? 'SB NO. 7463800 DT. 05.10.2026, SB NO. 7464015 DT. 05.10.2026, SB NO. 7464256 DT. 05.10.2026, SB NO. 7463365 DT. 05.10.2026, SB NO. 7463172 DT. 05.10.2026' : undefined);
+    const portOfDischarge = primary.portOfDischarge || '';
+    const shippingMarks = primary.shippingMarks || '';
+    const brandName = primary.brandName || '';
+    const shippingBillNumbers = primary.shippingBillNumbers || '';
     const freeTimeClause = primary.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION';
-    const dgDeclarantName = primary.dgDeclarantName || 'SUJOY DUTTA';
-    const dgDeclarantStatus = primary.dgDeclarantStatus || 'EXPORT MANAGER';
-    const dgDeclarationPlaceAndDate = primary.dgDeclarationPlaceAndDate || 'MUMBAI / 07.10.2026';
-    const emergencyContactName = primary.emergencyContactName || 'MR. SUJOY';
-    const emergencyContactPhone = primary.emergencyContactPhone || '9729899131';
-    const unPackingCode = primary.unPackingCode || '4G/Z 30/S/IND/K/19700134';
-    const segregationGroup = primary.segregationGroup || 'SGG1';
-    const emsNumber = primary.emsNumber || 'F-A-S-B';
-
-    // If Myanmar batch, set the known carrier container & seal numbers
-    if (isMyanmarBatch && containers.length > 0) {
-      containers[0].containerNumber = 'ONEU2878769';
-      containers[0].sealNumber = 'IN2191248';
-      containers[0].tareWeightKg = 2150;
-      containers[0].pallets.forEach(p => p.assignedContainerId = containers[0].id);
-    }
+    const dgDeclarantName = primary.dgDeclarantName || '';
+    const dgDeclarantStatus = primary.dgDeclarantStatus || '';
+    const dgDeclarationPlaceAndDate = primary.dgDeclarationPlaceAndDate || '';
+    const emergencyContactName = primary.emergencyContactName || '';
+    const emergencyContactPhone = primary.emergencyContactPhone || '';
+    const unPackingCode = primary.unPackingCode || '';
+    const segregationGroup = primary.segregationGroup || '';
+    const emsNumber = primary.emsNumber || '';
 
     return {
       id: `inv-batch-${Date.now()}`,
@@ -199,8 +189,8 @@ export function App() {
       freightTerms: 'FREIGHT COLLECT',
       movementType: 'FCL / CY',
       freeTimeClause,
-      blDeclaredNetWeightKg: isMyanmarBatch ? 17970.70 : totalNet,
-      dgPackingGroupOverride: isMyanmarBatch ? 'NA' : 'III',
+      blDeclaredNetWeightKg: primary.blDeclaredNetWeightKg || totalNet,
+      dgPackingGroupOverride: primary.dgPackingGroupOverride || (hasDangerousGoods ? 'NA' : undefined),
       dgDeclarantName,
       dgDeclarantStatus,
       dgDeclarationPlaceAndDate,

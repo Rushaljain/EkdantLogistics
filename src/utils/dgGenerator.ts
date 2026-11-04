@@ -81,52 +81,45 @@ export function generateDgDeclaration(
   const now = new Date();
   const dateStr = invoice.dgDeclarationPlaceAndDate || `MUMBAI / ${now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
 
-  const totalGrossKg = invoice.grossWeightKg || invoice.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || 18502.70;
-  const totalNetKg = invoice.netWeightKg || invoice.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || 17917.70;
-  const totalPallets = invoice.totalPallets || invoice.pallets?.length || 22;
-  const totalPackages = invoice.totalPackages || 676;
+  const totalGrossKg = invoice.grossWeightKg || invoice.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || 0;
+  const totalNetKg = invoice.netWeightKg || invoice.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || 0;
+  const totalPallets = invoice.totalPallets || invoice.pallets?.length || 0;
+  const totalPackages = invoice.totalPackages || 0;
 
-  // Primary container (e.g., ONEU2878769)
-  const primaryCont = invoice.containers[0] || {
-    containerNumber: 'ONEU2878769',
-    sealNumber: 'IN2191248',
-    containerType: '20GP' as const,
-    tareWeightKg: 2150,
-    totalGrossWeightKg: totalGrossKg
-  };
-
-  const containerNo = primaryCont.containerNumber || 'ONEU2878769';
-  const sealNo = primaryCont.sealNumber || 'IN2191248';
-  const tareKg = primaryCont.tareWeightKg || 2150;
+  // Primary container
+  const primaryCont = invoice.containers[0];
+  const containerNo = primaryCont?.containerNumber || '____________________';
+  const sealNo = primaryCont?.sealNumber || '__________';
+  const tareKg = primaryCont?.tareWeightKg || (primaryCont ? 2150 : 0);
   const totalVgmKg = Number((totalGrossKg + tareKg).toFixed(2));
 
   // Shared attributes strictly from ConvertedInvoice Single Source of Truth
-  const carrierName = invoice.carrierName || 'ONE LINE';
-  const bookingRef = invoice.bookingNumber || `BKG-${cleanInvNo}`;
-  const vesselVoy = [invoice.vesselName, invoice.voyageNumber].filter(Boolean).join(' / ') || 'ONE HUMBER / 106E';
-  const pol = invoice.portOfLoading || 'NHAVA SHEVA';
-  const pod = invoice.portOfDischargeDg || invoice.portOfDischarge || 'SINGAPORE';
-  const dest = invoice.placeOfDelivery || invoice.finalDestination || 'YANGON, MYANMAR';
+  const carrierName = invoice.carrierName || '____________________';
+  const bookingRef = invoice.bookingNumber || cleanInvNo || '__________';
+  const vesselVoy = [invoice.vesselName, invoice.voyageNumber].filter(Boolean).join(' / ') || '____________________';
+  const pol = invoice.portOfLoading || '____________________';
+  const pod = invoice.portOfDischargeDg || invoice.portOfDischarge || '____________________';
+  const dest = invoice.placeOfDelivery || invoice.finalDestination || '____________________';
 
-  const declarantName = invoice.dgDeclarantName || 'SUJOY DUTTA';
-  const declarantStatus = invoice.dgDeclarantStatus || 'EXPORT MANAGER';
-  const emgName = invoice.emergencyContactName || 'MR. SUJOY';
-  const emgPhone = invoice.emergencyContactPhone || '9729899131';
-  const unPackingCode = invoice.unPackingCode || '4G/Z 30/S/IND/K/19700134';
-  const emsNo = invoice.emsNumber || 'F-A-S-B';
-  const segrGroup = invoice.segregationGroup || 'SGG1';
+  const declarantName = invoice.dgDeclarantName || '____________________';
+  const declarantStatus = invoice.dgDeclarantStatus || '____________________';
+  const emgName = invoice.emergencyContactName || invoice.emergencyContact || '____________________';
+  const emgPhone = invoice.emergencyContactPhone || '';
+  const unPackingCode = invoice.unPackingCode || '—';
+  const emsNo = invoice.emsNumber || '—';
+  const segrGroup = invoice.segregationGroup || '—';
   const pkGroup = invoice.dgPackingGroupOverride || 'NA';
 
-  const marksText = invoice.shippingMarks || 'KAUNG SWANN\nHTET TRADING\nMYANMAR';
+  const marksText = invoice.shippingMarks || '';
 
   // Pallet serial ranges breakdown
   const palletNumbers = invoice.pallets?.map(p => p.palletNumber) || [];
   const palletRanges = invoice.palletRanges && invoice.palletRanges.length > 0
     ? invoice.palletRanges
     : formatSequentialPalletRanges(palletNumbers);
-  const palletRangesStr = palletRanges.length > 0 ? palletRanges.join(', ') : '4956 TO 4963, 4964, 4533 TO 4546, TAL/1703/2026 TO TAL/1709/2026';
+  const palletRangesStr = palletRanges.length > 0 ? palletRanges.join(', ') : '';
 
-  const containersSummary = `${containerNo} (20' GP, Seal: ${sealNo}) - ${totalPallets} Pallets [${palletRangesStr}] (${totalGrossKg.toLocaleString()} kg)`;
+  const containersSummary = `${containerNo} (Seal: ${sealNo}) - ${totalPallets} Pallets [${palletRangesStr}] (${totalGrossKg.toLocaleString()} kg)`;
 
   const htmlContent = `
 <!DOCTYPE html>

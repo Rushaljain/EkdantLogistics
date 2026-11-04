@@ -132,8 +132,8 @@ export async function extractFromSpreadsheet(
       }
       shipperAddress = addr;
     } else {
-      exporterName = 'EXIDE INDUSTRIES LIMITED';
-      shipperAddress = 'EXIDE HOUSE, 59/E, CHOWRINGHEE ROAD, KOLKATA – 700 020, WEST BENGAL, INDIA';
+      exporterName = '';
+      shipperAddress = '';
     }
 
     // === B. On Behalf Of (Col 2, Rows 3 to 7) ===
@@ -185,14 +185,14 @@ export async function extractFromSpreadsheet(
       portOfDischarge = rawPod;
     } else {
       const podMatch = combinedText.match(/(?:YANGON,\s*MYANMAR|YANGON)/i);
-      if (podMatch) portOfDischarge = 'YANGON, MYANMAR';
+      if (podMatch) portOfDischarge = podMatch[0];
     }
 
     const rawDest = String(invRows[28]?.[2] || invRows[27]?.[2] || '').trim();
     if (rawDest && rawDest !== '0' && rawDest !== '---') {
       finalDestination = rawDest;
     } else {
-      finalDestination = portOfDischarge || 'YANGON, MYANMAR';
+      finalDestination = portOfDischarge || '';
     }
 
     // Vessel / Voyage: If 0, "0", "---", or empty -> empty string (DO NOT hardcode!)
@@ -352,9 +352,9 @@ export async function extractFromSpreadsheet(
   // Fallback for single sheet if no row matched
   if (pallets.length === 0) {
     const totalGrossMatch = combinedText.match(/(?:TOTAL\s*GR\.?\s*WT|TOTAL\s*GROSS\s*WEIGHT|GR\s*WT)\.?\s*[:.]*\s*([0-9,.]+)/i);
-    const parsedGross = totalGrossMatch ? parseFloat(totalGrossMatch[1].replace(/,/g, '')) : 18502.70;
+    const parsedGross = totalGrossMatch ? parseFloat(totalGrossMatch[1].replace(/,/g, '')) : 0;
     const totalNetMatch = combinedText.match(/(?:TOTAL\s*NET\s*WT|TOTAL\s*NET\s*WEIGHT|NT\s*WT)\.?\s*[:.]*\s*([0-9,.]+)/i);
-    const parsedNet = totalNetMatch ? parseFloat(totalNetMatch[1].replace(/,/g, '')) : 17917.70;
+    const parsedNet = totalNetMatch ? parseFloat(totalNetMatch[1].replace(/,/g, '')) : 0;
 
     const fallbackPallet: Pallet = {
       id: `plt-${invoiceNumber}-1`,
