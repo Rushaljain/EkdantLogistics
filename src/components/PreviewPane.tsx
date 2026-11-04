@@ -27,6 +27,8 @@ export type RightPaneViewMode = 'invoices' | 'container_plan' | 'dg' | 'bl';
 interface PreviewPaneProps {
   documents: AppDocument[];
   activeDocument: AppDocument | null;
+  activeInvoice?: ConvertedInvoice | null;
+  consolidatedInvoice?: ConvertedInvoice | null;
   onSave: (updated: ConvertedInvoice) => void;
   onPortChange: (docId: string, port: CustomsPort) => void;
   masterFormats: MasterFormat[];
@@ -40,6 +42,8 @@ interface PreviewPaneProps {
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
   documents,
   activeDocument,
+  activeInvoice: propActiveInvoice,
+  consolidatedInvoice: _consolidatedInvoice,
   onSave,
   onPortChange: _onPortChange,
   masterFormats,
@@ -50,7 +54,9 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onOpenKeyModal: _onOpenKeyModal
 }) => {
   // If active invoice is present, use it; otherwise find first processed doc
-  const activeInvoice = activeDocument?.invoice || documents.find(d => d.invoice)?.invoice || null;
+  const activeInvoice = propActiveInvoice !== undefined 
+    ? propActiveInvoice 
+    : (activeDocument?.invoice || _consolidatedInvoice || documents.find(d => d.invoice)?.invoice || null);
 
   // Local state for interactive editing within active invoice
   const [formData, setFormData] = useState<ConvertedInvoice | null>(activeInvoice);

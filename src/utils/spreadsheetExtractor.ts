@@ -20,8 +20,15 @@ export async function extractFromSpreadsheet(
 
   // 1. Identify primary invoice sheet and packing list sheet
   const sheetNames = workbook.SheetNames;
-  let invSheetName = sheetNames.find(s => /(_inv|inv|invoice)/i.test(s));
-  let pkgSheetName = sheetNames.find(s => /(_pkg|pkg|pack|clp|list)/i.test(s));
+  // Prioritize 0232_INV or _INV$ over THB-INV or generic sheets
+  let invSheetName = sheetNames.find(s => /^0232_inv/i.test(s))
+    || sheetNames.find(s => /_inv$/i.test(s))
+    || sheetNames.find(s => /(?:inv|invoice)/i.test(s) && !/thb/i.test(s))
+    || sheetNames.find(s => /(?:_inv|inv|invoice)/i.test(s));
+
+  let pkgSheetName = sheetNames.find(s => /^0232_pkg/i.test(s))
+    || sheetNames.find(s => /_pkg$/i.test(s))
+    || sheetNames.find(s => /(?:_pkg|pkg|pack|clp|list)/i.test(s) && s !== invSheetName);
 
   if (!invSheetName && sheetNames.length > 0) {
     invSheetName = sheetNames[0];
@@ -41,28 +48,60 @@ export async function extractFromSpreadsheet(
   const allPkgText = pkgRows.map(r => r.filter(c => c !== null && c !== undefined).join(' ')).join('\n');
   const combinedText = allInvText + '\n' + allPkgText;
 
-  // 2. Extract Invoice Number
+  // 2. Extract Invoice Number & Date
   let invoiceNumber = '';
-  const invMatch = combinedText.match(/(?:Invoice\s*No\.?\s*(?:&|\/)?\s*Date|INV\s*NO\.?)\s*[:.]*\s*([A-Z0-9/-]+)/i);
-  if (invMatch && invMatch[1]) {
-    invoiceNumber = invMatch[1].trim();
-  } else {
-    // Fallback: search for Exide-style invoice numbers like CHW000165B, CHW000213, CHW000263, TAL000172
-    const codeMatch = combinedText.match(/\b(CHW\d{6}[A-Z]?|TAL\d{6}[A-Z]?|EXP\d{5,8})\b/i);
-    invoiceNumber = codeMatch ? codeMatch[1].toUpperCase() : file.name.replace(/\.[^/.]+$/, '').toUpperCase();
-  }
-
-  // Extract Invoice Date
   let invoiceDate = new Date().toISOString().slice(0, 10);
-  const dateMatch = combinedText.match(/(?:DTD|Dated?|Date)\s*[:.]*\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i);
-  if (dateMatch && dateMatch[1]) {
-    const rawDate = dateMatch[1].replace(/\//g, '-').replace(/\./g, '-');
+
+  // A. Check for Exide standard invoice format with DTD: "CHW000165B DTD 03.10.2026"
+  const dtdMatch = combinedText.match(/\b(CHW\d+[A-Z]?|TAL\d+[A-Z]?|EXP\d+)\s*(?:DTD|Dated?)\s*([0-9./-]+)/i);
+  if (dtdMatch) {
+    invoiceNumber = dtdMatch[1].toUpperCase();
+    const rawDate = dtdMatch[2].replace(/\//g, '-').replace(/\./g, '-');
     const parts = rawDate.split('-');
     if (parts.length === 3) {
       if (parts[2].length === 4) {
         invoiceDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       } else {
         invoiceDate = rawDate;
+      }
+    }
+  }
+
+  // B. If not found via DTD, check filename for known invoice pattern (e.g. Kaung Swan-CHW000165B.xlsx)
+  if (!invoiceNumber) {
+    const fnMatch = file.name.match(/\b(CHW\d+[A-Z]?|TAL\d+[A-Z]?|EXP\d+)\b/i);
+    if (fnMatch) {
+      invoiceNumber = fnMatch[1].toUpperCase();
+    }
+  }
+
+  // C. Fallback: search for generic invoice patterns in text, filtering out noise words like "Exporters"
+  if (!invoiceNumber) {
+    const invMatch = combinedText.match(/(?:Invoice\s*No\.?\s*(?:&|\/)?\s*Date|INV\s*NO\.?)\s*[:.]*\s*([A-Z0-9/-]+)/i);
+    const rejectedWords = /^(exporters?|buyer|order|ref|reference|date|dtd|other|none|null|no|description|consignee)$/i;
+    if (invMatch && invMatch[1] && !rejectedWords.test(invMatch[1].trim())) {
+      invoiceNumber = invMatch[1].trim();
+    }
+  }
+
+  // D. Ultimate fallback: code pattern in text or sanitized filename
+  if (!invoiceNumber) {
+    const codeMatch = combinedText.match(/\b(CHW\d{3,7}[A-Z]?|TAL\d{3,7}[A-Z]?|[A-Z]{2,4}\d{4,8}[A-Z]?)\b/i);
+    invoiceNumber = codeMatch ? codeMatch[1].toUpperCase() : file.name.replace(/\.[^/.]+$/, '').toUpperCase();
+  }
+
+  // E. Date extraction fallback if not set by dtdMatch
+  if (invoiceDate === new Date().toISOString().slice(0, 10)) {
+    const dateMatch = combinedText.match(/(?:DTD|Dated?|Date)\s*[:.]*\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i);
+    if (dateMatch && dateMatch[1]) {
+      const rawDate = dateMatch[1].replace(/\//g, '-').replace(/\./g, '-');
+      const parts = rawDate.split('-');
+      if (parts.length === 3) {
+        if (parts[2].length === 4) {
+          invoiceDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else {
+          invoiceDate = rawDate;
+        }
       }
     }
   }

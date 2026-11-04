@@ -92,13 +92,102 @@ export function App() {
     return []; // Default to empty workspace on fresh load
   });
 
-  // Selected Document ID for Right Preview Pane
+  // Helper to build consolidated master invoice from multiple invoices
+  const buildConsolidatedInvoice = (invoices: ConvertedInvoice[]): ConvertedInvoice => {
+    const primary = invoices[0];
+    const combinedLineItems = invoices.flatMap((inv, invIdx) => 
+      inv.lineItems.map((item, itemIdx) => ({
+        ...item,
+        id: `item-batch-${invIdx}-${itemIdx}-${item.id}`,
+        itemNumber: itemIdx + 1
+      }))
+    );
+
+    const totalGross = combinedLineItems.reduce((acc, it) => acc + (it.grossWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.grossWeightKg, 0);
+    const totalNet = combinedLineItems.reduce((acc, it) => acc + (it.netWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.netWeightKg, 0);
+    const totalPkgs = combinedLineItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
+    const totalPalletCount = invoices.reduce((s, i) => s + (i.totalPallets || i.pallets?.length || 1), 0);
+    const hasDangerousGoods = combinedLineItems.some(it => it.isDangerousGood) || invoices.some(i => i.hasDangerousGoods);
+    const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
+
+    const { containers, pallets } = optimizeContainerAllocation(combinedLineItems, undefined, {
+      preferredContainerType: '20GP',
+      explicitPalletCount: totalPalletCount
+    });
+
+    return {
+      id: `inv-batch-${Date.now()}`,
+      fileName: `Consolidated_Batch_${invoices.length}_Invoices.pdf`,
+      fileSize: invoices.reduce((s, i) => s + i.fileSize, 0),
+      convertedAt: `Today, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      rawTimestamp: Date.now(),
+      status: 'converted',
+      invoiceNumber: invoiceNumbers,
+      invoiceDate: primary.invoiceDate,
+      bookingNumber: primary.bookingNumber || `BKG-BATCH-${Date.now().toString().slice(-5)}`,
+      masterBolNumber: `BOL-EKD-BATCH${Date.now().toString().slice(-6)}`,
+      exporterName: primary.exporterName,
+      shipperAddress: primary.shipperAddress,
+      iec: primary.iec,
+      gstin: primary.gstin,
+      adCode: primary.adCode,
+      consigneeName: primary.consigneeName,
+      consigneeAddress: primary.consigneeAddress,
+      notifyParty: primary.notifyParty,
+      portOfLoading: primary.portOfLoading,
+      portOfDischarge: primary.portOfDischarge,
+      destinationCountry: primary.destinationCountry,
+      vesselName: primary.vesselName,
+      voyageNumber: primary.voyageNumber,
+      currency: primary.currency,
+      exchangeRate: primary.exchangeRate,
+      incoterm: primary.incoterm,
+      subtotal: invoices.reduce((s, i) => s + (i.subtotal || 0), 0),
+      gstAmount: invoices.reduce((s, i) => s + (i.gstAmount || 0), 0),
+      invoiceTotal: invoices.reduce((s, i) => s + (i.invoiceTotal || 0), 0),
+      grossWeightKg: totalGross,
+      netWeightKg: totalNet,
+      totalPackages: totalPkgs,
+      packageType: primary.packageType,
+      totalPallets: pallets.length || totalPalletCount,
+      hasDangerousGoods,
+      selectedBolTemplateId: 'bol-standard',
+      selectedDgTemplateId: 'dg-imo-standard',
+      containers,
+      pallets,
+      lineItems: combinedLineItems,
+      pdfUrl: primary.pdfUrl
+    };
+  };
+
+  // Consolidated Master Invoice state for multi-invoice batches
+  const [consolidatedInvoice, setConsolidatedInvoice] = useState<ConvertedInvoice | null>(() => {
+    try {
+      const savedDocs = localStorage.getItem(LOCAL_STORAGE_DOCS_KEY);
+      if (savedDocs) {
+        const parsed = JSON.parse(savedDocs);
+        if (Array.isArray(parsed)) {
+          const processed = parsed.filter((d: any) => d.status === 'processed' && d.invoice);
+          if (processed.length >= 2) {
+            return buildConsolidatedInvoice(processed.map((d: any) => d.invoice));
+          }
+        }
+      }
+    } catch {}
+    return null;
+  });
+
+  // Selected Document ID for Right Preview Pane ('consolidated' or docId or null)
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(() => {
     try {
       const savedDocs = localStorage.getItem(LOCAL_STORAGE_DOCS_KEY);
       if (savedDocs) {
         const parsed = JSON.parse(savedDocs);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0].id;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const processed = parsed.filter((d: any) => d.status === 'processed' && d.invoice);
+          if (processed.length >= 2) return 'consolidated';
+          return parsed[0].id;
+        }
       }
     } catch {}
     return null;
@@ -124,7 +213,14 @@ export function App() {
   const [activeRightView, setActiveRightView] = useState<RightPaneViewMode>('container_plan');
 
   // Active Selected Document in converter
-  const activeDocument = documents.find(d => d.id === selectedDocumentId) || (documents.length > 0 ? documents[0] : null);
+  const activeDocument = selectedDocumentId === 'consolidated' 
+    ? null 
+    : (documents.find(d => d.id === selectedDocumentId) || (documents.length > 0 ? documents[0] : null));
+
+  // Active Invoice for Preview Pane (defaults to consolidatedInvoice when in multi-invoice mode or 'consolidated')
+  const activeInvoice = selectedDocumentId === 'consolidated'
+    ? (consolidatedInvoice || documents.find(d => d.invoice)?.invoice || null)
+    : (activeDocument?.invoice || consolidatedInvoice || documents.find(d => d.invoice)?.invoice || null);
 
   // Save new API Key
   const handleSaveApiKey = (newKey: string) => {
@@ -370,90 +466,18 @@ export function App() {
       }
     }
 
+    // Update all target documents in state
+    setDocuments(currentDocs);
+
     // Auto-consolidation if multiple invoices processed in batch
     const processedDocs = currentDocs.filter(d => d.status === 'processed' && d.invoice);
     if (processedDocs.length >= 2) {
-      const invoices = processedDocs.map(d => d.invoice!);
-      const primary = invoices[0];
-
-      const combinedLineItems = invoices.flatMap((inv, invIdx) => 
-        inv.lineItems.map((item, itemIdx) => ({
-          ...item,
-          id: `item-batch-${invIdx}-${itemIdx}-${item.id}`,
-          itemNumber: itemIdx + 1
-        }))
-      );
-
-      const totalGross = combinedLineItems.reduce((acc, it) => acc + (it.grossWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.grossWeightKg, 0);
-      const totalNet = combinedLineItems.reduce((acc, it) => acc + (it.netWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.netWeightKg, 0);
-      const totalPkgs = combinedLineItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
-      const totalPalletCount = invoices.reduce((s, i) => s + (i.totalPallets || i.pallets?.length || 1), 0);
-      const hasDangerousGoods = combinedLineItems.some(it => it.isDangerousGood) || invoices.some(i => i.hasDangerousGoods);
-      const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
-
-      const { containers, pallets } = optimizeContainerAllocation(combinedLineItems, undefined, {
-        preferredContainerType: '20GP',
-        explicitPalletCount: totalPalletCount
-      });
-
-      const consolidatedInvoice: ConvertedInvoice = {
-        id: `inv-batch-${Date.now()}`,
-        fileName: `Consolidated_Batch_${invoices.length}_Invoices.pdf`,
-        fileSize: invoices.reduce((s, i) => s + i.fileSize, 0),
-        convertedAt: `Today, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-        rawTimestamp: Date.now(),
-        status: 'converted',
-        invoiceNumber: invoiceNumbers,
-        invoiceDate: primary.invoiceDate,
-        bookingNumber: primary.bookingNumber || `BKG-BATCH-${Date.now().toString().slice(-5)}`,
-        masterBolNumber: `BOL-EKD-BATCH${Date.now().toString().slice(-6)}`,
-        exporterName: primary.exporterName,
-        shipperAddress: primary.shipperAddress,
-        iec: primary.iec,
-        gstin: primary.gstin,
-        adCode: primary.adCode,
-        consigneeName: primary.consigneeName,
-        consigneeAddress: primary.consigneeAddress,
-        notifyParty: primary.notifyParty,
-        portOfLoading: primary.portOfLoading,
-        portOfDischarge: primary.portOfDischarge,
-        destinationCountry: primary.destinationCountry,
-        vesselName: primary.vesselName,
-        voyageNumber: primary.voyageNumber,
-        currency: primary.currency,
-        exchangeRate: primary.exchangeRate,
-        incoterm: primary.incoterm,
-        subtotal: invoices.reduce((s, i) => s + (i.subtotal || 0), 0),
-        gstAmount: invoices.reduce((s, i) => s + (i.gstAmount || 0), 0),
-        invoiceTotal: invoices.reduce((s, i) => s + (i.invoiceTotal || 0), 0),
-        grossWeightKg: totalGross,
-        netWeightKg: totalNet,
-        totalPackages: totalPkgs,
-        packageType: primary.packageType,
-        totalPallets: pallets.length || totalPalletCount,
-        hasDangerousGoods,
-        selectedBolTemplateId: 'bol-standard',
-        selectedDgTemplateId: 'dg-imo-standard',
-        containers,
-        pallets,
-        lineItems: combinedLineItems,
-        pdfUrl: primary.pdfUrl
-      };
-
-      const newDoc: AppDocument = {
-        id: `doc-batch-${Date.now()}`,
-        fileName: consolidatedInvoice.fileName,
-        fileSize: consolidatedInvoice.fileSize,
-        uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: 'processed',
-        invoice: consolidatedInvoice,
-        pdfUrl: primary.pdfUrl
-      };
-
-      const consolidatedIds = new Set(processedDocs.map(d => d.id));
-      const finalDocs = [newDoc, ...currentDocs.filter(d => !consolidatedIds.has(d.id))];
-      setDocuments(finalDocs);
-      setSelectedDocumentId(newDoc.id);
+      const consolidated = buildConsolidatedInvoice(processedDocs.map(d => d.invoice!));
+      setConsolidatedInvoice(consolidated);
+      setSelectedDocumentId('consolidated');
+    } else if (processedDocs.length === 1) {
+      setConsolidatedInvoice(null);
+      setSelectedDocumentId(processedDocs[0].id);
     }
 
     setIsBulkConverting(false);
@@ -495,12 +519,18 @@ export function App() {
       return [updated, ...prev];
     });
 
-    // 2. Clear saved file from working board so the user can add more files
-    setDocuments(prev => {
-      const remaining = prev.filter(d => d.invoice?.id !== updated.id && d.id !== selectedDocumentId);
-      return remaining;
-    });
-    setSelectedDocumentId(null);
+    // 2. If it was consolidatedInvoice, update consolidatedInvoice
+    if (consolidatedInvoice && updated.id === consolidatedInvoice.id) {
+      setConsolidatedInvoice(updated);
+    }
+
+    // 3. Update documents if it matches a document
+    setDocuments(prev => prev.map(d => {
+      if (d.invoice?.id === updated.id) {
+        return { ...d, invoice: updated };
+      }
+      return d;
+    }));
   };
 
   // Save all processed documents to Files with full deduplication and clear the board
@@ -530,96 +560,16 @@ export function App() {
     // Clear saved documents from working board
     setDocuments(prev => prev.filter(d => d.status !== 'processed'));
     setSelectedDocumentId(null);
+    setConsolidatedInvoice(null);
   };
 
   // Consolidate multiple processed invoices into a unified Master Shipment
   const handleConsolidateBatch = () => {
     const processedDocs = documents.filter(d => d.status === 'processed' && d.invoice);
     if (processedDocs.length < 2) return;
-
-    const invoices = processedDocs.map(d => d.invoice!);
-    const primary = invoices[0];
-
-    // Merge line items
-    const combinedLineItems = invoices.flatMap((inv, invIdx) => 
-      inv.lineItems.map((item, itemIdx) => ({
-        ...item,
-        id: `item-batch-${invIdx}-${itemIdx}-${item.id}`,
-        itemNumber: itemIdx + 1
-      }))
-    );
-
-    const totalGross = combinedLineItems.reduce((acc, it) => acc + (it.grossWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.grossWeightKg, 0);
-    const totalNet = combinedLineItems.reduce((acc, it) => acc + (it.netWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.netWeightKg, 0);
-    const totalPkgs = combinedLineItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
-    const totalPalletCount = invoices.reduce((s, i) => s + (i.totalPallets || i.pallets?.length || 1), 0);
-
-    const hasDangerousGoods = combinedLineItems.some(it => it.isDangerousGood) || invoices.some(i => i.hasDangerousGoods);
-    const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
-
-    // Re-run LAFF solver for the consolidated batch
-    const { containers, pallets } = optimizeContainerAllocation(combinedLineItems, undefined, {
-      preferredContainerType: '20GP',
-      explicitPalletCount: totalPalletCount
-    });
-
-    const consolidatedInvoice: ConvertedInvoice = {
-      id: `inv-batch-${Date.now()}`,
-      fileName: `Consolidated_Batch_${invoices.length}_Invoices.pdf`,
-      fileSize: invoices.reduce((s, i) => s + i.fileSize, 0),
-      convertedAt: `Today, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-      rawTimestamp: Date.now(),
-      status: 'converted',
-      invoiceNumber: invoiceNumbers,
-      invoiceDate: primary.invoiceDate,
-      bookingNumber: primary.bookingNumber || `BKG-BATCH-${Date.now().toString().slice(-5)}`,
-      masterBolNumber: `BOL-EKD-BATCH${Date.now().toString().slice(-6)}`,
-      exporterName: primary.exporterName,
-      shipperAddress: primary.shipperAddress,
-      iec: primary.iec,
-      gstin: primary.gstin,
-      adCode: primary.adCode,
-      consigneeName: primary.consigneeName,
-      consigneeAddress: primary.consigneeAddress,
-      notifyParty: primary.notifyParty,
-      portOfLoading: primary.portOfLoading,
-      portOfDischarge: primary.portOfDischarge,
-      destinationCountry: primary.destinationCountry,
-      vesselName: primary.vesselName,
-      voyageNumber: primary.voyageNumber,
-      currency: primary.currency,
-      exchangeRate: primary.exchangeRate,
-      incoterm: primary.incoterm,
-      subtotal: invoices.reduce((s, i) => s + (i.subtotal || 0), 0),
-      gstAmount: invoices.reduce((s, i) => s + (i.gstAmount || 0), 0),
-      invoiceTotal: invoices.reduce((s, i) => s + (i.invoiceTotal || 0), 0),
-      grossWeightKg: totalGross,
-      netWeightKg: totalNet,
-      totalPackages: totalPkgs,
-      packageType: primary.packageType,
-      totalPallets: pallets.length || totalPalletCount,
-      hasDangerousGoods,
-      selectedBolTemplateId: 'bol-standard',
-      selectedDgTemplateId: 'dg-imo-standard',
-      containers,
-      pallets,
-      lineItems: combinedLineItems,
-      pdfUrl: primary.pdfUrl
-    };
-
-    const newDoc: AppDocument = {
-      id: `doc-batch-${Date.now()}`,
-      fileName: consolidatedInvoice.fileName,
-      fileSize: consolidatedInvoice.fileSize,
-      uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      status: 'processed',
-      invoice: consolidatedInvoice,
-      pdfUrl: primary.pdfUrl
-    };
-
-    const consolidatedIds = new Set(processedDocs.map(d => d.id));
-    setDocuments(prev => [newDoc, ...prev.filter(d => !consolidatedIds.has(d.id))]);
-    setSelectedDocumentId(newDoc.id);
+    const consolidated = buildConsolidatedInvoice(processedDocs.map(d => d.invoice!));
+    setConsolidatedInvoice(consolidated);
+    setSelectedDocumentId('consolidated');
   };
 
   // Open a saved file in the Document Converter for editing
@@ -676,6 +626,15 @@ export function App() {
       if (selectedDocumentId === docId) {
         setSelectedDocumentId(remaining.length > 0 ? remaining[0].id : null);
       }
+      const processed = remaining.filter(d => d.status === 'processed' && d.invoice);
+      if (processed.length >= 2) {
+        setConsolidatedInvoice(buildConsolidatedInvoice(processed.map(d => d.invoice!)));
+      } else {
+        setConsolidatedInvoice(null);
+        if (selectedDocumentId === 'consolidated') {
+          setSelectedDocumentId(remaining.length > 0 ? remaining[0].id : null);
+        }
+      }
       try {
         localStorage.setItem(LOCAL_STORAGE_DOCS_KEY, JSON.stringify(remaining));
       } catch (err) {
@@ -688,6 +647,7 @@ export function App() {
   // Clear all working documents
   const handleClearAllDocuments = () => {
     setDocuments([]);
+    setConsolidatedInvoice(null);
     setSelectedDocumentId(null);
     try {
       localStorage.setItem(LOCAL_STORAGE_DOCS_KEY, JSON.stringify([]));
@@ -820,7 +780,8 @@ export function App() {
           <>
             <CenterColumn
               documents={documents}
-              selectedDocumentId={activeDocument?.id || null}
+              selectedDocumentId={selectedDocumentId}
+              consolidatedInvoice={consolidatedInvoice}
               onSelectDocument={(id) => setSelectedDocumentId(id)}
               onFilesSelected={handleFilesSelected}
               onConvertDocument={handleConvertDocument}
@@ -835,6 +796,8 @@ export function App() {
             <PreviewPane
               documents={documents}
               activeDocument={activeDocument}
+              activeInvoice={activeInvoice}
+              consolidatedInvoice={consolidatedInvoice}
               onSave={handleSaveInvoiceEdit}
               onPortChange={handlePortChange}
               masterFormats={masterFormats}

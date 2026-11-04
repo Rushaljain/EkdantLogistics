@@ -14,13 +14,14 @@ import {
   Layers
 } from 'lucide-react';
 import { UploadZone } from './UploadZone';
-import type { AppDocument, CustomsPort } from '../types';
+import type { AppDocument, CustomsPort, ConvertedInvoice } from '../types';
 import { generateMasterBol, downloadDocumentHtml } from '../utils/bolGenerator';
 import { generateDgDeclaration } from '../utils/dgGenerator';
 
 interface CenterColumnProps {
   documents: AppDocument[];
   selectedDocumentId: string | null;
+  consolidatedInvoice?: ConvertedInvoice | null;
   onSelectDocument: (docId: string) => void;
   onFilesSelected: (files: File[]) => void;
   onConvertDocument: (docId: string) => void;
@@ -36,6 +37,7 @@ interface CenterColumnProps {
 export const CenterColumn: React.FC<CenterColumnProps> = ({
   documents,
   selectedDocumentId,
+  consolidatedInvoice,
   onSelectDocument,
   onFilesSelected,
   onConvertDocument,
@@ -142,6 +144,79 @@ export const CenterColumn: React.FC<CenterColumnProps> = ({
 
         {/* Scrollable Document List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {consolidatedInvoice && documents.length > 1 && (
+            <div
+              onClick={() => onSelectDocument('consolidated')}
+              className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                selectedDocumentId === 'consolidated'
+                  ? 'bg-zinc-900 text-white border-zinc-900 ring-1 ring-zinc-900 shadow-xs'
+                  : 'bg-zinc-100 hover:bg-zinc-200/80 border-zinc-300 text-zinc-900 shadow-2xs'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1.5">
+                <div className="flex items-center space-x-1.5 min-w-0">
+                  <span className={`font-semibold text-xs font-mono truncate ${selectedDocumentId === 'consolidated' ? 'text-white' : 'text-zinc-900'}`}>
+                    Consolidated Master ({documents.filter(d => d.status === 'processed').length} Invoices)
+                  </span>
+                  <span className={`inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded text-[10px] font-medium shrink-0 ${
+                    selectedDocumentId === 'consolidated'
+                      ? 'bg-zinc-800 text-zinc-200 border border-zinc-700'
+                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                  }`}>
+                    <CheckCircle2 className="w-2.5 h-2.5" />
+                    <span>1 DG & 1 BL</span>
+                  </span>
+                </div>
+                <span className={`text-[10px] font-mono font-medium shrink-0 ${selectedDocumentId === 'consolidated' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                  MASTER
+                </span>
+              </div>
+              <div className={`flex items-center justify-between mt-2 pt-1.5 text-[11px] gap-2 border-t ${
+                selectedDocumentId === 'consolidated' ? 'border-zinc-800 text-zinc-300' : 'border-zinc-200 text-zinc-600'
+              }`}>
+                <div className="truncate min-w-0">
+                  <span className="font-mono text-[10px]">
+                    {consolidatedInvoice.containers?.length || 1} Cont • {Math.round(consolidatedInvoice.grossWeightKg || 0).toLocaleString()} kg • {consolidatedInvoice.totalPallets} Plts
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const bol = generateMasterBol(consolidatedInvoice);
+                      downloadDocumentHtml(bol);
+                    }}
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                      selectedDocumentId === 'consolidated'
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700'
+                        : 'bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-200'
+                    }`}
+                    title="Download Master BOL"
+                  >
+                    BOL
+                  </button>
+                  {consolidatedInvoice.hasDangerousGoods && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const dg = generateDgDeclaration(consolidatedInvoice);
+                        downloadDocumentHtml(dg);
+                      }}
+                      className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                        selectedDocumentId === 'consolidated'
+                          ? 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700'
+                          : 'bg-white hover:bg-zinc-100 text-zinc-800 border border-zinc-200'
+                      }`}
+                      title="Download Consolidated #DG Declaration"
+                    >
+                      #DG
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {documents.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6">
               <div className="w-10 h-10 rounded-xl bg-zinc-100 flex items-center justify-center text-zinc-400 mb-2 border border-zinc-200">
