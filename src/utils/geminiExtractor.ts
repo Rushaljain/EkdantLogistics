@@ -67,6 +67,8 @@ Extract structured JSON strictly matching this schema:
   "totalInnerPackages": 1,
   "innerPackageType": "BOX or CARTON or FIBREBOARD BOX",
   "totalBaseUnits": 1,
+  "palletRanges": "5644 - 5655 or sequential ranges",
+  "brandName": "Brand name if visible",
   "hasDangerousGoods": false,
   "lineItems": [
     {
@@ -115,8 +117,8 @@ export async function extractInvoiceFromPdf(
   const cleanKey = apiKey.trim();
   const genAI = new GoogleGenerativeAI(cleanKey);
 
-  // Models to try in order of priority: 3.5-flash, 3.5-flash-lite, 3.8-flash, flash-latest
-  const modelsToTry = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  // Models to try in order of priority: 3.1-flash-lite, flash-latest, 3.8-flash, 3.7-flash
+  const modelsToTry = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.7-flash'];
   let text = '';
   let lastError: any = null;
 
@@ -226,16 +228,24 @@ export async function extractInvoiceFromPdf(
     };
   });
 
-  const itemsSum = Number(items.reduce((s, it) => s + it.total, 0).toFixed(2));
-  const parsedGst = Number(parsed.gstAmount) || 0;
-  const parsedTotal = Number(parsed.invoiceTotal) || itemsSum;
+  function parseNumeric(val: any): number {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    const cleaned = String(val).replace(/,/g, '').trim();
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
+  }
 
-  const totalGrossKg = Number(parsed.grossWeightKg) || Number(items.reduce((s, it) => s + it.grossWeightKg, 0).toFixed(2)) || 0;
-  const totalNetKg = Number(parsed.netWeightKg) || Number(items.reduce((s, it) => s + it.netWeightKg, 0).toFixed(2)) || Number((totalGrossKg * 0.92).toFixed(2));
-  const totalPallets = Number(parsed.totalPallets) || Number(parsed.totalOuterPackages) || Math.max(1, Math.ceil(totalGrossKg / 1885));
-  const totalOuter = Number(parsed.totalOuterPackages) || totalPallets;
-  const totalInner = Number(parsed.totalInnerPackages) || Number(parsed.totalPackages) || items.reduce((s, it) => s + it.quantity, 0);
-  const totalBase = Number(parsed.totalBaseUnits) || totalInner;
+  const itemsSum = Number(items.reduce((s, it) => s + it.total, 0).toFixed(2));
+  const parsedGst = parseNumeric(parsed.gstAmount);
+  const parsedTotal = parseNumeric(parsed.invoiceTotal) || itemsSum;
+
+  const totalGrossKg = parseNumeric(parsed.grossWeightKg) || Number(items.reduce((s, it) => s + it.grossWeightKg, 0).toFixed(2)) || 0;
+  const totalNetKg = parseNumeric(parsed.netWeightKg) || Number(items.reduce((s, it) => s + it.netWeightKg, 0).toFixed(2)) || Number((totalGrossKg * 0.92).toFixed(2));
+  const totalPallets = parseNumeric(parsed.totalPallets) || parseNumeric(parsed.totalOuterPackages) || Math.max(1, Math.ceil(totalGrossKg / 1885));
+  const totalOuter = parseNumeric(parsed.totalOuterPackages) || totalPallets;
+  const totalInner = parseNumeric(parsed.totalInnerPackages) || parseNumeric(parsed.totalPackages) || items.reduce((s, it) => s + it.quantity, 0);
+  const totalBase = parseNumeric(parsed.totalBaseUnits) || totalInner;
 
   // 3. Multi-Container & Pallet Allocation via LAFF Solver (20' GP, 25T cap, 11-pallet cap)
   const { containers, pallets } = allocateContainers(items, '20GP', totalPallets);
@@ -296,7 +306,7 @@ export async function extractInvoiceFromPdf(
     consigneeName: realConsigneeName,
     consigneeAddress: parsed.consigneeAddress?.trim() || undefined,
     notifyParty: parsed.notifyParty?.trim() || realConsigneeName,
-    portOfLoading: portOfLoadingStr,
+    portOfLoading: parsed.portOfLoading?.trim() || portOfLoadingStr,
     portOfDischarge: parsed.portOfDischarge?.trim() || '',
     destinationCountry: parsed.destinationCountry?.trim() || '',
     vesselName: parsed.vesselName?.trim() || undefined,
@@ -318,6 +328,8 @@ export async function extractInvoiceFromPdf(
     innerPackageType: parsed.innerPackageType || 'BOX',
     totalBaseUnits: totalBase,
     fieldTraceability,
+    palletRanges: parsed.palletRanges ? [String(parsed.palletRanges).trim()] : undefined,
+    brandName: parsed.brandName ? String(parsed.brandName).trim() : undefined,
     hasDangerousGoods: hasDg,
     selectedBolTemplateId: 'bol-standard',
     selectedDgTemplateId: 'dg-imo-standard',

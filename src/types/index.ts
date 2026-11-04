@@ -92,6 +92,34 @@ export interface MasterFormat {
   uploadedAt?: string;
   fileContent?: string;
   fileType?: string;
+  
+  // Format-Level Carrier & Shipment Defaults
+  carrierName?: string;
+  bookingNumber?: string;
+  vesselName?: string;
+  voyageNumber?: string;
+  placeOfReceipt?: string;
+  portOfLoading?: string;
+  portOfDischarge?: string;
+  portOfDischargeDg?: string;
+  finalDestination?: string;
+  destinationCountry?: string;
+  containerNumber?: string;
+  sealNumber?: string;
+  containerType?: ContainerType;
+  tareWeightKg?: number;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  dgDeclarantName?: string;
+  dgDeclarantStatus?: string;
+  dgDeclarationPlaceAndDate?: string;
+  unPackingCode?: string;
+  segregationGroup?: string;
+  emsNumber?: string;
+  shippingBillNumbers?: string;
+  brandName?: string;
+  shippingMarks?: string;
+  blDeclaredNetWeightKg?: number;
 }
 
 export interface DocumentTemplate {

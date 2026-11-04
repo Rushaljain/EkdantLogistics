@@ -56,6 +56,8 @@ export interface ContainerOptimizerOptions {
   maxPayloadOverrideKg?: number;
   maxPalletsOverride?: number;
   preservePalletOrder?: boolean;
+  preferredContainerNumber?: string;
+  preferredSealNumber?: string;
 }
 
 export interface ContainerOptimizationSummary {
@@ -296,7 +298,7 @@ export function optimizeContainerAllocation(
     : clusterLineItemsIntoPallets(lineItems, options.explicitPalletCount);
 
   if (rawPallets.length === 0) {
-    const emptyContainer = createOptimizedContainer(containerType, 0, false, maxPayloadKg, maxPallets);
+    const emptyContainer = createOptimizedContainer(containerType, 0, false, maxPayloadKg, maxPallets, options.preferredContainerNumber, options.preferredSealNumber);
     return {
       containers: [emptyContainer],
       pallets: [],
@@ -333,7 +335,7 @@ export function optimizeContainerAllocation(
 
   // 3. Multi-Container Allocation with Spillover
   const containers: ContainerAllocation[] = [];
-  let currentCont = createOptimizedContainer(containerType, 0, false, maxPayloadKg, maxPallets);
+  let currentCont = createOptimizedContainer(containerType, 0, false, maxPayloadKg, maxPallets, options.preferredContainerNumber, options.preferredSealNumber);
 
   for (let i = 0; i < sortedPallets.length; i++) {
     const pallet = sortedPallets[i];
@@ -427,11 +429,13 @@ function createOptimizedContainer(
   index: number,
   isSpillover: boolean,
   maxPayloadKg: number,
-  maxPallets: number
+  maxPallets: number,
+  preferredContainerNumber?: string,
+  preferredSealNumber?: string
 ): ContainerAllocation {
   const spec = CONTAINER_SPECS[type];
-  const containerNumber = generateIsoContainerNumber(index);
-  const sealNumber = generateSealNumber(index);
+  const containerNumber = (index === 0 && preferredContainerNumber) ? preferredContainerNumber : generateIsoContainerNumber(index);
+  const sealNumber = (index === 0 && preferredSealNumber) ? preferredSealNumber : generateSealNumber(index);
 
   return {
     id: `cont-${Date.now()}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,

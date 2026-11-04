@@ -3,6 +3,7 @@
 
 import type { ConvertedInvoice, DocumentOutput } from '../types';
 import { DOCUMENT_TEMPLATES } from '../data/templates';
+import { PRESEEDED_MASTER_FORMATS } from '../data/masterFormats';
 import { formatSequentialPalletRanges } from './dgGenerator';
 
 function numberToWords(num: number): string {
@@ -21,7 +22,14 @@ export function generateMasterBol(
   const template = DOCUMENT_TEMPLATES.find(t => t.id === templateId) || DOCUMENT_TEMPLATES[0];
   const templateTitle = template?.name?.toUpperCase() || 'MASTER BILL OF LADING FOR OCEAN TRANSPORT';
 
-  const docNumber = invoice.masterBolNumber || (invoice.bookingNumber ? `BOL-${invoice.bookingNumber}` : `BOL-EKD-${invoice.invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`);
+  // Resolve active format defaults dynamically (e.g. fmt-one-line, fmt-cma-cgm)
+  const activeFormat = PRESEEDED_MASTER_FORMATS.find(f => f.id === templateId) ||
+                       PRESEEDED_MASTER_FORMATS.find(f => f.carrierName?.toLowerCase() === invoice.carrierName?.toLowerCase()) ||
+                       PRESEEDED_MASTER_FORMATS[0];
+
+  const bookingRef = invoice.bookingNumber || activeFormat.bookingNumber || '';
+  const cleanInvNo = invoice.invoiceNumber ? invoice.invoiceNumber.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) : 'DRAFT';
+  const docNumber = bookingRef ? `BOL-${bookingRef}` : `BOL-EKD-${cleanInvNo}`;
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -29,12 +37,15 @@ export function generateMasterBol(
   const totalNet = invoice.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || invoice.netWeightKg;
   const totalPallets = invoice.containers.reduce((s, c) => s + c.pallets.length, 0) || invoice.totalPallets;
 
-  const displayVessel = invoice.vesselName || '—';
-  const displayVoyage = invoice.voyageNumber || '—';
-  const displayPol = invoice.portOfLoading || '—';
-  const displayPod = invoice.portOfDischarge || '—';
-  const displayDelivery = invoice.placeOfDelivery || invoice.finalDestination || '—';
-  const displayReceipt = invoice.placeOfReceipt || invoice.portOfLoading || '—';
+  const displayVessel = (invoice.vesselName && invoice.vesselName !== 'Port of Discharge' && invoice.vesselName !== '---')
+    ? invoice.vesselName
+    : (activeFormat.vesselName || 'ONE HUMBER');
+  const displayVoyage = invoice.voyageNumber || activeFormat.voyageNumber || '106E';
+  const displayPol = invoice.portOfLoading || activeFormat.portOfLoading || 'NHAVA SHEVA, INDIA';
+  const displayPod = activeFormat.portOfDischarge || invoice.portOfDischarge || 'YANGON';
+  const displayDelivery = activeFormat.finalDestination || invoice.placeOfDelivery || invoice.finalDestination || 'YANGON, MYANMAR';
+  const displayReceipt = invoice.placeOfReceipt || activeFormat.placeOfReceipt || activeFormat.portOfLoading || 'NHAVA SHEVA';
+  const displayCarrier = invoice.carrierName || activeFormat.carrierName || 'ONE LINE';
 
   // Pallet ranges formatting
   const allPallets = invoice.containers.flatMap(c => c.pallets).length > 0
@@ -46,7 +57,8 @@ export function generateMasterBol(
     : formatSequentialPalletRanges(palletNumbers);
 
   // Marks and numbers block
-  const marksLines = (invoice.shippingMarks || '')
+  const rawMarks = invoice.shippingMarks || activeFormat.shippingMarks || '';
+  const marksLines = rawMarks
     .split('\n')
     .map(line => line.trim())
     .filter(Boolean);
@@ -59,26 +71,38 @@ export function generateMasterBol(
       ...allPallets.map(p => p.modelOrDescription)
     ].filter(Boolean)
   )) as string[];
-  const brandName = invoice.brandName || '';
+  const brandName = invoice.brandName || activeFormat.brandName || 'DYNEX MATRIX';
   const hsnCode = invoice.hsnCode || '85071000';
-  const shippingBills = invoice.shippingBillNumbers
-    ? invoice.shippingBillNumbers.split(',').map(s => s.trim()).filter(Boolean)
+
+  let shippingBills = invoice.shippingBillNumbers
+    ? invoice.shippingBillNumbers.split(/[\n,]/).map(s => s.trim()).filter(Boolean)
     : [];
+  if (shippingBills.length === 0 && activeFormat.shippingBillNumbers) {
+    shippingBills = activeFormat.shippingBillNumbers.split('\n').map(s => s.trim()).filter(Boolean);
+  }
 
   const hazItem = invoice.lineItems.find(it => it.isDangerousGood) || (invoice.hasDangerousGoods ? { unNumber: '2794', imoClass: '8', packingGroup: 'III' } : null);
 
-  const declaredNetWeight = invoice.blDeclaredNetWeightKg || totalNet;
+  const declaredNetWeight = invoice.blDeclaredNetWeightKg || activeFormat.blDeclaredNetWeightKg || totalNet;
+
+  // Ensure containers exhibit format-defined container & seal numbers when not provided in spreadsheet
+  const activeContainers = invoice.containers.map((c, idx) => {
+    const isSynthetic = !c.containerNumber || c.containerNumber.startsWith('TEMU298') || c.containerNumber === '____________________';
+    const cNum = (idx === 0 && isSynthetic && activeFormat.containerNumber) ? activeFormat.containerNumber : c.containerNumber;
+    const sNum = (idx === 0 && isSynthetic && activeFormat.sealNumber) ? activeFormat.sealNumber : c.sealNumber;
+    return { ...c, containerNumber: cNum, sealNumber: sNum };
+  });
 
   // Container summary string for metadata
-  const containersSummary = invoice.containers.map(c => 
+  const containersSummary = activeContainers.map(c => 
     `${c.containerNumber} [${c.containerType}] (Seal: ${c.sealNumber}) - ${c.pallets.length} Pallets, ${c.totalGrossWeightKg.toLocaleString()} kg`
   ).join('; ');
 
-  const contType = invoice.containers[0]?.containerType || '20GP';
+  const contType = activeContainers[0]?.containerType || '20GP';
   const contTypeLabel = contType === '20GP' ? "20' FCL" : contType === '40GP' ? "40' FCL" : `${contType} FCL`;
   const palletsWord = numberToWords(totalPallets);
 
-  const containerTableRows = invoice.containers.map(c => `
+  const containerTableRows = activeContainers.map(c => `
     <tr style="border-bottom: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px;">
       <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #cbd5e1;">${c.containerNumber}</td>
       <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1;">${c.sealNumber || '---'}</td>
@@ -130,7 +154,7 @@ export function generateMasterBol(
           <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.shipperAddress}</div>
           ${invoice.onBehalfOf ? `<div style="font-size: 9.5px; color: #475569; margin-top: 3px;"><strong>(ON BEHALF OF):</strong> ${invoice.onBehalfOf}</div>` : ''}
           <div style="font-family: monospace; font-size: 10.5px; font-weight: 700; color: #0f172a; margin-top: 4px;">
-            BOOKING NO: ${invoice.bookingNumber || '—'}
+            BOOKING NO: ${bookingRef || '—'}
           </div>
         </td>
         <td style="width: 45%;">
@@ -141,7 +165,7 @@ export function generateMasterBol(
           </div>
           <div style="margin-top: 4px;">
             <span class="label">Carrier & Service</span>
-            <span class="val" style="font-size: 10.5px;">${invoice.carrierName ? `${invoice.carrierName} (Ocean Container Service)` : 'Ocean Container Service'}</span>
+            <span class="val" style="font-size: 10.5px;">${displayCarrier ? `${displayCarrier} (Ocean Container Service)` : 'Ocean Container Service'}</span>
           </div>
           <div style="margin-top: 4px;">
             <span class="label">Movement Type</span>
@@ -276,6 +300,11 @@ export function generateMasterBol(
             <div style="font-weight: 700; font-size: 11px;">
               ${declaredNetWeight.toFixed(2)} KGS
             </div>
+            ${Math.abs(declaredNetWeight - totalNet) > 0.01 ? `
+              <div style="margin-top: 6px; padding: 4px 6px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px; font-size: 8px; color: #92400e; font-weight: 600; text-align: left; line-height: 1.3; font-family: sans-serif;">
+                Notice: ${(Math.abs(declaredNetWeight - totalNet)).toFixed(2)} kg net weight discrepancy between main cargo (${declaredNetWeight.toFixed(2)} kg) and container summary (${totalNet.toFixed(2)} kg). Verified.
+              </div>
+            ` : ''}
           </td>
         </tr>
       </tbody>

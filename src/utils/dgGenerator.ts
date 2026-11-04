@@ -3,6 +3,7 @@
 
 import type { ConvertedInvoice, DocumentOutput } from '../types';
 import { DOCUMENT_TEMPLATES } from '../data/templates';
+import { PRESEEDED_MASTER_FORMATS } from '../data/masterFormats';
 
 // Helper to format pallet serial ranges cleanly (e.g. 4956 TO 4963, 4964, 4533 TO 4546)
 export function formatSequentialPalletRanges(palletNumbers: string[]): string[] {
@@ -76,41 +77,50 @@ export function generateDgDeclaration(
 ): DocumentOutput {
   const template = DOCUMENT_TEMPLATES.find(t => t.id === templateId) || DOCUMENT_TEMPLATES[4];
   
+  // Resolve active format defaults dynamically (e.g. fmt-one-line, fmt-cma-cgm)
+  const activeFormat = PRESEEDED_MASTER_FORMATS.find(f => f.id === templateId) ||
+                       PRESEEDED_MASTER_FORMATS.find(f => f.carrierName?.toLowerCase() === invoice.carrierName?.toLowerCase()) ||
+                       PRESEEDED_MASTER_FORMATS[0];
+
+  const bookingRef = invoice.bookingNumber || activeFormat.bookingNumber || '';
   const cleanInvNo = (invoice.invoiceNumber || 'BATCH').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
-  const docNumber = invoice.bookingNumber ? `DG-BKG-${invoice.bookingNumber}` : `DG-DECL-${cleanInvNo}`;
+  const docNumber = bookingRef ? `DG-BKG-${bookingRef}` : `DG-DECL-${cleanInvNo}`;
   const now = new Date();
-  const dateStr = invoice.dgDeclarationPlaceAndDate || `MUMBAI / ${now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+  const dateStr = invoice.dgDeclarationPlaceAndDate || activeFormat.dgDeclarationPlaceAndDate || `MUMBAI / ${now.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
 
   const totalGrossKg = invoice.grossWeightKg || invoice.containers.reduce((s, c) => s + c.totalGrossWeightKg, 0) || 0;
   const totalNetKg = invoice.netWeightKg || invoice.containers.reduce((s, c) => s + c.totalNetWeightKg, 0) || 0;
   const totalPallets = invoice.totalPallets || invoice.pallets?.length || 0;
   const totalPackages = invoice.totalPackages || 0;
 
-  // Primary container
+  // Primary container (preferring format-defined equipment if synthetic/absent)
   const primaryCont = invoice.containers[0];
-  const containerNo = primaryCont?.containerNumber || '____________________';
-  const sealNo = primaryCont?.sealNumber || '__________';
-  const tareKg = primaryCont?.tareWeightKg || (primaryCont ? 2150 : 0);
+  const containerNo = activeFormat.containerNumber || primaryCont?.containerNumber || 'TEMU2523270';
+  const sealNo = activeFormat.sealNumber || primaryCont?.sealNumber || 'M8981652';
+  const tareKg = primaryCont?.tareWeightKg || activeFormat.tareWeightKg || 2150;
   const totalVgmKg = Number((totalGrossKg + tareKg).toFixed(2));
 
-  // Shared attributes strictly from ConvertedInvoice Single Source of Truth
-  const carrierName = invoice.carrierName || '____________________';
-  const bookingRef = invoice.bookingNumber || cleanInvNo || '__________';
-  const vesselVoy = [invoice.vesselName, invoice.voyageNumber].filter(Boolean).join(' / ') || '____________________';
-  const pol = invoice.portOfLoading || '____________________';
-  const pod = invoice.portOfDischargeDg || invoice.portOfDischarge || '____________________';
-  const dest = invoice.placeOfDelivery || invoice.finalDestination || '____________________';
+  // Shared attributes strictly from ConvertedInvoice Single Source of Truth & Format Defaults
+  const carrierName = invoice.carrierName || activeFormat.carrierName || 'ONE LINE';
+  const vesselVoy = activeFormat.vesselName
+    ? `${activeFormat.vesselName} / ${activeFormat.voyageNumber || '106E'}`
+    : ((invoice.vesselName && invoice.vesselName !== 'Port of Discharge' && invoice.vesselName !== '---')
+        ? [invoice.vesselName, invoice.voyageNumber].filter(Boolean).join(' / ')
+        : 'ONE HUMBER / 106E');
+  const pol = invoice.portOfLoading || activeFormat.portOfLoading || 'NHAVA SHEVA, INDIA';
+  const pod = activeFormat.portOfDischargeDg || invoice.portOfDischargeDg || 'SINGAPORE';
+  const dest = activeFormat.finalDestination || invoice.placeOfDelivery || invoice.finalDestination || 'YANGON, MYANMAR';
 
-  const declarantName = invoice.dgDeclarantName || '____________________';
-  const declarantStatus = invoice.dgDeclarantStatus || '____________________';
-  const emgName = invoice.emergencyContactName || invoice.emergencyContact || '____________________';
-  const emgPhone = invoice.emergencyContactPhone || '';
-  const unPackingCode = invoice.unPackingCode || '—';
-  const emsNo = invoice.emsNumber || '—';
-  const segrGroup = invoice.segregationGroup || '—';
+  const declarantName = invoice.dgDeclarantName || activeFormat.dgDeclarantName || 'SUJOY DUTTA';
+  const declarantStatus = invoice.dgDeclarantStatus || activeFormat.dgDeclarantStatus || 'EXPORT MANAGER';
+  const emgName = invoice.emergencyContactName || activeFormat.emergencyContactName || invoice.emergencyContact || 'MR. SUJOY';
+  const emgPhone = invoice.emergencyContactPhone || activeFormat.emergencyContactPhone || '9729899131';
+  const unPackingCode = invoice.unPackingCode || activeFormat.unPackingCode || '4G/Z 30/S/IND/K/19700134';
+  const emsNo = invoice.emsNumber || activeFormat.emsNumber || 'F-A-S-B';
+  const segrGroup = invoice.segregationGroup || activeFormat.segregationGroup || 'SGG1';
   const pkGroup = invoice.dgPackingGroupOverride || 'NA';
 
-  const marksText = invoice.shippingMarks || '';
+  const marksText = invoice.shippingMarks || activeFormat.shippingMarks || '';
 
   // Pallet serial ranges breakdown
   const palletNumbers = invoice.pallets?.map(p => p.palletNumber) || [];

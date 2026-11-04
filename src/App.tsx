@@ -114,15 +114,21 @@ export function App() {
     const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
 
     const allPallets = invoices.flatMap(inv => inv.pallets || []);
+    const defaultFormat = PRESEEDED_MASTER_FORMATS[0];
+
     const { containers, pallets } = allPallets.length > 0
       ? optimizeContainerAllocation(combinedLineItems, allPallets, {
           preferredContainerType: '20GP',
-          preservePalletOrder: true
+          preservePalletOrder: true,
+          preferredContainerNumber: defaultFormat.containerNumber,
+          preferredSealNumber: defaultFormat.sealNumber
         })
       : optimizeContainerAllocation(combinedLineItems, undefined, {
           preferredContainerType: '20GP',
           explicitPalletCount: totalPalletCount,
-          preservePalletOrder: true
+          preservePalletOrder: true,
+          preferredContainerNumber: defaultFormat.containerNumber,
+          preferredSealNumber: defaultFormat.sealNumber
         });
 
     const allPalletRanges = invoices.flatMap(i => i.palletRanges || []).filter(Boolean);
@@ -130,27 +136,28 @@ export function App() {
       ? allPalletRanges
       : formatSequentialPalletRanges(allPallets.map(p => p.palletNumber).filter(Boolean));
 
-    const bookingNumber = primary.bookingNumber || '';
-    const vesselName = primary.vesselName || '';
-    const voyageNumber = primary.voyageNumber || '';
-    const carrierName = primary.carrierName || '';
-    const placeOfReceipt = primary.placeOfReceipt || primary.portOfLoading || '';
-    const portOfDischargeDg = primary.portOfDischargeDg || primary.portOfDischarge || '';
-    const placeOfDelivery = primary.placeOfDelivery || primary.finalDestination || '';
-    const finalDestination = primary.finalDestination || placeOfDelivery;
-    const portOfDischarge = primary.portOfDischarge || '';
-    const shippingMarks = primary.shippingMarks || '';
-    const brandName = primary.brandName || '';
-    const shippingBillNumbers = primary.shippingBillNumbers || '';
+    const bookingNumber = primary.bookingNumber || defaultFormat.bookingNumber || '';
+    const vesselName = (primary.vesselName && primary.vesselName !== 'Port of Discharge' && primary.vesselName !== '---') ? primary.vesselName : (defaultFormat.vesselName || '');
+    const voyageNumber = primary.voyageNumber || defaultFormat.voyageNumber || '';
+    const carrierName = primary.carrierName || defaultFormat.carrierName || '';
+    const placeOfReceipt = primary.placeOfReceipt || defaultFormat.placeOfReceipt || primary.portOfLoading || '';
+    const portOfDischargeDg = defaultFormat.portOfDischargeDg || primary.portOfDischargeDg || primary.portOfDischarge || '';
+    const placeOfDelivery = primary.placeOfDelivery || defaultFormat.finalDestination || primary.finalDestination || '';
+    const finalDestination = defaultFormat.finalDestination || primary.finalDestination || placeOfDelivery;
+    const portOfDischarge = defaultFormat.portOfDischarge || primary.portOfDischarge || '';
+    const shippingMarks = invoices.map(i => i.shippingMarks).filter(Boolean)[0] || defaultFormat.shippingMarks || '';
+    const brandName = invoices.map(i => i.brandName).filter(Boolean)[0] || defaultFormat.brandName || '';
+    const shippingBillNumbers = primary.shippingBillNumbers || defaultFormat.shippingBillNumbers || '';
     const freeTimeClause = primary.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION';
-    const dgDeclarantName = primary.dgDeclarantName || '';
-    const dgDeclarantStatus = primary.dgDeclarantStatus || '';
-    const dgDeclarationPlaceAndDate = primary.dgDeclarationPlaceAndDate || '';
-    const emergencyContactName = primary.emergencyContactName || '';
-    const emergencyContactPhone = primary.emergencyContactPhone || '';
-    const unPackingCode = primary.unPackingCode || '';
-    const segregationGroup = primary.segregationGroup || '';
-    const emsNumber = primary.emsNumber || '';
+    const dgDeclarantName = defaultFormat.dgDeclarantName || primary.dgDeclarantName || '';
+    const dgDeclarantStatus = defaultFormat.dgDeclarantStatus || primary.dgDeclarantStatus || '';
+    const dgDeclarationPlaceAndDate = defaultFormat.dgDeclarationPlaceAndDate || primary.dgDeclarationPlaceAndDate || '';
+    const emergencyContactName = defaultFormat.emergencyContactName || primary.emergencyContactName || '';
+    const emergencyContactPhone = defaultFormat.emergencyContactPhone || primary.emergencyContactPhone || '';
+    const unPackingCode = defaultFormat.unPackingCode || primary.unPackingCode || '';
+    const segregationGroup = defaultFormat.segregationGroup || primary.segregationGroup || '';
+    const emsNumber = defaultFormat.emsNumber || primary.emsNumber || '';
+    const blDeclaredNetWeightKg = defaultFormat.blDeclaredNetWeightKg || primary.blDeclaredNetWeightKg;
 
     return {
       id: `inv-batch-${Date.now()}`,
@@ -189,7 +196,7 @@ export function App() {
       freightTerms: 'FREIGHT COLLECT',
       movementType: 'FCL / CY',
       freeTimeClause,
-      blDeclaredNetWeightKg: primary.blDeclaredNetWeightKg || totalNet,
+      blDeclaredNetWeightKg: blDeclaredNetWeightKg || primary.blDeclaredNetWeightKg || totalNet,
       dgPackingGroupOverride: primary.dgPackingGroupOverride || (hasDangerousGoods ? 'NA' : undefined),
       dgDeclarantName,
       dgDeclarantStatus,

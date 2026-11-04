@@ -54,10 +54,24 @@ function findSemanticAnchor(
 
       if (labelRegex.test(cellVal)) {
         // 1. Inline extraction: label is followed by delimiter e.g. "SHIPPER :- EXIDE..." or "PROPER SHIPPING NAME : - BATTERIES..."
-        const inlineMatch = cellVal.replace(labelRegex, '').replace(/^[\s:.-]+/, '').trim();
+        let inlineMatch = '';
+        if (/[:=]/.test(cellVal) || (/\s-\s/.test(cellVal) && !/^\s*-+\s*$/.test(cellVal))) {
+          inlineMatch = cellVal.replace(labelRegex, '').replace(/^[\s:.-]+/, '').trim();
+        }
+        // Reject inline remnants that are just composite labels (e.g. "& Date", "Country of", or non-alphanumeric)
+        if (
+          !/[a-zA-Z0-9]/.test(inlineMatch) ||
+          /^(?:&|and|\/)?\s*(?:date|dtd|dt)\b/i.test(inlineMatch) ||
+          /^(?:country\s*of|final\s*destination)\b/i.test(inlineMatch)
+        ) {
+          inlineMatch = '';
+        }
 
-        // 2. Adjacent extraction: cell to the right
-        const rightVal = String(row[c + 1] || row[c + 2] || '').trim();
+        // 2. Adjacent extraction: cell to the right (ensuring it is not another field label)
+        let rightVal = String(row[c + 1] || row[c + 2] || '').trim();
+        if (/^(?:Port\s*of|Consignee|Shipper|Exporter|Vessel|Country\s*of|Buyer|Terms\s*of|Pre-Carriage|Place\s*of|Final\s*Destination|Bill\s*of|Container|Marks\s*&|Description\s*of|Quantity|Amount|Payment)/i.test(rightVal)) {
+          rightVal = '';
+        }
 
         // 3. Vertical block extraction: cells directly below in column c
         const blockValues: string[] = [];
@@ -65,6 +79,10 @@ function findSemanticAnchor(
         for (let b = r + 1; b < Math.min(rows.length, r + 1 + maxLines); b++) {
           const bVal = String(rows[b]?.[c] || '').trim();
           if (options.stopRegex && options.stopRegex.test(bVal)) break;
+          // Stop immediately upon encountering any standard shipping document label/header
+          if (/^(?:Port\s*of|Consignee|Shipper|Exporter|Vessel|Country\s*of|Buyer|Terms\s*of|Pre-Carriage|Place\s*of|Final\s*Destination|Bill\s*of|Container|Marks\s*&|Description\s*of|Quantity|Amount)/i.test(bVal)) {
+            break;
+          }
           if (bVal && bVal !== '---' && bVal !== '0') {
             blockValues.push(bVal);
           }
@@ -212,9 +230,24 @@ function extractDynamicPalletTable(
     combinedCols.forEach((s, c) => {
       if (/pallet\s*nos?|plt\s*no|pallet\s*#/i.test(s) && pC === -1) pC = c;
       if (/type|description|model|battery\s*type/i.test(s) && tC === -1) tC = c;
-      if (/total\s*qty|qty\b|package\s*qty/i.test(s) && qC === -1) qC = c;
-      if (/total\s*gr.*wt|total.*gross|gross\s*wt/i.test(s) && gC === -1) gC = c;
-      if (/total\s*nt.*wt|total.*net|net\s*wt/i.test(s) && nC === -1) nC = c;
+      // Prioritize total quantity over per-pallet breakdown quantity
+      if (/total\s*qty/i.test(s)) {
+        qC = c;
+      } else if (/qty\b|package\s*qty/i.test(s) && !/qty\s*\/\s*pallet|qty\s*per\s*pallet/i.test(s) && qC === -1) {
+        qC = c;
+      }
+      // Prioritize total gross weight over per-pallet gross weight
+      if (/total\s*gr.*wt|total.*gross/i.test(s)) {
+        gC = c;
+      } else if (/gross\s*wt|gr\s*wt/i.test(s) && !/per\s*pallet|\/\s*pallet/i.test(s) && gC === -1) {
+        gC = c;
+      }
+      // Prioritize total net weight over per-pallet net weight
+      if (/total\s*nt.*wt|total.*net/i.test(s)) {
+        nC = c;
+      } else if (/net\s*wt|nt\s*wt/i.test(s) && !/per\s*pallet|\/\s*pallet/i.test(s) && nC === -1) {
+        nC = c;
+      }
     });
 
     if (pC !== -1 && gC !== -1) {
@@ -411,19 +444,23 @@ export async function extractFromSpreadsheet(
   let invoiceDate = new Date().toISOString().slice(0, 10);
   const invAnchor = findSemanticAnchor(invRows, /(?:Invoice\s*No|Inv\.?\s*No|Reference\s*Number)/i);
   if (invAnchor) {
-    const rawVal = invAnchor.value || invAnchor.blockValues[0] || '';
-    const dtdMatch = rawVal.match(/\b([A-Za-z0-9]+)\s*DTD\s*([0-9./-]+)/i);
-    if (dtdMatch) {
-      invoiceNumber = dtdMatch[1].toUpperCase();
-      const rawD = dtdMatch[2].replace(/\//g, '-').replace(/\./g, '-');
-      const parts = rawD.split('-');
-      if (parts.length === 3) {
-        invoiceDate = parts[2].length === 4
-          ? `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
-          : `${parts[0]}-${parts[1]}-${parts[2]}`;
+    const searchVals = [invAnchor.value, ...(invAnchor.blockValues || [])].filter(Boolean);
+    for (const val of searchVals) {
+      const dtdMatch = val.match(/\b([A-Za-z0-9]+)\s*DTD\s*([0-9./-]+)/i);
+      if (dtdMatch) {
+        invoiceNumber = dtdMatch[1].toUpperCase();
+        const rawD = dtdMatch[2].replace(/\//g, '-').replace(/\./g, '-');
+        const parts = rawD.split('-');
+        if (parts.length === 3) {
+          invoiceDate = parts[2].length === 4
+            ? `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+            : `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2]}`;
+        }
+        break;
       }
-    } else if (rawVal && !/invoice/i.test(rawVal)) {
-      invoiceNumber = rawVal.toUpperCase();
+    }
+    if (!invoiceNumber && invAnchor.value && !/invoice|date/i.test(invAnchor.value)) {
+      invoiceNumber = invAnchor.value.toUpperCase();
     }
   }
 
@@ -493,8 +530,8 @@ export async function extractFromSpreadsheet(
     if (podMatch) portOfDischarge = podMatch[0].trim();
   }
 
-  const destAnchor = findSemanticAnchor(invRows, /Final\s*Destination|Final\s*Place\s*of\s*Delivery/i) || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /Final\s*Place\s*of\s*Delivery/i) : null);
-  if (destAnchor && destAnchor.value && destAnchor.value !== '---' && destAnchor.value !== '0') {
+  const destAnchor = findSemanticAnchor(invRows, /(?<!Country\s+of\s+)Final\s*Destination|Final\s*Place\s*of\s*Delivery/i) || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /Final\s*Place\s*of\s*Delivery/i) : null);
+  if (destAnchor && destAnchor.value && destAnchor.value !== '---' && destAnchor.value !== '0' && !/country\s*of/i.test(destAnchor.value)) {
     finalDestination = destAnchor.value;
   } else {
     finalDestination = portOfDischarge || '';
@@ -520,7 +557,7 @@ export async function extractFromSpreadsheet(
   const vvAnchor = findSemanticAnchor(invRows, /(?:Ship(?:'s)?\s*Name\s*(?:and|&)?\s*Voyage\s*No\.?|Vessel\s*(?:&|\/)?\s*Voyage|Vessel\/Flight\s*No)/i)
     || (dgRows.length > 0 ? findSemanticAnchor(dgRows, /(?:Ship(?:'s)?\s*Name\s*(?:and|&)?\s*Voyage\s*No\.?|Vessel\s*(?:&|\/)?\s*Voyage)/i) : null);
 
-  if (vvAnchor && vvAnchor.value && vvAnchor.value !== '---' && vvAnchor.value !== '0' && !/vessel/i.test(vvAnchor.value)) {
+  if (vvAnchor && vvAnchor.value && vvAnchor.value !== '---' && vvAnchor.value !== '0' && !/vessel|port\s*of/i.test(vvAnchor.value)) {
     const parts = vvAnchor.value.split('/');
     vesselName = parts[0]?.trim() || '';
     voyageNumber = parts[1]?.trim() || '';
@@ -703,6 +740,29 @@ export async function extractFromSpreadsheet(
     containers[0].sealNumber = extractedSealNo;
   }
 
+  // Extract shipping marks & brand name dynamically from invoice rows
+  let extractedShippingMarks = '';
+  let extractedBrandName = '';
+  for (let r = 0; r < Math.min(invRows.length, 50); r++) {
+    const rowStr = (invRows[r] || []).join(' ');
+    const brandMatch = rowStr.match(/BRAND\s+NAME\s*[:.-]*\s*([A-Za-z0-9\s]+)/i);
+    if (brandMatch && !extractedBrandName && !/battery/i.test(brandMatch[1])) {
+      extractedBrandName = brandMatch[1].trim();
+    }
+    if (/Marks\s*&\s*Nos/i.test(rowStr)) {
+      const markLines: string[] = [];
+      for (let mr = r + 1; mr < Math.min(invRows.length, r + 6); mr++) {
+        const col0 = String(invRows[mr]?.[0] || '').trim();
+        if (col0 && !/^(?:Marks|Container|Total|Subtotal|Battery|H\.S\.)/i.test(col0)) {
+          markLines.push(col0);
+        }
+      }
+      if (markLines.length > 0) {
+        extractedShippingMarks = markLines.join('\n');
+      }
+    }
+  }
+
   // 13. Sequential Pallet Range Calculation
   let invoicePalletRange: string | undefined;
   if (pallets.length > 0) {
@@ -781,8 +841,8 @@ export async function extractFromSpreadsheet(
     destinationCountry,
     vesselName: vesselName || undefined,
     voyageNumber: voyageNumber || undefined,
-    shippingMarks: undefined,
-    brandName: undefined,
+    shippingMarks: extractedShippingMarks || undefined,
+    brandName: extractedBrandName || undefined,
     hsnCode: '85071000',
     carrierName: carrierName || undefined,
     currency: 'USD',

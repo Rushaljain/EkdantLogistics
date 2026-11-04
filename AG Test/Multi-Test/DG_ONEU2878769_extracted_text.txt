@@ -1,0 +1,126 @@
+Multimodal Dangerous Goods Form 
+ 
+This form may be used as a dangerous goods declaration as it meets the requirements of Solas 74,chapter VII,  
+regulation 5; MARPOL 73/78, Annex III, regulation 4. 
+ 
+1 Shipper/Consignor/Sender  
+EXIDE INDUSTRIES LIMITED  
+EXIDE HOUSE, 
+59/E, CHOWRINGHEE ROAD 
+Kolkata -700 020, WEST BENGAL, INDIA 
+2 Transport Document Number: 
+BKG.NO.: MUMGA3747500 
+3 Page of Page 4 Shipper's reference 
+ 5 Freight Forwarder's reference 
+6 Consignee 
+YUNN POE SAN EAIN COMPANY LIMITED. 
+No.(138), Si Pin Thar Yar Street, 
+Nay Myint Quarter, Myitkyina, Kachin 
+STATE, MYANMAR 1011 
+7 Carrier : ONE LINE 
+ 
+SHIPPER'S DECLARATION 
+I hereby declare that the contents of this consignment are fully and 
+accurately described below by the proper shipping name, and are 
+classified, packaged, marked and labeled /placarded and are in all 
+respects in proper condition for transport according to the 
+applicable international and national government regulations. 
+ 9 Additional handling informatioN 
+10 Vessel and voy 
+ONE HUMBER / 106E 
+11 Port of loading                                         
+NHAVA SHEVA 
+EMERGENCY CONTACT NUMBER: : MR. SUJOY 
+MOB :9729899131 
+12 Port of discharge 
+SINGAPORE 
+13Destination  
+YANGON, MYANMAR 
+ 
+14 Shipping Marks *Number and kind of packages; description of goods Gross 
+Mass(kg) 
+Net Mass 
+(kgs) 
+Cube 
+(m3) 
+PROPER SHIPPING NAME(PSN): BATTERIES, WET, FILLED WITH ACID 
+TECHNICAL NAME: LEAD ACID STORAGE BATTERIES 
+CLASS: 8 
+SUB CLASS: NA 
+UN NO: 2794  
+ PKG GROUP: NA 
+EMS: F-A-S-B 
+MARINE POLLUTANT: NA 
+SEGERATION GROUP:SGG1 
+UN PACKING CODE:   4G/Z 30/S/IND/K/19700134 
+NO & KIND OF PACKAGING: 22 PALLETS  
+OUTER: 22 PALLETS 
+INNER: 676 CORRUGATED BOXES 
+*FLASH POINT: N.A 
+*LTD QTY: N.A 
+EMERGENCY CONTACT NO. & NAME: MR. SUJOY 
+MOB :9729899131 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+18502.70 
+KGS 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+17917.70 
+KGS 
+ 
+15 Container 
+identification no.  
+ONEU2878769 
+16 Seal number(s) 
+IN2191248 
+17 Container 
+size & type 
+1x20’ 
+18 Tare 
+mass (kg)  
+2150 
+19 Total gross 
+(incl. tare) (kg) 
+20652.70 
+CONTAINER PACKING CERTIFICATE 
+I hereby declare that the goods described above have 
+been placed/loaded into the container/vehicle identified 
+above in accordance with the applicable provisions. 
+**MUST BE COMPLETED AND SIGNED FOR ALL 
+CONTAINER/VEHICLE LOADS BY PERSON 
+RESPONSIBLE FOR PACKING/LOADING 
+21 RECEIVING ORGANIZATION RECEIPT 
+Received the above number of packages/containers/trailers 
+in apparent good order and condition, unless stated hereon: 
+RECEIVING ORGANIZATION RE-MARKS: 
+20 EXIDE INDUSTRIES LTD Haulier's name 22 EXIDE INDUSTRIES LTD 
+Name/status of declarant 
+SUJOY DUTTA / EXPORT MANAGER 
+Vehicle reg no. Name/status of declarant 
+SUJOY DUTTA / EXPORT MANAGER 
+Place and date. MUMBAI/ 07.10.2026 Signature and 
+date 
+Place and date.MUMBAI/ 07.10.2026 
+Signature of declarant 
+ 
+ 
+DRIVER'S 
+SIGNATURE 
+Signature of declarant 
+ 
+ 
+* DANGEROUS GOODS 
+You must specify proper shipping name, hazard class, UN No., Packaging group, (where assigned) Marine pollutant and observe the mandatory 
+requirements, under applicable national and international governmental regulations. 
+ 
