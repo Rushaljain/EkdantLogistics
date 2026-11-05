@@ -488,7 +488,12 @@ export async function extractFromSpreadsheet(
   if (csgAnchor) {
     if (csgAnchor.blockValues.length > 0) {
       consigneeName = csgAnchor.blockValues[0].trim();
-      consigneeAddress = csgAnchor.blockValues.slice(1).join(', ').trim();
+      consigneeAddress = csgAnchor.blockValues.slice(1)
+        .map(l => l.replace(/,\s*$/, '').trim())
+        .filter(Boolean)
+        .join(', ')
+        .replace(/,\s*,/g, ',')
+        .trim();
     } else if (csgAnchor.value) {
       consigneeName = csgAnchor.value.trim();
     }
@@ -506,7 +511,12 @@ export async function extractFromSpreadsheet(
   let notifyParty = '';
   const notifyAnchor = findSemanticAnchor(invRows, /^Notify\s*Party:?/i, { maxBlockLines: 4 });
   if (notifyAnchor && notifyAnchor.blockValues.length > 0) {
-    notifyParty = notifyAnchor.blockValues.join(', ').trim();
+    const rawVal = notifyAnchor.blockValues[0].trim();
+    if (/same\s*as/i.test(rawVal) || /same\s*as\s*consignee/i.test(notifyAnchor.value || '')) {
+      notifyParty = 'SAME AS CONSIGNEE';
+    } else {
+      notifyParty = rawVal;
+    }
   } else {
     notifyParty = consigneeName ? 'SAME AS CONSIGNEE' : '';
   }

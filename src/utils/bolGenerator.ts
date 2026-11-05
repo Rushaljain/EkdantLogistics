@@ -44,7 +44,7 @@ export function generateMasterBol(
   const displayVoyage = invoice.voyageNumber || activeFormat.voyageNumber || '';
   const displayPol = invoice.portOfLoading || activeFormat.portOfLoading || '—';
   const displayPod = activeFormat.portOfDischarge || invoice.portOfDischarge || '—';
-  const displayDelivery = activeFormat.finalDestination || invoice.placeOfDelivery || invoice.finalDestination || '—';
+  const displayDelivery = invoice.placeOfDelivery || activeFormat.placeOfDelivery || activeFormat.finalDestination || invoice.finalDestination || '—';
   const displayReceipt = invoice.placeOfReceipt || activeFormat.placeOfReceipt || activeFormat.portOfLoading || '—';
   const displayCarrier = invoice.carrierName || activeFormat.carrierName || '—';
 
@@ -86,11 +86,10 @@ export function generateMasterBol(
 
   const declaredNetWeight = invoice.blDeclaredNetWeightKg || activeFormat.blDeclaredNetWeightKg || totalNet;
 
-  // Ensure containers exhibit format-defined container & seal numbers when not provided in spreadsheet
+  // Ensure containers exhibit format-defined container & seal numbers when provided
   const activeContainers = invoice.containers.map((c, idx) => {
-    const isBlank = !c.containerNumber || c.containerNumber === '____________________';
-    const cNum = (idx === 0 && isBlank && activeFormat.containerNumber) ? activeFormat.containerNumber : (c.containerNumber || '____________________');
-    const sNum = (idx === 0 && (!c.sealNumber || c.sealNumber === '__________') && activeFormat.sealNumber) ? activeFormat.sealNumber : (c.sealNumber || '__________');
+    const cNum = (idx === 0 && activeFormat.containerNumber) ? activeFormat.containerNumber : (c.containerNumber || '____________________');
+    const sNum = (idx === 0 && activeFormat.sealNumber) ? activeFormat.sealNumber : (c.sealNumber || '__________');
     return { ...c, containerNumber: cNum, sealNumber: sNum };
   });
 
@@ -153,7 +152,6 @@ export function generateMasterBol(
           <span class="label">Shipper / Exporter</span>
           <div class="val" style="font-weight: 700;">${invoice.exporterName}</div>
           <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.shipperAddress}</div>
-          ${invoice.onBehalfOf ? `<div style="font-size: 9.5px; color: #475569; margin-top: 3px;"><strong>(ON BEHALF OF):</strong> ${invoice.onBehalfOf}</div>` : ''}
           <div style="font-family: monospace; font-size: 10.5px; font-weight: 700; color: #0f172a; margin-top: 4px;">
             BOOKING NO: ${bookingRef || '—'}
           </div>
@@ -178,18 +176,22 @@ export function generateMasterBol(
         <td>
           <span class="label">Consignee (or Order of)</span>
           <div class="val" style="font-weight: 700;">${invoice.consigneeName}</div>
-          <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.consigneeAddress || ''}</div>
+          <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${(invoice.consigneeAddress || '').replace(/,\s*,/g, ',').replace(/\s*,\s*/g, ', ').trim()}</div>
         </td>
         <td>
           <span class="label">Notify Party (Carrier not responsible for failure to notify)</span>
-          <div class="val" style="font-weight: 700;">${invoice.notifyParty || invoice.consigneeName}</div>
-          <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${invoice.notifyParty ? (invoice.consigneeAddress || '') : 'SAME AS CONSIGNEE'}</div>
+          ${(!invoice.notifyParty || invoice.notifyParty.toUpperCase().includes('SAME AS') || invoice.notifyParty === invoice.consigneeName) ? `
+            <div class="val" style="font-weight: 700;">SAME AS CONSIGNEE</div>
+          ` : `
+            <div class="val" style="font-weight: 700;">${invoice.notifyParty}</div>
+            <div style="font-size: 10px; color: #334155; margin-top: 2px; white-space: pre-line;">${(invoice.consigneeAddress || '').replace(/,\s*,/g, ',').replace(/\s*,\s*/g, ', ').trim()}</div>
+          `}
         </td>
       </tr>
       <tr>
         <td>
           <span class="label">Pre-Carriage By</span>
-          <div class="val">Motor Truck / Intermodal Rail</div>
+          <div class="val">${invoice.preCarriage || activeFormat.preCarriage || '—'}</div>
         </td>
         <td>
           <span class="label">Place of Receipt</span>
@@ -254,7 +256,7 @@ export function generateMasterBol(
             <div style="font-weight: 700; margin-bottom: 3px; font-size: 11px;">
               ${statutoryDescription}
             </div>
-            ${uniqueModels.length > 0 ? `
+            ${(!statutoryDescription && uniqueModels.length > 0) ? `
               <div style="font-size: 9.5px; color: #475569; margin-bottom: 4px; line-height: 1.35;">
                 ${uniqueModels.join(', ')}
               </div>
@@ -307,7 +309,7 @@ export function generateMasterBol(
             </div>
             ${Math.abs(declaredNetWeight - totalNet) > 0.01 ? `
               <div style="margin-top: 6px; padding: 4px 6px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px; font-size: 8px; color: #92400e; font-weight: 600; text-align: left; line-height: 1.3; font-family: sans-serif;">
-                Notice: ${(Math.abs(declaredNetWeight - totalNet)).toFixed(2)} kg net weight discrepancy between main cargo (${declaredNetWeight.toFixed(2)} kg) and container summary (${totalNet.toFixed(2)} kg). Verified.
+                Source discrepancy: ${(Math.abs(declaredNetWeight - totalNet)).toFixed(2)} kg difference between main cargo net weight and container-summary net weight. Pending confirmation.
               </div>
             ` : ''}
           </td>

@@ -111,8 +111,55 @@ export function App() {
 
   // Helper to build consolidated master invoice from multiple invoices
   const buildConsolidatedInvoice = (invoices: ConvertedInvoice[], formatIdOverride?: string): ConvertedInvoice => {
-    const primary = invoices[0];
-    const combinedLineItems = invoices.flatMap((inv, invIdx) => 
+    // Deduplicate / merge documents that belong to the same commercial invoice (e.g. Commercial Invoice + Packing List)
+    const normalizeInv = (num?: string) => (num || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const invoiceGroups = new Map<string, ConvertedInvoice[]>();
+    for (const inv of invoices) {
+      const key = normalizeInv(inv.invoiceNumber) || inv.id;
+      if (!invoiceGroups.has(key)) invoiceGroups.set(key, []);
+      invoiceGroups.get(key)!.push(inv);
+    }
+
+    const dedupedInvoices: ConvertedInvoice[] = [];
+    for (const [, group] of invoiceGroups.entries()) {
+      if (group.length === 1) {
+        dedupedInvoices.push(group[0]);
+      } else {
+        // Multiple documents representing the same invoice transaction (e.g. Invoice + Packing List)
+        // Prefer the document that contains physical pallets/packaging detail, or the first one with line items
+        const docWithPallets = group.find(d => (d.pallets && d.pallets.length > 0) || (d.palletRanges && d.palletRanges.length > 0));
+        const base = docWithPallets || group[0];
+
+        let mergedMarks = base.shippingMarks || '';
+        let mergedBills = base.shippingBillNumbers || '';
+        let mergedBooking = base.bookingNumber || '';
+        let mergedCarrier = base.carrierName || '';
+        let mergedVessel = base.vesselName || '';
+        let mergedVoyage = base.voyageNumber || '';
+
+        for (const sib of group) {
+          if (!mergedMarks && sib.shippingMarks) mergedMarks = sib.shippingMarks;
+          if (!mergedBills && sib.shippingBillNumbers) mergedBills = sib.shippingBillNumbers;
+          if (!mergedBooking && sib.bookingNumber) mergedBooking = sib.bookingNumber;
+          if (!mergedCarrier && sib.carrierName) mergedCarrier = sib.carrierName;
+          if (!mergedVessel && sib.vesselName && sib.vesselName !== '---') mergedVessel = sib.vesselName;
+          if (!mergedVoyage && sib.voyageNumber) mergedVoyage = sib.voyageNumber;
+        }
+
+        dedupedInvoices.push({
+          ...base,
+          shippingMarks: mergedMarks,
+          shippingBillNumbers: mergedBills,
+          bookingNumber: mergedBooking,
+          carrierName: mergedCarrier,
+          vesselName: mergedVessel,
+          voyageNumber: mergedVoyage
+        });
+      }
+    }
+
+    const primary = dedupedInvoices[0] || invoices[0];
+    const combinedLineItems = dedupedInvoices.flatMap((inv, invIdx) => 
       inv.lineItems.map((item, itemIdx) => ({
         ...item,
         id: `item-batch-${invIdx}-${itemIdx}-${item.id}`,
@@ -120,14 +167,14 @@ export function App() {
       }))
     );
 
-    const totalGross = combinedLineItems.reduce((acc, it) => acc + (it.grossWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.grossWeightKg, 0);
-    const totalNet = combinedLineItems.reduce((acc, it) => acc + (it.netWeightKg || 0), 0) || invoices.reduce((s, i) => s + i.netWeightKg, 0);
+    const totalGross = combinedLineItems.reduce((acc, it) => acc + (it.grossWeightKg || 0), 0) || dedupedInvoices.reduce((s, i) => s + i.grossWeightKg, 0);
+    const totalNet = combinedLineItems.reduce((acc, it) => acc + (it.netWeightKg || 0), 0) || dedupedInvoices.reduce((s, i) => s + i.netWeightKg, 0);
     const totalPkgs = combinedLineItems.reduce((acc, it) => acc + (it.quantity || 1), 0);
-    const totalPalletCount = invoices.reduce((s, i) => s + (i.totalPallets || i.pallets?.length || 1), 0);
-    const hasDangerousGoods = combinedLineItems.some(it => it.isDangerousGood) || invoices.some(i => i.hasDangerousGoods);
-    const invoiceNumbers = invoices.map(i => i.invoiceNumber).join(' + ');
+    const totalPalletCount = dedupedInvoices.reduce((s, i) => s + (i.totalPallets || i.pallets?.length || 1), 0);
+    const hasDangerousGoods = combinedLineItems.some(it => it.isDangerousGood) || dedupedInvoices.some(i => i.hasDangerousGoods);
+    const invoiceNumbers = Array.from(new Set(dedupedInvoices.map(i => i.invoiceNumber).filter(Boolean))).join(' + ');
 
-    const allPallets = invoices.flatMap(inv => inv.pallets || []);
+    const allPallets = dedupedInvoices.flatMap(inv => inv.pallets || []);
     const targetFmtId = formatIdOverride || selectedFormatId;
     const defaultFormat = (targetFmtId && masterFormats.find(f => f.id === targetFmtId)) ||
                           (primary.carrierName && masterFormats.find(f => f.carrierName?.toLowerCase() === primary.carrierName?.toLowerCase())) ||
@@ -159,7 +206,7 @@ export function App() {
     const carrierName = primary.carrierName || defaultFormat.carrierName || '';
     const placeOfReceipt = primary.placeOfReceipt || defaultFormat.placeOfReceipt || primary.portOfLoading || '';
     const portOfDischargeDg = defaultFormat.portOfDischargeDg || primary.portOfDischargeDg || primary.portOfDischarge || '';
-    const placeOfDelivery = primary.placeOfDelivery || defaultFormat.finalDestination || primary.finalDestination || '';
+    const placeOfDelivery = primary.placeOfDelivery || defaultFormat.placeOfDelivery || defaultFormat.finalDestination || primary.finalDestination || '';
     const finalDestination = defaultFormat.finalDestination || primary.finalDestination || placeOfDelivery;
     const portOfDischarge = defaultFormat.portOfDischarge || primary.portOfDischarge || '';
     const shippingMarks = invoices.map(i => i.shippingMarks).filter(Boolean)[0] || defaultFormat.shippingMarks || '';

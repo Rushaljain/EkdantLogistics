@@ -15,6 +15,7 @@ export const PRESEEDED_MASTER_FORMATS: MasterFormat[] = [
     portOfLoading: 'NHAVA SHEVA, INDIA',
     portOfDischarge: 'YANGON',
     portOfDischargeDg: 'SINGAPORE',
+    placeOfDelivery: 'MYANMAR',
     finalDestination: 'YANGON, MYANMAR',
     destinationCountry: 'MM',
     containerNumber: 'ONEU2878769',

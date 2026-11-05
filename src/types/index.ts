@@ -98,10 +98,12 @@ export interface MasterFormat {
   bookingNumber?: string;
   vesselName?: string;
   voyageNumber?: string;
+  preCarriage?: string;
   placeOfReceipt?: string;
   portOfLoading?: string;
   portOfDischarge?: string;
   portOfDischargeDg?: string;
+  placeOfDelivery?: string;
   finalDestination?: string;
   destinationCountry?: string;
   containerNumber?: string;
@@ -174,6 +176,8 @@ export interface ConvertedInvoice {
   consigneeName: string;
   consigneeAddress?: string;
   notifyParty?: string;
+  notifyPartyAddress?: string;
+  preCarriage?: string;
   
   // Routing & Shipping References
   carrierName?: string;       // e.g. "ONE LINE", "CMA CGM"

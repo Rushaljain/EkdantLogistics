@@ -96,8 +96,8 @@ export function generateDgDeclaration(
 
   // Primary container (preferring format-defined equipment if synthetic/absent)
   const primaryCont = invoice.containers[0];
-  const containerNo = invoice.containers[0]?.containerNumber || activeFormat.containerNumber || '____________________';
-  const sealNo = invoice.containers[0]?.sealNumber || activeFormat.sealNumber || '__________';
+  const containerNo = activeFormat.containerNumber || invoice.containers[0]?.containerNumber || '____________________';
+  const sealNo = activeFormat.sealNumber || invoice.containers[0]?.sealNumber || '__________';
   const tareKg = primaryCont?.tareWeightKg || activeFormat.tareWeightKg || 2150;
   const totalVgmKg = Number((totalGrossKg + tareKg).toFixed(2));
 
@@ -187,7 +187,6 @@ export function generateDgDeclaration(
         <div class="box-content">
           <strong>${invoice.exporterName}</strong><br/>
           ${invoice.shipperAddress ? `${invoice.shipperAddress}<br/>` : ''}
-          ${invoice.onBehalfOf ? `<span style="font-size: 8.5px; color: #444; margin-top: 3px; display: block;"><strong>(ON BEHALF OF):</strong> ${invoice.onBehalfOf}</span>` : ''}
           ${[invoice.gstin ? `GSTIN: ${invoice.gstin}` : '', invoice.iec ? `IEC: ${invoice.iec}` : ''].filter(Boolean).join(' | ')}
         </div>
       </div>
@@ -208,7 +207,7 @@ export function generateDgDeclaration(
         </div>
         <div>
           <span class="box-num">4</span><span class="box-title">Shipper's Ref</span>
-          <div style="font-family: monospace; font-size: 9px; margin-top: 2px;">${invoice.invoiceNumber}</div>
+          <div style="font-family: monospace; font-size: 8.5px; margin-top: 2px;">${invoice.invoiceNumber.includes('+') ? `INVOICES: ${invoice.invoiceNumber}` : invoice.invoiceNumber}</div>
         </div>
         <div>
           <span class="box-num">5</span><span class="box-title">Freight Fwd Ref</span>
@@ -221,7 +220,7 @@ export function generateDgDeclaration(
         <span class="box-num">6</span><span class="box-title">Consignee</span>
         <div class="box-content">
           <strong>${invoice.consigneeName}</strong><br/>
-          ${invoice.consigneeAddress || ''}
+          ${(invoice.consigneeAddress || '').replace(/,\s*,/g, ',').replace(/\s*,\s*/g, ', ').trim()}
         </div>
       </div>
 
@@ -250,8 +249,7 @@ export function generateDgDeclaration(
         <span class="box-num">9</span><span class="box-title">Additional Handling Information</span>
         <div class="box-content" style="font-size: 8.5px; line-height: 1.35;">
           <strong>24-HR EMERGENCY CONTACT:</strong><br/>
-          <span style="font-family: monospace; font-size: 9.5px; color: #1e3a8a; font-weight: 700;">${emgName} (${emgPhone})</span><br/>
-          <span style="font-size: 8px; color: #555;">STOWAGE CATEGORY A — KEEP DRY</span>
+          <span style="font-family: monospace; font-size: 9.5px; color: #1e3a8a; font-weight: 700;">${emgName} (${emgPhone})</span>
         </div>
       </div>
 
@@ -308,7 +306,7 @@ export function generateDgDeclaration(
             ${marksText.replace(/\n/g, '<br/>')}<br/><br/>
             <strong>SHIPPING MARKS & NUMBERS (AS PER REFERENCE):</strong><br/>
             <span style="font-size: 9px; color: #1e3a8a;">
-              ${palletRanges.map(r => `• ${r}`).join('<br/>')}
+              ${Array.from(new Set(palletRanges.map(r => r.trim()).filter(Boolean))).map(r => `• ${r}`).join('<br/>')}
             </span>
           </td>
           <td>
@@ -355,7 +353,7 @@ export function generateDgDeclaration(
       <div style="border-right: 1px solid #000; padding: 6px 8px;">
         <span class="box-num">17</span><span class="box-title">Size & Type</span>
         <div class="box-content" style="font-weight: 700;">
-          1 x 20' GP
+          1 x 20'
         </div>
       </div>
 
@@ -380,7 +378,7 @@ export function generateDgDeclaration(
       <div style="border-right: 1px solid #000; padding: 8px;">
         <span class="box-num">20</span><span class="box-title">Container Packing Certificate</span>
         <div class="legal-text" style="margin-top: 3px;">
-          I hereby declare that the goods described above have been placed/loaded into the container/vehicle identified above in accordance with the applicable provisions of IMDG Code 5.4.2.
+          I hereby declare that the goods described above have been placed/loaded into the container/vehicle identified above in accordance with the applicable provisions.
         </div>
         <div style="margin-top: 8px; font-size: 9px; line-height: 1.4;">
           <strong>Company:</strong> ${invoice.exporterName}<br/>
