@@ -100,6 +100,7 @@ export interface ExtractedShipmentJSON {
   shipperIec: string;
   shipperGstin: string;
   shipperPan: string;
+  onBehalfOf: string;
 
   // Consignee & Notify Party
   consigneeName: string;
@@ -141,6 +142,11 @@ export interface ExtractedShipmentJSON {
   totalPallets: number;
   totalBoxes: number;
   totalPackages: number;
+  outerPackagingCount: number;
+  outerPackagingType: string;
+  innerPackageCount: number;
+  innerPackageType: string;
+  innerPackingDescription: string;
   grossWeightKg: number;
   netWeightKg: number;
   volumeCbm: number;
@@ -172,6 +178,9 @@ export interface ExtractedShipmentJSON {
 
   // Granular Pallet Breakdown
   pallets: ExtractedPallet[];
+
+  // Discrepancy & Validation Warnings
+  discrepancyWarnings: string[];
 
   // Source Provenance
   sourceFiles: string[];
@@ -262,6 +271,7 @@ export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): Ex
     shipperIec: '',
     shipperGstin: '',
     shipperPan: '',
+    onBehalfOf: '',
     consigneeName: '',
     consigneeAddress: '',
     notifyPartyName: '',
@@ -293,6 +303,11 @@ export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): Ex
     totalPallets: 0,
     totalBoxes: 0,
     totalPackages: 0,
+    outerPackagingCount: 0,
+    outerPackagingType: '',
+    innerPackageCount: 0,
+    innerPackageType: '',
+    innerPackingDescription: '',
     grossWeightKg: 0,
     netWeightKg: 0,
     volumeCbm: 0,
@@ -318,6 +333,7 @@ export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): Ex
     dgDeclarantStatus: '',
     dgDeclarationPlaceAndDate: '',
     pallets: [],
+    discrepancyWarnings: [],
     sourceFiles: [],
     extractedAt: ''
   };
