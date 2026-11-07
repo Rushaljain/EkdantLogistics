@@ -8,8 +8,8 @@ import { CONTAINER_SPECS } from '../types';
 export const DEFAULT_PALLET_DIMENSIONS = '1200 x 1000 x 1650 mm';
 export const DEFAULT_PALLET_AREA_MM2 = 1200 * 1000; // 1.2 m2
 
-const CONTAINER_PREFIX_POOL = ['TEMU', 'MSCU', 'TGHU', 'CMAU', 'MEDU', 'HLXU', 'EGLV', 'ONEU'];
-const SEAL_PREFIX_POOL = ['EMC', 'MSC', 'CMA', 'HL', 'ONE', 'ZIM', 'IN'];
+
+
 
 /**
  * Computes ISO 6346 check digit for a 10-character container code (4-letter prefix + 6 serial digits).
@@ -27,27 +27,6 @@ export function computeIso6346CheckDigit(container10: string): number {
     sum += val * Math.pow(2, i);
   }
   return (sum % 11) % 10;
-}
-
-/**
- * Generates a dynamic ISO 6346 compliant container number format without hardcoding.
- */
-export function generateIsoContainerNumber(index: number = 0, preferredPrefix?: string): string {
-  const prefix = preferredPrefix || CONTAINER_PREFIX_POOL[index % CONTAINER_PREFIX_POOL.length];
-  // 6-digit serial based on deterministic pseudorandom seed from index and timestamp
-  const serialBase = Math.floor(210000 + ((Date.now() + index * 9973) % 780000));
-  const serial = String(serialBase).padStart(6, '0').slice(0, 6);
-  const checkDigit = computeIso6346CheckDigit(`${prefix}${serial}`);
-  return `${prefix}${serial}${checkDigit}`;
-}
-
-/**
- * Generates a high-security container bolt seal number dynamically without hardcoding.
- */
-export function generateSealNumber(index: number = 0): string {
-  const prefix = SEAL_PREFIX_POOL[index % SEAL_PREFIX_POOL.length];
-  const digits = Math.floor(100000 + ((Date.now() + index * 1237) % 899999));
-  return `${prefix}${digits}`;
 }
 
 export interface ContainerOptimizerOptions {
@@ -225,7 +204,7 @@ export function clusterLineItemsIntoPallets(
           dimensions: DEFAULT_PALLET_DIMENSIONS,
           footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
           modelOrDescription: item.description || defaultDescription,
-          isDangerousGoods: item.isDangerousGood,
+          isDangerousGoods: Boolean(item.isDangerousGood),
           imoClass: item.imoClass,
           unNumber: item.unNumber,
           packingGroup: item.packingGroup,
@@ -247,7 +226,7 @@ export function clusterLineItemsIntoPallets(
         dimensions: DEFAULT_PALLET_DIMENSIONS,
         footprintAreaMm2: DEFAULT_PALLET_AREA_MM2,
         modelOrDescription: item.description || defaultDescription,
-        isDangerousGoods: item.isDangerousGood,
+        isDangerousGoods: Boolean(item.isDangerousGood),
         imoClass: item.imoClass,
         unNumber: item.unNumber,
         packingGroup: item.packingGroup,
@@ -434,8 +413,8 @@ function createOptimizedContainer(
   preferredSealNumber?: string
 ): ContainerAllocation {
   const spec = CONTAINER_SPECS[type];
-  const containerNumber = (index === 0 && preferredContainerNumber) ? preferredContainerNumber : generateIsoContainerNumber(index);
-  const sealNumber = (index === 0 && preferredSealNumber) ? preferredSealNumber : generateSealNumber(index);
+  const containerNumber = (index === 0 && preferredContainerNumber) ? preferredContainerNumber : '';
+  const sealNumber = (index === 0 && preferredSealNumber) ? preferredSealNumber : '';
 
   return {
     id: `cont-${Date.now()}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,

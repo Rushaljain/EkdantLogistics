@@ -1,5 +1,16 @@
-// Ekdant Logistics - Multi-Container & HazMat Document System Types
-// Supports Multi-Invoice Ingestion, Weight/Pallet Segregation, #DG & Master BOL Generation
+// Ekdant Logistics - Universal Truth & Two-Manifest Schema
+// Implements strict zero-fallback data architecture: missing fields default to "" (empty string)
+
+export type UploadMode = 'SINGLE_INVOICE' | 'MULTI_INVOICE';
+
+export interface ExtractedPallet {
+  palletNumber: string;
+  modelCode: string;
+  boxCount: number;
+  netWeightKg: number;
+  grossWeightKg: number;
+  sourceFile: string;
+}
 
 export type ContainerType = '20GP' | '40GP' | '40HC' | '45HC';
 
@@ -10,60 +21,53 @@ export const CONTAINER_SPECS: Record<ContainerType, { name: string; maxPayloadKg
   '45HC': { name: "45' High Cube", maxPayloadKg: 27800, tareWeightKg: 4800, cbm: 86.0, maxPallets: 26 }
 };
 
-export interface DangerousGoodsInfo {
-  isDangerousGood: boolean;
-  imoClass?: string;          // e.g. "Class 3 - Flammable Liquid", "Class 8 - Corrosives"
-  unNumber?: string;          // e.g. "UN 1993", "UN 1263", "UN 3082"
-  packingGroup?: 'I' | 'II' | 'III' | 'NIL' | 'NA' | string;
-  properShippingName?: string; // e.g. "FLAMMABLE LIQUID, N.O.S."
-  flashPoint?: string;        // e.g. "23°C c.c."
-  marinePollutant?: boolean;
-  emergencyContact?: string;
-  emsNumber?: string;         // e.g. "F-E, S-E"
-}
-
-export interface LineItem extends DangerousGoodsInfo {
+export interface LineItem {
   id: string;
   itemNumber: number;
   description: string;
   hsnCode: string;
   quantity: number;
-  uqc: string;                // NOS, PCS, KGS, BOX, etc.
+  uqc: string;
   unitPrice: number;
   total: number;
   netWeightKg: number;
   grossWeightKg: number;
   modelNumber?: string;
-  palletNumber?: string;      // e.g. "PLT-5644"
-  containerNumber?: string;   // e.g. "MSCU7829104"
+  palletNumber?: string;
+  containerNumber?: string;
+  isDangerousGood?: boolean;
+  imoClass?: string;
+  unNumber?: string;
+  packingGroup?: string;
+  properShippingName?: string;
 }
 
 export interface Pallet {
   id: string;
-  palletNumber: string;       // e.g. "PLT-5644"
+  palletNumber: string;
   packageCount: number;
-  packageType: string;        // BOX, DRUM, CARTON, CRATE
-  innerPackageCount?: number; // e.g. 29, 75, 357 (Corrugated boxes inside pallet)
-  innerPackageType?: string;  // "BOX", "CARTON", "PAIL", "DRUM"
-  baseUnitCount?: number;     // e.g. 5, 9 (batteries/units)
-  baseUnitType?: string;      // "NOS", "PCS"
+  packageType: string;
+  innerPackageCount?: number;
+  innerPackageType?: string;
+  baseUnitCount?: number;
+  baseUnitType?: string;
   grossWeightKg: number;
   netWeightKg: number;
-  dimensions?: string;        // e.g. "1200 x 1000 x 1650 mm"
-  footprintAreaMm2?: number;  // Footprint tier area (e.g. 1200 * 1000)
-  modelOrDescription?: string;// e.g. "EFB70-S95-D26L - Lead Acid Batteries"
+  dimensions?: string;
+  footprintAreaMm2?: number;
+  modelOrDescription?: string;
   isDangerousGoods: boolean;
   imoClass?: string;
   unNumber?: string;
-  packingGroup?: 'I' | 'II' | 'III' | 'NIL' | 'NA' | string;
+  packingGroup?: string;
   assignedContainerId?: string;
   lineItemIds: string[];
 }
 
 export interface ContainerAllocation {
   id: string;
-  containerNumber: string;    // e.g. "TEMU2523270"
-  sealNumber: string;         // e.g. "EMC883921"
+  containerNumber: string;
+  sealNumber: string;
   containerType: ContainerType;
   maxPayloadKg: number;
   maxPallets?: number;
@@ -82,209 +86,437 @@ export interface ContainerAllocation {
   hasDangerousGoods: boolean;
 }
 
-export interface MasterFormat {
-  id: string;
-  name: string;             // e.g. "ONE Line Multimodal (Myanmar/Yangon)", "CMA CGM Standard (Middle East/Jeddah)"
-  carrierOrClient: string;  // e.g. "ONE Line", "CMA CGM"
-  description: string;
-  isPreseeded?: boolean;
-  uploadedFileName?: string;
-  uploadedAt?: string;
-  fileContent?: string;
-  fileType?: string;
-  
-  // Format-Level Carrier & Shipment Defaults
-  carrierName?: string;
-  bookingNumber?: string;
-  vesselName?: string;
-  voyageNumber?: string;
-  preCarriage?: string;
-  placeOfReceipt?: string;
-  portOfLoading?: string;
-  portOfDischarge?: string;
-  portOfDischargeDg?: string;
-  placeOfDelivery?: string;
-  finalDestination?: string;
-  destinationCountry?: string;
-  containerNumber?: string;
-  sealNumber?: string;
-  containerType?: ContainerType;
-  tareWeightKg?: number;
-  emergencyContactName?: string;
-  emergencyContactPhone?: string;
-  dgDeclarantName?: string;
-  dgDeclarantStatus?: string;
-  dgDeclarationPlaceAndDate?: string;
-  unPackingCode?: string;
-  segregationGroup?: string;
-  emsNumber?: string;
-  shippingBillNumbers?: string;
-  brandName?: string;
-  shippingMarks?: string;
-  blDeclaredNetWeightKg?: number;
-  statutoryDescription?: string;
-  hsnCode?: string;
-  freeTimeClause?: string;
-  freightTerms?: string;
-  movementType?: string;
-}
+/**
+ * ExtractedShipmentJSON: The raw universal truth generated post-parse.
+ * Every string field defaults to "" (empty string) if not found in the document—never "NA", "TBN", or hardcoded defaults.
+ */
+export interface ExtractedShipmentJSON {
+  // Mode selection
+  uploadMode: UploadMode;
 
-export interface DocumentTemplate {
-  id: string;
-  name: string;
-  type: 'BOL' | 'DG';
-  carrierOrClient: string;    // "Standard Ocean", "Maersk Style", "MSC Intermodal", "IMO Dangerous Goods"
-  isDefault?: boolean;
-  description?: string;
-}
+  // Commercial / Exporter / Shipper
+  shipperName: string;
+  shipperAddress: string;
+  shipperIec: string;
+  shipperGstin: string;
+  shipperPan: string;
 
-export interface DocumentOutput {
-  id: string;
-  shipmentId: string;
-  documentType: 'BOL' | 'DG';
-  documentNumber: string;     // e.g. "BOL-EKD-2026-089" or "DG-2026-089"
-  templateName: string;
-  title: string;
-  generatedAt: string;
-  containersSummary: string;
-  formattedHtml: string;
-}
-
-export type CustomsPort = 'INNSA1' | 'INBOM4';
-
-export interface ConvertedInvoice {
-  id: string;
-  fileName: string;
-  fileSize: number;
-  convertedAt: string;
-  rawTimestamp: number;
-  status: 'converted' | 'review_suggested';
-  
-  // Header / Commercial Info
-  invoiceNumber: string;
-  invoiceDate: string;        // YYYY-MM-DD
-  bookingNumber?: string;
-  masterBolNumber?: string;
-  
-  // Parties
-  exporterName: string;       // Shipper
-  shipperAddress?: string;
-  onBehalfOf?: string;
-  iec?: string;
-  gstin?: string;
-  adCode?: string;
+  // Consignee & Notify Party
   consigneeName: string;
-  consigneeAddress?: string;
-  notifyParty?: string;
-  notifyPartyAddress?: string;
-  preCarriage?: string;
-  
-  // Routing & Shipping References
-  carrierName?: string;       // e.g. "ONE LINE", "CMA CGM"
-  portOfLoading: string;      // e.g. "Nhava Sheva (INNSA1)"
-  portOfDischarge: string;    // e.g. "Rotterdam (NLRTM)", "YANGON, MYANMAR"
-  portOfDischargeDg?: string; // e.g. "SINGAPORE" (if transshipment port on DG differs from BL POD)
-  placeOfReceipt?: string;    // e.g. "NHAVA SHEVA"
-  placeOfDelivery?: string;   // e.g. "MYANMAR"
-  finalDestination?: string;
-  destinationCountry: string; // 2-letter ISO (DE, US, NL, etc.)
-  vesselName?: string;
-  voyageNumber?: string;
-  shippingMarks?: string;     // e.g. "KAUNG SWANN\nHTET TRADING\nMYANMAR"
-  brandName?: string;         // e.g. "DYNEX MATRIX"
-  hsnCode?: string;           // e.g. "85071000"
-  shippingBillNumber?: string;// e.g. "7463800"
-  shippingBillNumbers?: string; // e.g. "SB NO. 7463800 DT. 05.10.2026, SB NO. 7464015 DT. 05.10.2026..."
-  freightTerms?: 'FREIGHT COLLECT' | 'FREIGHT PREPAID';
-  movementType?: string;      // e.g. "FCL / CY"
-  freeTimeClause?: string;    // e.g. "14 DAYS FREE TIME DETENTION AT DESTINATION"
-  palletRanges?: string[];    // e.g. ["4956 TO 4963", "4964", "4533 TO 4546", ...]
-  statutoryDescription?: string; // e.g. "LEAD ACID AUTOMOTIVE STORAGE BATTERIES"
-  blDeclaredNetWeightKg?: number; // Optional override if BL body net weight differs
-  dgPackingGroupOverride?: 'I' | 'II' | 'III' | 'NA';
-  dgDeclarantName?: string;   // e.g. "SUJOY DUTTA"
-  dgDeclarantStatus?: string; // e.g. "EXPORT MANAGER"
-  dgDeclarationPlaceAndDate?: string; // e.g. "MUMBAI / 07.10.2026"
-  emergencyContact?: string;
-  emergencyContactName?: string; // e.g. "MR. SUJOY"
-  emergencyContactPhone?: string;// e.g. "9729899131"
-  unPackingCode?: string;     // e.g. "4G/Z 30/S/IND/K/19700134"
-  segregationGroup?: string;  // e.g. "SGG1"
-  emsNumber?: string;         // e.g. "F-A-S-B"
-  haulierName?: string;
-  vehicleRegNo?: string;
-  signatoryName?: string;
-  signatoryTitle?: string;
-  
-  // Financial
-  currency: string;
-  exchangeRate: number;
-  incoterm: 'FOB' | 'CIF' | 'CFR' | 'EXW';
-  subtotal?: number;
-  gstAmount?: number;
-  invoiceTotal: number;
-  
-  // Manifest Totals & Multi-Tier Packaging Hierarchy
+  consigneeAddress: string;
+  notifyPartyName: string;
+  notifyPartyAddress: string;
+
+  // Invoices & Document References
+  invoiceNumbers: string[];
+  invoiceDates: string[];
+  bookingNumber: string;
+  shippingBillNumbers: string;
+  shipperReference: string;
+  forwarderReference: string;
+
+  // Transport & Routing
+  carrierName: string;
+  preCarriageBy: string;
+  placeOfReceipt: string;
+  vesselName: string;
+  voyageNumber: string;
+  portOfLoading: string;
+  portOfDischarge: string;
+  portOfDischargeDg: string;
+  placeOfDelivery: string;
+  finalDestination: string;
+
+  // Equipment & Allocation
+  containerNumber: string;
+  sealNumber: string;
+  containerType: ContainerType;
+  tareWeightKg: number;
+
+  // Packaging & Manifest Totals
+  shippingMarks: string;
+  productDescription: string;
+  brandName: string;
+  hsnCode: string;
+  totalPallets: number;
+  totalBoxes: number;
+  totalPackages: number;
   grossWeightKg: number;
   netWeightKg: number;
-  totalPackages: number;      // Inner package count (e.g. 676 boxes)
-  packageType: string;        // "BOX" / "CARTON"
-  totalPallets: number;       // Outer packaging count (e.g. 22 pallets)
-  totalOuterPackages?: number;// e.g. 22
-  outerPackageType?: string;  // "PALLET" / "CRATE"
-  totalInnerPackages?: number;// e.g. 676
-  innerPackageType?: string;  // "CORRUGATED BOX"
-  totalBaseUnits?: number;    // Base pieces count
-  hasDangerousGoods: boolean;
-  
-  // Field-Level Traceability & Provenance (Global SaaS Engine)
-  fieldTraceability?: Record<string, FieldTraceability>;
-  
-  // Template Selections
-  selectedBolTemplateId: string;
-  selectedDgTemplateId: string;
-  
-  // Multi-Container & Pallet Allocations
-  containers: ContainerAllocation[];
-  pallets: Pallet[];
-  lineItems: LineItem[];
-  
-  // Generated Documents Cache
-  generatedDocuments?: DocumentOutput[];
-  
-  // PDF Preview
-  pdfUrl?: string;
+  volumeCbm: number;
+
+  // Commercial Terms
+  currency: string;
+  totalInvoiceValue: number;
+  incoterm: string;
+  freightTerms: string;
+  movementType: string;
+  freeTimeClause: string;
+
+  // Dangerous Goods Attributes
+  isDangerousGoods: boolean;
+  unNumber: string;
+  imoClass: string;
+  properShippingName: string;
+  packingGroup: string;
+  marinePollutant: boolean;
+  flashPoint: string;
+  emsNumber: string;
+  segregationGroup: string;
+  unPackingCode: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  dgDeclarantName: string;
+  dgDeclarantStatus: string;
+  dgDeclarationPlaceAndDate: string;
+
+  // Granular Pallet Breakdown
+  pallets: ExtractedPallet[];
+
+  // Source Provenance
+  sourceFiles: string[];
+  extractedAt: string;
 }
 
-export type DocumentStatus = 'pending' | 'processing' | 'processed' | 'failed';
-
-export interface AppDocument {
-  id: string;
-  fileName: string;
-  fileSize: number;
-  uploadedAt: string;
-  status: DocumentStatus;
-  errorMessage?: string;
-  file?: File;
-  pdfUrl?: string;
-  previewHtml?: string;
-  invoice?: ConvertedInvoice;
+/**
+ * DGManifest: Boxes 1 to 22 of the IMO Multimodal Dangerous Goods Declaration Form.
+ * All 22 box fields explicitly typed as strings/numbers. Missing fields are strictly "".
+ */
+export interface DGManifest {
+  box1_shipper: string;
+  box2_transportDocumentNumber: string;
+  box3_page: string;
+  box4_shipperReference: string;
+  box5_freightForwarderReference: string;
+  box6_consignee: string;
+  box7_carrier: string;
+  box8_shipperDeclaration: string;
+  box9_additionalHandlingInfo: string;
+  box10_vesselAndVoyage: string;
+  box11_portOfLoading: string;
+  box12_portOfDischarge: string;
+  box13_destination: string;
+  box14_shippingMarks: string;
+  box15_packageDetailsAndDescription: string;
+  box16_grossMassKg: number;
+  box17_netMassKg: number;
+  box18_cubeM3: number;
+  box19_containerAndSealNumber: string;
+  box20_containerPackingCertificate: string;
+  box21_receivingOrganizationReceipt: string;
+  box22_declarantDetailsAndSignature: string;
 }
 
-export interface ExporterProfile {
-  id: string;
-  companyName: string;
-  iec: string;
-  gstin: string;
-  adCode: string;
-  defaultPort: string;
+/**
+ * BLManifest: 30 Fields of the Master Bill of Lading.
+ * Automatically inherits shared values from DGManifest whenever available.
+ */
+export interface BLManifest {
+  // Inherited from DG (Shared Fields)
+  shipperNameAndAddress: string;
+  bookingNumber: string;
+  shipperReference: string;
+  consigneeNameAndAddress: string;
+  carrierName: string;
+  vesselName: string;
+  voyageNumber: string;
+  portOfLoading: string;
+  portOfDischarge: string;
+  finalDestination: string;
+  shippingMarks: string;
+  cargoDescription: string;
+  totalPallets: number;
+  totalBoxes: number;
+  grossWeightKg: number;
+  netWeightKg: number;
+  volumeCbm: number;
+  containerNumber: string;
+  sealNumber: string;
+  containerType: ContainerType;
+  tareWeightKg: number;
+  unNumber: string;
+  imoClass: string;
+  properShippingName: string;
+  packingGroup: string;
+
+  // BL-Specific Fields
+  billOfLadingNumber: string;
+  notifyPartyNameAndAddress: string;
+  preCarriageBy: string;
+  placeOfReceipt: string;
+  placeOfDelivery: string;
+  shippingBillNumbers: string;
+  freightTerms: string;
+  movementType: string;
+  freeTimeClause: string;
+  statutoryDescription: string;
+  hsnCode: string;
+  numberOfOriginalBills: string;
 }
 
-export interface FieldTraceability<T = any> {
-  value: T;
-  sourceDoc?: string;         // e.g. "CHW000165B.xlsx"
-  sourceSheet?: string;       // e.g. "0232_INV", "0232_PKG", "HPFL NEWARK"
-  sourceAnchor?: string;      // e.g. "Exporter", "Invoice No", "Pallet Nos"
-  confidence: number;         // 0.0 - 1.0 confidence score
-  isUserOverride?: boolean;   // true if edited by operator in Manifest Bar
+export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): ExtractedShipmentJSON {
+  return {
+    uploadMode: mode,
+    shipperName: '',
+    shipperAddress: '',
+    shipperIec: '',
+    shipperGstin: '',
+    shipperPan: '',
+    consigneeName: '',
+    consigneeAddress: '',
+    notifyPartyName: '',
+    notifyPartyAddress: '',
+    invoiceNumbers: [],
+    invoiceDates: [],
+    bookingNumber: '',
+    shippingBillNumbers: '',
+    shipperReference: '',
+    forwarderReference: '',
+    carrierName: '',
+    preCarriageBy: '',
+    placeOfReceipt: '',
+    vesselName: '',
+    voyageNumber: '',
+    portOfLoading: '',
+    portOfDischarge: '',
+    portOfDischargeDg: '',
+    placeOfDelivery: '',
+    finalDestination: '',
+    containerNumber: '',
+    sealNumber: '',
+    containerType: '20GP',
+    tareWeightKg: 0,
+    shippingMarks: '',
+    productDescription: '',
+    brandName: '',
+    hsnCode: '',
+    totalPallets: 0,
+    totalBoxes: 0,
+    totalPackages: 0,
+    grossWeightKg: 0,
+    netWeightKg: 0,
+    volumeCbm: 0,
+    currency: '',
+    totalInvoiceValue: 0,
+    incoterm: '',
+    freightTerms: '',
+    movementType: '',
+    freeTimeClause: '',
+    isDangerousGoods: false,
+    unNumber: '',
+    imoClass: '',
+    properShippingName: '',
+    packingGroup: '',
+    marinePollutant: false,
+    flashPoint: '',
+    emsNumber: '',
+    segregationGroup: '',
+    unPackingCode: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    dgDeclarantName: '',
+    dgDeclarantStatus: '',
+    dgDeclarationPlaceAndDate: '',
+    pallets: [],
+    sourceFiles: [],
+    extractedAt: ''
+  };
+}
+
+export function createEmptyDGManifest(): DGManifest {
+  return {
+    box1_shipper: '',
+    box2_transportDocumentNumber: '',
+    box3_page: '1 of 1',
+    box4_shipperReference: '',
+    box5_freightForwarderReference: '',
+    box6_consignee: '',
+    box7_carrier: '',
+    box8_shipperDeclaration: '',
+    box9_additionalHandlingInfo: '',
+    box10_vesselAndVoyage: '',
+    box11_portOfLoading: '',
+    box12_portOfDischarge: '',
+    box13_destination: '',
+    box14_shippingMarks: '',
+    box15_packageDetailsAndDescription: '',
+    box16_grossMassKg: 0,
+    box17_netMassKg: 0,
+    box18_cubeM3: 0,
+    box19_containerAndSealNumber: '',
+    box20_containerPackingCertificate: '',
+    box21_receivingOrganizationReceipt: '',
+    box22_declarantDetailsAndSignature: ''
+  };
+}
+
+export function createEmptyBLManifest(): BLManifest {
+  return {
+    shipperNameAndAddress: '',
+    bookingNumber: '',
+    shipperReference: '',
+    consigneeNameAndAddress: '',
+    carrierName: '',
+    vesselName: '',
+    voyageNumber: '',
+    portOfLoading: '',
+    portOfDischarge: '',
+    finalDestination: '',
+    shippingMarks: '',
+    cargoDescription: '',
+    totalPallets: 0,
+    totalBoxes: 0,
+    grossWeightKg: 0,
+    netWeightKg: 0,
+    volumeCbm: 0,
+    containerNumber: '',
+    sealNumber: '',
+    containerType: '20GP',
+    tareWeightKg: 0,
+    unNumber: '',
+    imoClass: '',
+    properShippingName: '',
+    packingGroup: '',
+    billOfLadingNumber: '',
+    notifyPartyNameAndAddress: '',
+    preCarriageBy: '',
+    placeOfReceipt: '',
+    placeOfDelivery: '',
+    shippingBillNumbers: '',
+    freightTerms: '',
+    movementType: '',
+    freeTimeClause: '',
+    statutoryDescription: '',
+    hsnCode: '',
+    numberOfOriginalBills: 'THREE (3)'
+  };
+}
+
+/**
+ * Derives DG Manifest (Boxes 1-22) directly from ExtractedShipmentJSON
+ */
+export function deriveDGManifestFromJSON(raw: ExtractedShipmentJSON): DGManifest {
+  const shipperLines = [raw.shipperName, raw.shipperAddress].filter(Boolean).join('\n');
+  const consigneeLines = [raw.consigneeName, raw.consigneeAddress].filter(Boolean).join('\n');
+  const vesselVoyage = [raw.vesselName, raw.voyageNumber].filter(Boolean).join(' / ');
+  const containerSeal = [raw.containerNumber, raw.sealNumber ? `SEAL: ${raw.sealNumber}` : ''].filter(Boolean).join(' / ');
+  const emergency = [
+    raw.emergencyContactName ? `CONTACT: ${raw.emergencyContactName}` : '',
+    raw.emergencyContactPhone ? `TEL: ${raw.emergencyContactPhone}` : ''
+  ].filter(Boolean).join(' | ');
+
+  const declarant = [
+    raw.dgDeclarantName,
+    raw.dgDeclarantStatus,
+    raw.dgDeclarationPlaceAndDate
+  ].filter(Boolean).join(', ');
+
+  const dgDetails = raw.isDangerousGoods
+    ? [
+        raw.unNumber ? `UN ${raw.unNumber}` : '',
+        raw.properShippingName,
+        raw.imoClass ? `CLASS ${raw.imoClass}` : '',
+        raw.packingGroup ? `PG ${raw.packingGroup}` : '',
+        raw.flashPoint ? `FP ${raw.flashPoint}` : '',
+        raw.emsNumber ? `EMS ${raw.emsNumber}` : ''
+      ].filter(Boolean).join(', ')
+    : '';
+
+  const pkgSummary = [
+    raw.totalPallets ? `${raw.totalPallets} PALLETS` : '',
+    raw.totalBoxes ? `(${raw.totalBoxes} BOXES)` : '',
+    raw.productDescription,
+    dgDetails
+  ].filter(Boolean).join(' - ');
+
+  return {
+    box1_shipper: shipperLines,
+    box2_transportDocumentNumber: raw.bookingNumber,
+    box3_page: '1 of 1',
+    box4_shipperReference: raw.invoiceNumbers.join(', ') || raw.shipperReference,
+    box5_freightForwarderReference: raw.forwarderReference,
+    box6_consignee: consigneeLines,
+    box7_carrier: raw.carrierName,
+    box8_shipperDeclaration: shipperLines ? `Shipper declaration on file for ${raw.shipperName}` : '',
+    box9_additionalHandlingInfo: emergency,
+    box10_vesselAndVoyage: vesselVoyage,
+    box11_portOfLoading: raw.portOfLoading,
+    box12_portOfDischarge: raw.portOfDischargeDg || raw.portOfDischarge,
+    box13_destination: raw.finalDestination || raw.placeOfDelivery,
+    box14_shippingMarks: raw.shippingMarks,
+    box15_packageDetailsAndDescription: pkgSummary,
+    box16_grossMassKg: raw.grossWeightKg,
+    box17_netMassKg: raw.netWeightKg,
+    box18_cubeM3: raw.volumeCbm,
+    box19_containerAndSealNumber: containerSeal,
+    box20_containerPackingCertificate: containerSeal ? `Container ${raw.containerNumber} packed in accordance with IMDG Code` : '',
+    box21_receivingOrganizationReceipt: '',
+    box22_declarantDetailsAndSignature: declarant
+  };
+}
+
+/**
+ * Derives BL Manifest automatically inheriting shared values from DG Manifest,
+ * preserving any already-entered BL specific fields.
+ */
+export function deriveBLManifestFromDG(
+  dg: DGManifest,
+  existingBL?: Partial<BLManifest>,
+  raw?: ExtractedShipmentJSON
+): BLManifest {
+  const base = existingBL || {};
+
+  // Extract vessel & voyage if split from Box 10
+  const box10Parts = (dg.box10_vesselAndVoyage || '').split('/').map(s => s.trim());
+  const vessel = box10Parts[0] || (raw ? raw.vesselName : '');
+  const voyage = box10Parts[1] || (raw ? raw.voyageNumber : '');
+
+  // Extract container & seal if split from Box 19
+  const box19Parts = (dg.box19_containerAndSealNumber || '').split('/').map(s => s.trim());
+  const containerNo = box19Parts[0] || (raw ? raw.containerNumber : '');
+  const sealRaw = box19Parts[1] || (raw ? raw.sealNumber : '');
+  const sealNo = sealRaw.replace(/^SEAL:\s*/i, '');
+
+  return {
+    // Inherited from DG / Raw
+    shipperNameAndAddress: dg.box1_shipper || base.shipperNameAndAddress || '',
+    bookingNumber: dg.box2_transportDocumentNumber || base.bookingNumber || '',
+    shipperReference: dg.box4_shipperReference || base.shipperReference || '',
+    consigneeNameAndAddress: dg.box6_consignee || base.consigneeNameAndAddress || '',
+    carrierName: dg.box7_carrier || base.carrierName || '',
+    vesselName: vessel || base.vesselName || '',
+    voyageNumber: voyage || base.voyageNumber || '',
+    portOfLoading: dg.box11_portOfLoading || base.portOfLoading || '',
+    portOfDischarge: dg.box12_portOfDischarge || base.portOfDischarge || '',
+    finalDestination: dg.box13_destination || base.finalDestination || '',
+    shippingMarks: dg.box14_shippingMarks || base.shippingMarks || '',
+    cargoDescription: dg.box15_packageDetailsAndDescription || base.cargoDescription || '',
+    totalPallets: raw ? raw.totalPallets : (base.totalPallets || 0),
+    totalBoxes: raw ? raw.totalBoxes : (base.totalBoxes || 0),
+    grossWeightKg: dg.box16_grossMassKg || base.grossWeightKg || 0,
+    netWeightKg: dg.box17_netMassKg || base.netWeightKg || 0,
+    volumeCbm: dg.box18_cubeM3 || base.volumeCbm || 0,
+    containerNumber: containerNo || base.containerNumber || '',
+    sealNumber: sealNo || base.sealNumber || '',
+    containerType: raw ? raw.containerType : (base.containerType || '20GP'),
+    tareWeightKg: raw ? raw.tareWeightKg : (base.tareWeightKg || 0),
+    unNumber: raw ? raw.unNumber : (base.unNumber || ''),
+    imoClass: raw ? raw.imoClass : (base.imoClass || ''),
+    properShippingName: raw ? raw.properShippingName : (base.properShippingName || ''),
+    packingGroup: raw ? raw.packingGroup : (base.packingGroup || ''),
+
+    // BL-Specific Fields (retained if already entered, or defaulted from raw / empty)
+    billOfLadingNumber: base.billOfLadingNumber || '',
+    notifyPartyNameAndAddress: base.notifyPartyNameAndAddress || (raw ? [raw.notifyPartyName, raw.notifyPartyAddress].filter(Boolean).join('\n') : ''),
+    preCarriageBy: base.preCarriageBy || (raw ? raw.preCarriageBy : ''),
+    placeOfReceipt: base.placeOfReceipt || (raw ? raw.placeOfReceipt : ''),
+    placeOfDelivery: base.placeOfDelivery || (raw ? raw.placeOfDelivery : ''),
+    shippingBillNumbers: base.shippingBillNumbers || (raw ? raw.shippingBillNumbers : ''),
+    freightTerms: base.freightTerms || (raw ? raw.freightTerms : ''),
+    movementType: base.movementType || (raw ? raw.movementType : ''),
+    freeTimeClause: base.freeTimeClause || (raw ? raw.freeTimeClause : ''),
+    statutoryDescription: base.statutoryDescription || (raw ? raw.productDescription : ''),
+    hsnCode: base.hsnCode || (raw ? raw.hsnCode : ''),
+    numberOfOriginalBills: base.numberOfOriginalBills || 'THREE (3)'
+  };
 }
