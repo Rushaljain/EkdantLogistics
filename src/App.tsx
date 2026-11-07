@@ -17,7 +17,8 @@ import {
   FileBox,
   Eye,
   Table,
-  FileUp
+  FileUp,
+  AlertOctagon
 } from 'lucide-react';
 import type { UploadMode, ExtractedShipmentJSON, DGManifest, BLManifest } from './types';
 import { createEmptyShipmentJSON, createEmptyDGManifest, createEmptyBLManifest, deriveDGManifestFromJSON, deriveBLManifestFromDG } from './types';
@@ -39,6 +40,7 @@ export function App(): React.JSX.Element {
   const [filterResults, setFilterResults] = useState<PreFilterResult[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [hasParsed, setHasParsed] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Inspector View Modes: 'audit' | 'pallets' | 'raw_json'
   const [inspectorTab, setInspectorTab] = useState<'audit' | 'pallets' | 'raw_json'>('audit');
@@ -97,6 +99,7 @@ export function App(): React.JSX.Element {
     setFilterResults([]);
     setLogs([]);
     setHasParsed(false);
+    setApiError(null);
     setActiveStep(1);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -147,6 +150,7 @@ export function App(): React.JSX.Element {
     setHasParsed(false);
     setParseProgress(null);
     setParseResult(null);
+    setApiError(null);
 
     try {
       const activeKey = customApiKey.trim() || undefined;
@@ -170,7 +174,7 @@ export function App(): React.JSX.Element {
       setBlManifest(derivedBl);
     } catch (err: any) {
       console.error('Parsing failure:', err);
-      alert(`Parsing failed: ${err?.message || String(err)}`);
+      setApiError(err?.message || String(err));
     } finally {
       setIsParsing(false);
     }
@@ -315,6 +319,59 @@ export function App(): React.JSX.Element {
         {/* Step 1 Container */}
         {activeStep === 1 && (
           <div className="space-y-6">
+            {/* Extraction / API Error Banner */}
+            {apiError && (
+              <div
+                id="api-error-banner"
+                className="bg-red-950/80 border-2 border-red-600 rounded-2xl p-5 text-red-200 shadow-2xl space-y-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center space-x-2.5">
+                    <AlertOctagon className="w-6 h-6 text-red-400 flex-shrink-0" />
+                    <div>
+                      <h3 className="text-sm font-bold text-red-100 uppercase tracking-wide">
+                        Extraction / API Error Occurred
+                      </h3>
+                      <p className="text-xs text-red-300 mt-0.5">
+                        The extraction pipeline halted due to an API error. Silent fallbacks are strictly disabled.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setApiError(null)}
+                    className="text-red-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                    title="Dismiss Error"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="bg-black/60 rounded-xl p-3.5 border border-red-800/80 font-mono text-xs text-red-300 break-all whitespace-pre-wrap max-h-60 overflow-y-auto">
+                  {apiError}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs">
+                  <span className="text-red-400">
+                    Verify your Gemini API key or document format, then retry.
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setShowKeyModal(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-red-900/80 hover:bg-red-800 text-white font-semibold text-xs border border-red-700 cursor-pointer"
+                    >
+                      Update API Key
+                    </button>
+                    <button
+                      onClick={handleExecuteParsing}
+                      className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold text-xs cursor-pointer shadow-md"
+                    >
+                      Retry Extraction
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Ingestion Settings Card */}
             <section className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
@@ -481,8 +538,8 @@ export function App(): React.JSX.Element {
                     <span className="font-semibold text-white">Extraction Engine & Spreadsheet Tab Scorer</span>
                   </div>
                   {parseResult && (
-                    <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                      {parseResult.usedAi ? 'AI Multimodal Active' : 'Client-Side Deterministic Parser'}
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
+                      Gemini Multimodal Verified
                     </span>
                   )}
                 </div>

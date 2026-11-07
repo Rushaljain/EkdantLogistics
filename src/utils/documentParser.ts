@@ -1,12 +1,12 @@
-// Ekdant Logistics - Universal Hybrid Document Ingestion & Parsing Engine
-// Combines Client-Side Pre-Filtering + Gemini Multimodal Structured JSON + Deterministic Consolidation
+// Ekdant Logistics - Pure AI Extraction Pipeline & Multimodal Document Ingestion Engine
+// Strictly zero hardcoded fallbacks: surfaces exact API errors and executes pure multimodal extraction
 
 import type { ExtractedPallet, ExtractedShipmentJSON, UploadMode } from '../types';
 import { createEmptyShipmentJSON } from '../types';
 import { preFilterWorkbook, type PreFilterResult } from './spreadsheetPreFilter';
 
 export interface ParseSessionProgress {
-  stage: 'reading' | 'prefiltering' | 'ai_extracting' | 'consolidating' | 'done' | 'error';
+  stage: 'reading' | 'prefiltering' | 'ai_extracting' | 'consolidating' | 'done';
   message: string;
   processedFiles: number;
   totalFiles: number;
@@ -17,54 +17,59 @@ export interface ParseResult {
   shipmentJson: ExtractedShipmentJSON;
   filterResults: PreFilterResult[];
   logs: string[];
-  usedAi: boolean;
   warnings: string[];
 }
 
 const SYSTEM_PROMPT = `
 You are the Ekdant Logistics Universal Extraction Engine.
-Extract shipping, commercial, dangerous goods, and packaging data from the provided document(s) into strict, verified JSON.
+Extract shipping, commercial, dangerous goods, and packaging data from the provided document(s) into strict, verified JSON conforming to the ExtractedShipmentJSON schema.
 
 CRITICAL EXTRACTION RULES:
 1. UNIVERSAL TRUTH & ZERO INVENTIONS:
-   - Extract ONLY what is explicitly stated in the document(s).
+   - Extract ONLY what is explicitly stated in the provided document(s).
    - If a field is missing, not mentioned, blank, "0", or "---", return "" (empty string) for strings or 0 for numbers.
-   - NEVER invent container numbers (e.g. never generate TEMU...), seal numbers (never EMC...), booking numbers, vessel names, tare weights, haulier names, or dates.
+   - NEVER invent container numbers, seal numbers, booking numbers, vessel names, tare weights, haulier names, or dates.
 2. VERBATIM PRESERVATION:
-   - Preserve exact strings. Do NOT change "NIL" to "NA" or "NO" to "NA".
-   - Do NOT alter cargo descriptions (e.g. do not change "LEAD ACID BATTERIES" to "LEAD ACID STORAGE BATTERIES" unless the text actually says it).
-   - Capture complete addresses including postal / PIN / ZIP codes (e.g. 700 020).
+   - Preserve exact strings from the source text. Do NOT normalize "NIL" to "NA" or "NO" to "NA".
+   - Do NOT alter cargo descriptions or product names unless explicitly written.
+   - Capture complete postal addresses including postal codes / PIN / ZIP codes.
    - Keep "On Behalf Of" entities in the "onBehalfOf" field; never merge them into "shipperName" or "shipperAddress".
 3. PACKAGING HIERARCHY SEPARATION:
-   - "outerPackagingCount": Number of outer units (e.g. 12 or 22).
-   - "outerPackagingType": Outer package type (e.g. "PALLETS").
-   - "innerPackageCount": Total inner boxes (e.g. 1200 or 676).
-   - "innerPackageType": Inner package type (e.g. "CORRUGATED BOXES" or "FIBREBOARD BOXES").
-   - "innerPackingDescription": Detailed description (e.g. "EACH BOX HAS 1 BATTERY").
-   - Extract EVERY physical pallet row into "pallets": array of objects with "palletNumber" (verbatim e.g. "4956", "5644", "TAL/1703/2026", never rename to PLT-1), "modelCode", "boxCount", "netWeightKg", "grossWeightKg".
+   - "outerPackagingCount": Number of outer packages (e.g. pallets, crates).
+   - "outerPackagingType": Outer package type description (e.g. "PALLETS").
+   - "innerPackageCount": Total inner package count (e.g. cartons, boxes, drums).
+   - "innerPackageType": Inner package type description (e.g. "BOXES").
+   - "innerPackingDescription": Detailed inner packing text if specified.
+   - Extract EVERY individual pallet row into the "pallets" array of objects with:
+     * "palletNumber": Verbatim pallet identifier as written in the source (never rename to generic sequences).
+     * "modelCode": Model, product number, or item code.
+     * "boxCount": Number of boxes/items on this specific pallet.
+     * "netWeightKg": Net weight of this specific pallet in kg.
+     * "grossWeightKg": Gross weight of this specific pallet in kg.
 4. REFERENCE VS. CARRIER BOOKING SEPARATION:
-   - Put commercial invoice numbers in "invoiceNumbers" (e.g. ["CHW000263"]).
-   - ONLY put an explicit Carrier Booking Number or DG Reference Number (e.g. "AMC2652493" or "MUMGA3747500") in "bookingNumber". Never copy the invoice number into bookingNumber.
+   - Put commercial invoice numbers in "invoiceNumbers" array.
+   - Put invoice dates in "invoiceDates" array.
+   - ONLY populate "bookingNumber" if an explicit Carrier Booking Number or Dangerous Goods Booking Reference is stated. Never copy the invoice number into bookingNumber.
 `;
 
 /**
- * Encodes an ArrayBuffer or File into a base64 string for multimodal payload
+ * Converts a File into Base64 using a safe chunked reader to prevent call-stack limits
  */
 export async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
-  let binary = '';
   const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const CHUNK_SIZE = 0x8000; // 32KB chunking
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.length));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
   }
   return window.btoa(binary);
 }
 
 /**
- * Universal Parser entry point:
- * Ingests files (PDF, XLSX, XLS, CSV), applies spreadsheet pre-filtering,
- * executes Gemini Multimodal structured extraction, and deterministically consolidates totals.
+ * Executes pure AI multimodal extraction via Gemini API.
+ * Never silently fails: throws explicit errors on missing key, non-200 HTTP responses, or invalid JSON.
  */
 export async function parseDocumentsToJSON(
   files: File[],
@@ -78,6 +83,12 @@ export async function parseDocumentsToJSON(
 
   const apiKey = (apiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY || '').trim();
 
+  if (!apiKey) {
+    throw new Error(
+      'Missing Gemini API Key. Please configure VITE_GEMINI_API_KEY in your environment or enter a Custom API Key using the "Custom Key" button in the header.'
+    );
+  }
+
   onProgress?.({
     stage: 'reading',
     message: `Reading ${files.length} uploaded files...`,
@@ -86,9 +97,8 @@ export async function parseDocumentsToJSON(
     filterLogs: []
   });
 
-  // Step 1: Pre-process each file
+  // Step 1: Prepare multimodal payload
   const multimodalParts: Array<{ inlineData?: { mimeType: string; data: string }; text?: string }> = [];
-  const deterministicFallbackShipments: ExtractedShipmentJSON[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -97,7 +107,7 @@ export async function parseDocumentsToJSON(
     if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
       onProgress?.({
         stage: 'prefiltering',
-        message: `Filtering tabs in spreadsheet: ${file.name}`,
+        message: `Processing spreadsheet coordinate grid: ${file.name}`,
         processedFiles: i + 1,
         totalFiles: files.length,
         filterLogs: logs
@@ -108,51 +118,13 @@ export async function parseDocumentsToJSON(
       filterResults.push(filterRes);
       logs.push(...filterRes.filterLog.map(l => `[${file.name}] ${l}`));
 
-      // Add pre-filtered structured grid text as Gemini prompt part
       if (filterRes.combinedText) {
         multimodalParts.push({ text: filterRes.combinedText });
       }
-
-      // Prepare deterministic fallback record from preFilter
-      const det = filterRes.deterministicData;
-      const fallback = createEmptyShipmentJSON(mode);
-      fallback.shipperName = det.shipperName || '';
-      fallback.shipperAddress = det.shipperAddress || '';
-      fallback.onBehalfOf = det.onBehalfOf || '';
-      fallback.shipperGstin = det.shipperGstin || '';
-      fallback.consigneeName = det.consigneeName || '';
-      fallback.consigneeAddress = det.consigneeAddress || '';
-      fallback.notifyPartyName = det.notifyPartyName || '';
-      fallback.notifyPartyAddress = det.notifyPartyAddress || '';
-      fallback.invoiceNumbers = det.invoiceNumbers;
-      fallback.invoiceDates = det.invoiceDates;
-      fallback.bookingNumber = det.bookingNumber || '';
-      fallback.containerNumber = det.containerNumber || '';
-      fallback.sealNumber = det.sealNumber || '';
-      fallback.portOfLoading = det.portOfLoading || '';
-      fallback.portOfDischarge = det.portOfDischarge || '';
-      fallback.finalDestination = det.finalDestination || '';
-      fallback.productDescription = det.productDescription || '';
-      fallback.brandName = det.brandName || '';
-      fallback.hsnCode = det.hsnCode || '';
-      fallback.totalPallets = det.totalPallets || 0;
-      fallback.totalBoxes = det.totalBoxes || 0;
-      fallback.totalPackages = det.totalBoxes || 0;
-      fallback.grossWeightKg = det.grossWeightKg || 0;
-      fallback.netWeightKg = det.netWeightKg || 0;
-      fallback.isDangerousGoods = Boolean(det.isDangerousGoods);
-      fallback.unNumber = det.unNumber || '';
-      fallback.imoClass = det.imoClass || '';
-      fallback.packingGroup = det.packingGroup || '';
-      fallback.emergencyContactName = det.emergencyContactName || '';
-      fallback.emergencyContactPhone = det.emergencyContactPhone || '';
-      fallback.pallets = det.pallets;
-      fallback.sourceFiles = [file.name];
-      deterministicFallbackShipments.push(fallback);
     } else if (ext === 'pdf') {
       onProgress?.({
         stage: 'reading',
-        message: `Encoding PDF for visual layout extraction: ${file.name}`,
+        message: `Encoding visual layout for PDF: ${file.name}`,
         processedFiles: i + 1,
         totalFiles: files.length,
         filterLogs: logs
@@ -165,107 +137,115 @@ export async function parseDocumentsToJSON(
           data: base64Data
         }
       });
-      logs.push(`[${file.name}] Attached PDF layout directly to multimodal parser`);
+      logs.push(`[${file.name}] Attached visual PDF layout`);
     } else {
-      // Text or unknown files
       const text = await file.text();
       multimodalParts.push({ text: `=== FILE: ${file.name} ===\n${text}` });
-      logs.push(`[${file.name}] Attached raw text document`);
+      logs.push(`[${file.name}] Attached text file`);
     }
   }
 
-  // Step 2: Gemini AI Multimodal Ingestion (if API key available)
-  let extractedJson: ExtractedShipmentJSON | null = null;
-  let usedAi = false;
-
-  if (apiKey && multimodalParts.length > 0) {
-    onProgress?.({
-      stage: 'ai_extracting',
-      message: `Running Gemini Multimodal structured extraction (${mode})...`,
-      processedFiles: files.length,
-      totalFiles: files.length,
-      filterLogs: logs
-    });
-
-    try {
-      const modeInstruction = mode === 'SINGLE_INVOICE'
-        ? 'Upload Mode is SINGLE_INVOICE. All provided files belong to 1 single shipment. Merge commercial invoice, packing list, and carrier DG sheets into one combined shipment JSON.'
-        : 'Upload Mode is MULTI_INVOICE. Documents contain multiple commercial invoices. Extract all invoice numbers, all pallets in physical order, and carrier/vessel details.';
-
-      const userPrompt = `${modeInstruction}\n\nReturn JSON adhering to the ExtractedShipmentJSON schema with all fields populated strictly as stated. If a field is not found in the documents, return "" or 0.`;
-
-      const contents = [
-        {
-          role: 'user',
-          parts: [
-            { text: SYSTEM_PROMPT },
-            ...multimodalParts,
-            { text: userPrompt }
-          ]
-        }
-      ];
-
-      // Try primary model gemini-2.5-flash with fallback to gemini-1.5-flash / gemini-flash-latest
-      const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
-      let responseJson: any = null;
-
-      for (const model of modelsToTry) {
-        try {
-          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents,
-              generationConfig: {
-                responseMimeType: 'application/json',
-                temperature: 0
-              }
-            })
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (rawText) {
-              responseJson = JSON.parse(rawText);
-              usedAi = true;
-              logs.push(`Successfully extracted structured JSON via Gemini (${model})`);
-              break;
-            }
-          }
-        } catch (mErr) {
-          console.warn(`Model ${model} attempt failed:`, mErr);
-        }
-      }
-
-      if (responseJson) {
-        extractedJson = normalizeExtractedJSON(responseJson, mode, files.map(f => f.name));
-      }
-    } catch (aiErr: any) {
-      warnings.push(`AI Multimodal call encountered an error: ${aiErr?.message || String(aiErr)}`);
-      logs.push(`Falling back to deterministic client-side extraction`);
-    }
-  } else if (!apiKey) {
-    warnings.push('No Gemini API Key provided. Client-side deterministic extraction used.');
-    logs.push('Operating in offline / client-side deterministic extraction mode');
+  if (multimodalParts.length === 0) {
+    throw new Error('No valid content could be extracted from the uploaded files.');
   }
 
-  // Step 3: If AI was not used or failed, deterministically consolidate preFilter data
-  if (!extractedJson) {
-    extractedJson = consolidateDeterministicShipments(deterministicFallbackShipments, mode, files.map(f => f.name));
-  }
-
-  // Step 4: Deterministic Post-Parse Consolidation & Math Verification
+  // Step 2: Invoke Gemini Multimodal API
   onProgress?.({
-    stage: 'consolidating',
-    message: 'Running deterministic math and cross-document verification...',
+    stage: 'ai_extracting',
+    message: `Executing Gemini Multimodal Structured Extraction (${mode})...`,
     processedFiles: files.length,
     totalFiles: files.length,
     filterLogs: logs
   });
 
-  consolidateAndVerifyMath(extractedJson, warnings);
+  const modeInstruction = mode === 'SINGLE_INVOICE'
+    ? 'Upload Mode is SINGLE_INVOICE. All provided files belong to 1 single shipment. Merge commercial invoice, packing list, and carrier DG sheets into one combined shipment JSON.'
+    : 'Upload Mode is MULTI_INVOICE. Documents contain multiple commercial invoices. Extract all invoice numbers, all pallets in physical order, and carrier/vessel details.';
+
+  const userPrompt = `${modeInstruction}\n\nReturn strict JSON adhering to the ExtractedShipmentJSON schema with all fields populated strictly as stated in the documents. If a field is not found in the documents, return "" for string or 0 for number.`;
+
+  const requestBody = {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: SYSTEM_PROMPT },
+          ...multimodalParts,
+          { text: userPrompt }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: 'application/json'
+    }
+  };
+
+  // Supported model endpoints to attempt in sequence
+  const models = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+  let lastError: Error | null = null;
+  let parsedRawJson: any = null;
+
+  for (const model of models) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        // If model is not found / deprecated, continue to next candidate
+        if (res.status === 404 && models.indexOf(model) < models.length - 1) {
+          console.warn(`Model ${model} returned 404, attempting next model candidate...`);
+          lastError = new Error(`Gemini API Error (HTTP ${res.status} on ${model}): ${errorText}`);
+          continue;
+        }
+        throw new Error(`Gemini API Error (HTTP ${res.status} on ${model}): ${errorText}`);
+      }
+
+      const data = await res.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!rawText) {
+        throw new Error(`Gemini API response did not contain candidates or content parts (Model: ${model}).`);
+      }
+
+      try {
+        parsedRawJson = JSON.parse(rawText);
+        logs.push(`Successfully extracted structured JSON via Gemini (${model})`);
+        lastError = null;
+        break;
+      } catch (jsonErr: any) {
+        throw new Error(`Failed to parse JSON from Gemini (${model}): ${jsonErr?.message}\nRaw Text:\n${rawText.slice(0, 300)}`);
+      }
+    } catch (fetchErr: any) {
+      lastError = fetchErr;
+      if (models.indexOf(model) === models.length - 1) {
+        break;
+      }
+    }
+  }
+
+  if (!parsedRawJson) {
+    throw lastError || new Error('All Gemini API model attempts failed.');
+  }
+
+  // Step 3: Normalize and validate JSON against universal truth schema
+  const cleanShipment = normalizeExtractedJSON(parsedRawJson, mode, files.map(f => f.name));
+
+  // Step 4: Deterministic mathematical verification
+  onProgress?.({
+    stage: 'consolidating',
+    message: 'Verifying mathematical consistency across extracted pallet weights...',
+    processedFiles: files.length,
+    totalFiles: files.length,
+    filterLogs: logs
+  });
+
+  consolidateAndVerifyMath(cleanShipment, warnings);
 
   onProgress?.({
     stage: 'done',
@@ -276,10 +256,9 @@ export async function parseDocumentsToJSON(
   });
 
   return {
-    shipmentJson: extractedJson,
+    shipmentJson: cleanShipment,
     filterResults,
     logs,
-    usedAi,
     warnings
   };
 }
@@ -294,7 +273,6 @@ function normalizeExtractedJSON(
 ): ExtractedShipmentJSON {
   const clean = createEmptyShipmentJSON(mode);
 
-  // Strings: strictly empty string if missing or undefined
   const str = (v: any): string => (v !== undefined && v !== null ? String(v).trim() : '');
   const num = (v: any): number => {
     const parsed = typeof v === 'number' ? v : parseFloat(String(v || '0').replace(/,/g, ''));
@@ -352,7 +330,7 @@ function normalizeExtractedJSON(
   clean.outerPackagingCount = num(raw.outerPackagingCount || raw.totalPallets);
   clean.outerPackagingType = str(raw.outerPackagingType || 'PALLETS');
   clean.innerPackageCount = num(raw.innerPackageCount || raw.totalBoxes || raw.totalPackages);
-  clean.innerPackageType = str(raw.innerPackageType || 'CORRUGATED BOXES');
+  clean.innerPackageType = str(raw.innerPackageType || 'BOXES');
   clean.innerPackingDescription = str(raw.innerPackingDescription);
 
   clean.totalPallets = clean.outerPackagingCount;
@@ -386,7 +364,6 @@ function normalizeExtractedJSON(
   clean.dgDeclarantStatus = str(raw.dgDeclarantStatus);
   clean.dgDeclarationPlaceAndDate = str(raw.dgDeclarationPlaceAndDate);
 
-  // Pallet lines
   if (Array.isArray(raw.pallets)) {
     clean.pallets = raw.pallets.map((p: any, idx: number): ExtractedPallet => ({
       palletNumber: str(p.palletNumber) || String(idx + 1),
@@ -404,118 +381,51 @@ function normalizeExtractedJSON(
 }
 
 /**
- * Deterministically combines fallback extractions from spreadsheetPreFilter
- */
-function consolidateDeterministicShipments(
-  shipments: ExtractedShipmentJSON[],
-  mode: UploadMode,
-  sourceFiles: string[]
-): ExtractedShipmentJSON {
-  const result = createEmptyShipmentJSON(mode);
-  result.sourceFiles = sourceFiles;
-  result.extractedAt = new Date().toISOString();
-
-  if (shipments.length === 0) {
-    return result;
-  }
-
-  // Pick first non-empty primary fields
-  for (const s of shipments) {
-    if (!result.shipperName && s.shipperName) result.shipperName = s.shipperName;
-    if (!result.shipperAddress && s.shipperAddress) result.shipperAddress = s.shipperAddress;
-    if (!result.onBehalfOf && s.onBehalfOf) result.onBehalfOf = s.onBehalfOf;
-    if (!result.shipperGstin && s.shipperGstin) result.shipperGstin = s.shipperGstin;
-    if (!result.consigneeName && s.consigneeName) result.consigneeName = s.consigneeName;
-    if (!result.consigneeAddress && s.consigneeAddress) result.consigneeAddress = s.consigneeAddress;
-    if (!result.notifyPartyName && s.notifyPartyName) result.notifyPartyName = s.notifyPartyName;
-    if (!result.notifyPartyAddress && s.notifyPartyAddress) result.notifyPartyAddress = s.notifyPartyAddress;
-    if (!result.bookingNumber && s.bookingNumber) result.bookingNumber = s.bookingNumber;
-    if (!result.containerNumber && s.containerNumber) result.containerNumber = s.containerNumber;
-    if (!result.sealNumber && s.sealNumber) result.sealNumber = s.sealNumber;
-    if (!result.portOfLoading && s.portOfLoading) result.portOfLoading = s.portOfLoading;
-    if (!result.portOfDischarge && s.portOfDischarge) result.portOfDischarge = s.portOfDischarge;
-    if (!result.finalDestination && s.finalDestination) result.finalDestination = s.finalDestination;
-    if (!result.productDescription && s.productDescription) result.productDescription = s.productDescription;
-    if (!result.brandName && s.brandName) result.brandName = s.brandName;
-    if (!result.hsnCode && s.hsnCode) result.hsnCode = s.hsnCode;
-    if (!result.emergencyContactName && s.emergencyContactName) result.emergencyContactName = s.emergencyContactName;
-    if (!result.emergencyContactPhone && s.emergencyContactPhone) result.emergencyContactPhone = s.emergencyContactPhone;
-
-    if (s.isDangerousGoods) {
-      result.isDangerousGoods = true;
-      if (!result.unNumber && s.unNumber) result.unNumber = s.unNumber;
-      if (!result.imoClass && s.imoClass) result.imoClass = s.imoClass;
-      if (!result.packingGroup && s.packingGroup) result.packingGroup = s.packingGroup;
-    }
-
-    // Accumulate invoices
-    for (const inv of s.invoiceNumbers) {
-      if (!result.invoiceNumbers.includes(inv)) result.invoiceNumbers.push(inv);
-    }
-    for (const dt of s.invoiceDates) {
-      if (!result.invoiceDates.includes(dt)) result.invoiceDates.push(dt);
-    }
-
-    // Accumulate pallets
-    result.pallets.push(...s.pallets);
-  }
-
-  return result;
-}
-
-/**
- * Deterministically recalculates and balances packaging totals and weights.
  * Validates header totals against sum of pallet rows and populates discrepancy warnings.
  */
 function consolidateAndVerifyMath(
   shipment: ExtractedShipmentJSON,
   warnings: string[]
 ): void {
-  // If we have pallet breakdown, calculate exact sums
   if (shipment.pallets.length > 0) {
     const calcPallets = shipment.pallets.length;
     const calcBoxes = shipment.pallets.reduce((s, p) => s + (p.boxCount || 0), 0);
     const calcNetKg = Number(shipment.pallets.reduce((s, p) => s + (p.netWeightKg || 0), 0).toFixed(2));
     const calcGrossKg = Number(shipment.pallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0).toFixed(2));
 
-    // Check discrepancy with header declared net weight
     if (shipment.netWeightKg > 0 && Math.abs(shipment.netWeightKg - calcNetKg) > 1.0) {
       warnings.push(
-        `Header Net Weight (${shipment.netWeightKg} kg) differs from sum of pallet rows (${calcNetKg} kg). Difference: ${(shipment.netWeightKg - calcNetKg).toFixed(2)} kg`
+        `Declared Net Weight (${shipment.netWeightKg} kg) differs from sum of pallet rows (${calcNetKg} kg). Difference: ${(shipment.netWeightKg - calcNetKg).toFixed(2)} kg`
       );
     }
 
-    // Check discrepancy with header declared gross weight
     if (shipment.grossWeightKg > 0 && Math.abs(shipment.grossWeightKg - calcGrossKg) > 1.0) {
       warnings.push(
-        `Header Gross Weight (${shipment.grossWeightKg} kg) differs from sum of pallet rows (${calcGrossKg} kg). Difference: ${(shipment.grossWeightKg - calcGrossKg).toFixed(2)} kg`
+        `Declared Gross Weight (${shipment.grossWeightKg} kg) differs from sum of pallet rows (${calcGrossKg} kg). Difference: ${(shipment.grossWeightKg - calcGrossKg).toFixed(2)} kg`
       );
     }
 
-    // Deterministically enforce calculated totals
     shipment.totalPallets = calcPallets;
     shipment.outerPackagingCount = calcPallets;
     shipment.totalBoxes = calcBoxes;
     shipment.innerPackageCount = calcBoxes;
     shipment.totalPackages = calcBoxes;
 
-    // Default weights to sum of pallets if header was blank
     if (shipment.netWeightKg === 0) shipment.netWeightKg = calcNetKg;
     if (shipment.grossWeightKg === 0) shipment.grossWeightKg = calcGrossKg;
   }
 
-  // Check for missing critical references
   if (shipment.invoiceNumbers.length === 0) {
-    warnings.push('No commercial invoice numbers found in uploaded documents.');
+    warnings.push('No commercial invoice numbers identified in source documents.');
   }
   if (!shipment.shipperName) {
-    warnings.push('Shipper / Exporter name is not confirmed in source documents.');
+    warnings.push('Shipper / Exporter name not found in source documents.');
   }
   if (!shipment.consigneeName) {
-    warnings.push('Consignee name is not confirmed in source documents.');
+    warnings.push('Consignee name not found in source documents.');
   }
   if (shipment.isDangerousGoods && !shipment.unNumber) {
-    warnings.push('Dangerous goods flagged, but UN Number is missing.');
+    warnings.push('Dangerous goods cargo identified, but UN Number is missing.');
   }
 
   shipment.discrepancyWarnings = warnings;
