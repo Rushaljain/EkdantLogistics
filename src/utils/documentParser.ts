@@ -1,9 +1,9 @@
 // Ekdant Logistics - Pure AI Extraction Pipeline & Multimodal Document Ingestion Engine
 // Strictly zero hardcoded fallbacks: surfaces exact API errors and executes pure multimodal extraction
 
-import type { ExtractedPallet, ExtractedShipmentJSON, UploadMode } from '../types';
-import { createEmptyShipmentJSON } from '../types';
-import { preFilterWorkbook, type PreFilterResult } from './spreadsheetPreFilter';
+import type { ExtractedPallet, ExtractedShipmentJSON, UploadMode } from '../types/index.ts';
+import { createEmptyShipmentJSON } from '../types/index.ts';
+import { preFilterWorkbook, type PreFilterResult } from './spreadsheetPreFilter.ts';
 
 export interface ParseSessionProgress {
   stage: 'reading' | 'prefiltering' | 'ai_extracting' | 'consolidating' | 'done';
@@ -84,7 +84,17 @@ export async function fileToBase64(file: File): Promise<string> {
     const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.length));
     binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
   }
-  return window.btoa(binary);
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    return window.btoa(binary);
+  }
+  if (typeof btoa === 'function') {
+    return btoa(binary);
+  }
+  const buf = (globalThis as unknown as { Buffer?: { from(b: ArrayBuffer): { toString(enc: string): string } } }).Buffer;
+  if (buf) {
+    return buf.from(buffer).toString('base64');
+  }
+  throw new Error('Base64 encoding not supported in current environment');
 }
 
 /**
@@ -101,7 +111,11 @@ export async function parseDocumentsToJSON(
   const filterResults: PreFilterResult[] = [];
   const warnings: string[] = [];
 
-  const apiKey = (apiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+  const globalProc = (globalThis as unknown as { process?: { env?: Record<string, string> } }).process;
+  const envKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+                 globalProc?.env?.VITE_GEMINI_API_KEY ||
+                 '';
+  const apiKey = (apiKeyOverride || envKey).trim();
 
   if (!apiKey) {
     throw new Error(
