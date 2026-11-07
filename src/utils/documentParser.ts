@@ -39,6 +39,7 @@ CRITICAL EXTRACTION RULES:
    - Keep "On Behalf Of" entities in the "onBehalfOf" field; never merge them into "shipperName" or "shipperAddress".
 
 3. DUAL-POPULATED CARGO & DANGEROUS GOODS DESCRIPTIONS:
+   - Set isDangerousGoods to true whenever any UN Number, IMO/Hazard Class, or Packing Group is explicitly present in the source document(s). Otherwise, set it to false.
    - Always populate "productDescription" from the commercial goods description column/box (labels: "Description of Goods", "Commodity", "Item Description").
    - If the cargo is hazardous/dangerous goods and no separate "Proper Shipping Name" is explicitly labeled, populate BOTH "productDescription" and "properShippingName" rather than leaving "productDescription" blank.
 
@@ -376,6 +377,17 @@ function normalizeExtractedJSON(
   clean.imoClass = str(raw.imoClass);
   clean.properShippingName = str(raw.properShippingName);
   clean.packingGroup = str(raw.packingGroup);
+
+  // Global domain rule: hazardous cargo is universally identified by the presence of a UN Number, IMO Class, or Packing Group.
+  const hasHazardIdentifiers = Boolean(
+    (clean.unNumber && clean.unNumber.trim() !== '') ||
+    (clean.imoClass && clean.imoClass.trim() !== '') ||
+    (clean.packingGroup && clean.packingGroup.trim() !== '')
+  );
+
+  if (hasHazardIdentifiers) {
+    clean.isDangerousGoods = true;
+  }
   clean.marinePollutant = Boolean(raw.marinePollutant);
   clean.flashPoint = str(raw.flashPoint);
   clean.emsNumber = str(raw.emsNumber);
@@ -436,6 +448,17 @@ function consolidateAndVerifyMath(
 
     if (shipment.netWeightKg === 0) shipment.netWeightKg = calcNetKg;
     if (shipment.grossWeightKg === 0) shipment.grossWeightKg = calcGrossKg;
+  }
+
+  // Global domain rule invariant: hazardous cargo is universally identified by the presence of a UN Number, IMO Class, or Packing Group.
+  const hasHazardIdentifiers = Boolean(
+    (shipment.unNumber && shipment.unNumber.trim() !== '') ||
+    (shipment.imoClass && shipment.imoClass.trim() !== '') ||
+    (shipment.packingGroup && shipment.packingGroup.trim() !== '')
+  );
+
+  if (hasHazardIdentifiers) {
+    shipment.isDangerousGoods = true;
   }
 
   if (shipment.invoiceNumbers.length === 0) {
