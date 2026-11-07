@@ -827,7 +827,7 @@ export function App(): React.JSX.Element {
               </button>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              You can provide a custom Gemini API key for this browser session. If left blank, the app uses `VITE_GEMINI_API_KEY` from environment variables, or falls back to client-side deterministic extraction.
+              Configure your Google AI Studio or Gemini API key. If left blank, the app uses the built-in system key from environment variables.
             </p>
             <div className="space-y-1.5">
               <label htmlFor="api-key-input" className="text-xs font-semibold text-slate-300">
@@ -838,7 +838,7 @@ export function App(): React.JSX.Element {
                 type="password"
                 value={customApiKey}
                 onChange={(e) => setCustomApiKey(e.target.value)}
-                placeholder="AIzaSy... or leave blank for default"
+                placeholder="AIzaSy... or AQ... (or leave blank to use default)"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
               />
             </div>

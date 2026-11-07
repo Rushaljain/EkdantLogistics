@@ -206,24 +206,37 @@ export async function parseDocumentsToJSON(
   };
 
   // Supported model endpoints to attempt in sequence
-  const models = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+  const models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
   let lastError: Error | null = null;
   let parsedRawJson: any = null;
 
+  // Build headers: send key via standard x-goog-api-key header to support AIzaSy... and AQ... keys cleanly
+  const requestHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': apiKey
+  };
+  if (apiKey.startsWith('ya29.')) {
+    requestHeaders['Authorization'] = `Bearer ${apiKey}`;
+  }
+
   for (const model of models) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    // Only append ?key= query param for AIza... keys; for AQ... or bearer tokens, URL param triggers ACCESS_TOKEN_TYPE_UNSUPPORTED
+    const endpoint = apiKey.startsWith('AIza')
+      ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+      : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: requestHeaders,
         body: JSON.stringify(requestBody)
       });
 
       if (!res.ok) {
         const errorText = await res.text();
-        // If model is not found / deprecated, continue to next candidate
-        if (res.status === 404 && models.indexOf(model) < models.length - 1) {
-          console.warn(`Model ${model} returned 404, attempting next model candidate...`);
+        // If model is not found (404) or temporarily overloaded (503), attempt next candidate
+        if ((res.status === 404 || res.status === 503) && models.indexOf(model) < models.length - 1) {
+          console.warn(`Model ${model} returned HTTP ${res.status}, attempting next model candidate...`);
           lastError = new Error(`Gemini API Error (HTTP ${res.status} on ${model}): ${errorText}`);
           continue;
         }
