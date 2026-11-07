@@ -29,27 +29,46 @@ CRITICAL EXTRACTION RULES:
    - Extract ONLY what is explicitly stated in the provided document(s).
    - If a field is missing, not mentioned, blank, "0", or "---", return "" (empty string) for strings or 0 for numbers.
    - NEVER invent container numbers, seal numbers, booking numbers, vessel names, tare weights, haulier names, or dates.
-2. VERBATIM PRESERVATION:
+
+2. VERBATIM PRESERVATION & EMBEDDED IDENTIFIERS:
    - Preserve exact strings from the source text. Do NOT normalize "NIL" to "NA" or "NO" to "NA".
-   - Do NOT alter cargo descriptions or product names unless explicitly written.
-   - Capture complete postal addresses including postal codes / PIN / ZIP codes.
+   - Capture complete postal addresses including postal codes, PIN, or ZIP codes.
+   - Scan full text inside Exporter / Shipper, Consignee, and Notify boxes:
+     * Extract "shipperGstin" (labels: "GSTIN", "GST No"), "shipperIec" (labels: "IEC", "IE Code", "BIN"), and "shipperPan" (labels: "PAN") into their dedicated fields even when printed inside an address block or adjacent reference cells.
+     * In "notifyPartyAddress" and "consigneeAddress", retain the complete block including "Email", "Mobile"/"Tel", "VAT Reg. No.", and "Company Reg. No." lines.
    - Keep "On Behalf Of" entities in the "onBehalfOf" field; never merge them into "shipperName" or "shipperAddress".
-3. PACKAGING HIERARCHY SEPARATION:
+
+3. DUAL-POPULATED CARGO & DANGEROUS GOODS DESCRIPTIONS:
+   - Always populate "productDescription" from the commercial goods description column/box (labels: "Description of Goods", "Commodity", "Item Description").
+   - If the cargo is hazardous/dangerous goods and no separate "Proper Shipping Name" is explicitly labeled, populate BOTH "productDescription" and "properShippingName" rather than leaving "productDescription" blank.
+
+4. GENERIC LABEL SYNONYM MAPPING:
+   - "hsnCode": Match labels ("H.S. Code No.", "H.S Code", "HSN", "Tariff Code", "Commodity Code", "Schedule B"). Extract the numeric classification code string.
+   - "imoClass": Match labels ("IMO CLASS", "IMCO CLASS", "Hazard Class", "DG Class", "Class"). Extract the numeric or decimal class string (e.g. "8", "3", "2.1").
+   - "shippingMarks": Match labels ("Marks & Nos", "Marks & Numbers", "Marks & Nos / Container No.", "Shipping Marks"). Combine both text markings and package/pallet serial ranges printed in that box.
+   - "brandName": Match labels ("Brand", "Make", "Trademark"). If multiple brand labels or table columns exist (e.g. primary brand and sub-brand/model line), combine or capture the specific product brand stated.
+   - "shipperReference": Match labels ("Exporter's Ref", "EXPORT REF NO", "Buyer's Order No. & Date", "PO No", "SO NO", "Order No"). Combine exporter reference and buyer order numbers if both are present.
+   - "incoterm": Match labels ("Delivery", "Terms of Delivery", "Incoterms", "Trade Terms", e.g. "CFR", "CIF", "FOB", "EXW" along with the named port/place).
+   - "totalInvoiceValue": Match the final payable bottom-line invoice total (labels: "Total CFR Amount", "Total CIF Amount", "Total Invoice Amount", "Grand Total", "Amount Chargeable"). Handle international decimal formatting (period vs comma for thousands/cents) by verifying that Sub Total - Discount + Freight = Total.
+
+5. PACKAGING HIERARCHY SEPARATION:
    - "outerPackagingCount": Number of outer packages (e.g. pallets, crates).
    - "outerPackagingType": Outer package type description (e.g. "PALLETS").
    - "innerPackageCount": Total inner package count (e.g. cartons, boxes, drums).
    - "innerPackageType": Inner package type description (e.g. "BOXES").
    - "innerPackingDescription": Detailed inner packing text if specified.
    - Extract EVERY individual pallet row into the "pallets" array of objects with:
-     * "palletNumber": Verbatim pallet identifier as written in the source (never rename to generic sequences).
+     * "palletNumber": Verbatim pallet identifier as written in the source table (never rename to generic sequences).
      * "modelCode": Model, product number, or item code.
      * "boxCount": Number of boxes/items on this specific pallet.
      * "netWeightKg": Net weight of this specific pallet in kg.
      * "grossWeightKg": Gross weight of this specific pallet in kg.
-4. REFERENCE VS. CARRIER BOOKING SEPARATION:
+     * "sourceFile": Exact filename of the document containing that palletized packing table.
+
+6. REFERENCE VS. CARRIER BOOKING SEPARATION:
    - Put commercial invoice numbers in "invoiceNumbers" array.
    - Put invoice dates in "invoiceDates" array.
-   - ONLY populate "bookingNumber" if an explicit Carrier Booking Number or Dangerous Goods Booking Reference is stated. Never copy the invoice number into bookingNumber.
+   - ONLY populate "bookingNumber" if an explicit Carrier Booking Number or Dangerous Goods Booking Reference is stated. Never copy the commercial invoice number into bookingNumber.
 `;
 
 /**
@@ -97,7 +116,7 @@ export async function parseDocumentsToJSON(
     filterLogs: []
   });
 
-  // Step 1: Prepare multimodal payload
+  // Step 1: Prepare multimodal payload with explicit file boundary annotations
   const multimodalParts: Array<{ inlineData?: { mimeType: string; data: string }; text?: string }> = [];
 
   for (let i = 0; i < files.length; i++) {
@@ -119,7 +138,9 @@ export async function parseDocumentsToJSON(
       logs.push(...filterRes.filterLog.map(l => `[${file.name}] ${l}`));
 
       if (filterRes.combinedText) {
+        multimodalParts.push({ text: `--- START OF SPREADSHEET FILE: ${file.name} ---` });
         multimodalParts.push({ text: filterRes.combinedText });
+        multimodalParts.push({ text: `--- END OF SPREADSHEET FILE: ${file.name} ---` });
       }
     } else if (ext === 'pdf') {
       onProgress?.({
@@ -131,16 +152,18 @@ export async function parseDocumentsToJSON(
       });
 
       const base64Data = await fileToBase64(file);
+      multimodalParts.push({ text: `--- START OF UPLOADED PDF FILE: ${file.name} ---` });
       multimodalParts.push({
         inlineData: {
           mimeType: 'application/pdf',
           data: base64Data
         }
       });
+      multimodalParts.push({ text: `--- END OF UPLOADED PDF FILE: ${file.name} ---` });
       logs.push(`[${file.name}] Attached visual PDF layout`);
     } else {
       const text = await file.text();
-      multimodalParts.push({ text: `=== FILE: ${file.name} ===\n${text}` });
+      multimodalParts.push({ text: `--- START OF DOCUMENT: ${file.name} ---\n${text}\n--- END OF DOCUMENT: ${file.name} ---` });
       logs.push(`[${file.name}] Attached text file`);
     }
   }
