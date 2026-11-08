@@ -536,3 +536,37 @@ export function deriveBLManifestFromDG(
     numberOfOriginalBills: base.numberOfOriginalBills || 'THREE (3)'
   };
 }
+
+// ==========================================
+// Phase 3: Dynamic Format Schema & Matcher Types
+// ==========================================
+
+export type FormatDocumentType = 'DG' | 'BL';
+
+export interface FormatFieldDefinition {
+  fieldId: string;
+  labelInTemplate: string;
+  sectionName: string;
+  fieldType: 'text' | 'multiline' | 'number' | 'table';
+  mappedShipmentKey: keyof ExtractedShipmentJSON | '';
+}
+
+export interface FormatSchemaJSON {
+  formatId: string;
+  formatName: string;
+  documentType: FormatDocumentType;
+  sourceFileName: string;
+  createdAt: string;
+  fields: FormatFieldDefinition[];
+}
+
+export interface MappedManifestField {
+  fieldId: string;
+  labelInTemplate: string;
+  sectionName: string;
+  fieldType: 'text' | 'multiline' | 'number' | 'table';
+  mappedShipmentKey: keyof ExtractedShipmentJSON | '';
+  value: string;
+  status: 'POPULATED' | 'PENDING_BLANK';
+}
+

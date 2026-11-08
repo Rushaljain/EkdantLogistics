@@ -32,10 +32,20 @@ const KNOWN_INDEXED_DB_NAMES = [
  * Flushes in-memory cache to guarantee zero cross-session data contamination.
  */
 export async function purgeAllWorkspaceStorage(): Promise<void> {
-  // 1. Clear Web Storage
+  // 1. Clear Web Storage (preserving Format Library & Custom API Key across resets)
   if (typeof window !== 'undefined') {
     try {
+      const preservedLibrary = window.localStorage.getItem('ekdant_format_library_v1');
+      const preservedKey = window.localStorage.getItem('ekdant_custom_gemini_key');
+
       window.localStorage.clear();
+
+      if (preservedLibrary) {
+        window.localStorage.setItem('ekdant_format_library_v1', preservedLibrary);
+      }
+      if (preservedKey) {
+        window.localStorage.setItem('ekdant_custom_gemini_key', preservedKey);
+      }
     } catch (e) {
       console.warn('[StorageReset] localStorage clear failed:', e);
     }
