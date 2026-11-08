@@ -4,6 +4,81 @@
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
 
 /**
+ * Assembles a comprehensive multimodal DG cargo description block from ExtractedShipmentJSON.
+ * Used when a target DG template provides a combined Box 14 / package & goods description field.
+ */
+function buildCombinedDgCargoDescription(
+  shipment: ExtractedShipmentJSON,
+  includeMarks: boolean = true
+): string {
+  const blocks: string[] = [];
+
+  // 1. Marks & Numbers
+  if (includeMarks && shipment.shippingMarks && shipment.shippingMarks.trim()) {
+    blocks.push(`MARKS & NUMBERS:\n${shipment.shippingMarks.trim()}`);
+  }
+
+  // 2. Packages (Outer and Inner)
+  const pkgLines: string[] = [];
+  if (shipment.outerPackagingCount > 0) {
+    pkgLines.push(`${shipment.outerPackagingCount} ${shipment.outerPackagingType || 'PALLETS'}`);
+  }
+  if (shipment.innerPackageCount > 0) {
+    let innerText = `${shipment.innerPackageCount} ${shipment.innerPackageType || 'BOXES'}`;
+    if (shipment.innerPackingDescription && shipment.innerPackingDescription.trim()) {
+      innerText += ` (${shipment.innerPackingDescription.trim()})`;
+    }
+    pkgLines.push(innerText);
+  }
+  if (pkgLines.length > 0) {
+    blocks.push(`PACKAGES:\n${pkgLines.join(' / ')}`);
+  }
+
+  // 3. Commodity / Proper Shipping Name (+ Brand & HSN)
+  const primaryDesc = shipment.properShippingName || shipment.productDescription;
+  if (primaryDesc && primaryDesc.trim()) {
+    let descLine = primaryDesc.trim();
+    if (shipment.brandName && !descLine.toLowerCase().includes(shipment.brandName.toLowerCase())) {
+      descLine += ` (BRAND: ${shipment.brandName.trim()})`;
+    }
+    if (shipment.hsnCode && !descLine.includes(shipment.hsnCode.trim())) {
+      descLine += ` [HSN: ${shipment.hsnCode.trim()}]`;
+    }
+    blocks.push(`COMMODITY / DESCRIPTION:\n${descLine}`);
+  }
+
+  // 4. DG Classification
+  const dgLines: string[] = [];
+  if (shipment.unNumber && shipment.unNumber.trim()) {
+    dgLines.push(`UN NO: ${shipment.unNumber.trim()}`);
+  }
+  if (shipment.imoClass && shipment.imoClass.trim()) {
+    dgLines.push(`IMO CLASS: ${shipment.imoClass.trim()}`);
+  }
+  if (shipment.packingGroup && shipment.packingGroup.trim()) {
+    dgLines.push(`PACKING GROUP: ${shipment.packingGroup.trim()}`);
+  }
+  if (shipment.flashPoint && shipment.flashPoint.trim()) {
+    dgLines.push(`FLASH POINT: ${shipment.flashPoint.trim()}`);
+  }
+  if (shipment.emsNumber && shipment.emsNumber.trim()) {
+    dgLines.push(`EMS: ${shipment.emsNumber.trim()}`);
+  }
+  if (shipment.unPackingCode && shipment.unPackingCode.trim()) {
+    dgLines.push(`UN PACKING CODE: ${shipment.unPackingCode.trim()}`);
+  }
+  if (shipment.marinePollutant) {
+    dgLines.push('MARINE POLLUTANT: YES');
+  }
+
+  if (dgLines.length > 0) {
+    blocks.push(`DG CLASSIFICATION:\n${dgLines.join(', ')}`);
+  }
+
+  return blocks.join('\n\n');
+}
+
+/**
  * Builds a dynamic mapped manifest list from a shipment JSON and a target format schema.
  * Populates known fields, evaluates composite math (e.g. VGM), and marks status.
  */
@@ -31,48 +106,171 @@ export function buildMappedManifest(
       } else if (typeof rawVal === 'string') {
         resolvedValue = rawVal.trim();
         if (resolvedValue === '0' || resolvedValue === '---' || resolvedValue === 'NIL') {
-          // If strictly empty or placeholder, set blank
           resolvedValue = resolvedValue === '0' ? '' : resolvedValue;
         }
       }
     }
 
-    // 3. Composite logic for VGM / Total Gross Mass including Tare
+    const labelLower = field.labelInTemplate.toLowerCase();
+    const fieldIdLower = field.fieldId.toLowerCase();
+
+    // 3. Strict Box 19 / VGM Invariant:
+    // NEVER copy grossWeightKg alone into Total gross (incl. tare) when tareWeightKg is 0 or blank.
+    // Only when BOTH grossWeightKg > 0 AND tareWeightKg > 0 may it compute grossWeightKg + tareWeightKg.
     const isVgmField =
-      field.fieldId.includes('vgm') ||
-      field.labelInTemplate.toLowerCase().includes('verified gross mass') ||
-      field.labelInTemplate.toLowerCase().includes('total weight incl. tare');
+      fieldIdLower.includes('vgm') ||
+      fieldIdLower.includes('total_gross_incl_tare') ||
+      fieldIdLower.includes('total_weight_incl_tare') ||
+      fieldIdLower === 'box_19_total_gross' ||
+      fieldIdLower === 'box_19_total_gross_incl_tare' ||
+      labelLower.includes('total gross (incl') ||
+      labelLower.includes('total weight incl') ||
+      labelLower.includes('incl. tare') ||
+      labelLower.includes('including tare') ||
+      labelLower.includes('verified gross mass');
 
     if (isVgmField) {
-      // Only compute if both grossWeightKg > 0 and tareWeightKg > 0
       if (shipment.grossWeightKg > 0 && shipment.tareWeightKg > 0) {
-        resolvedValue = (shipment.grossWeightKg + shipment.tareWeightKg).toFixed(2).replace(/\.00$/, '');
-      } else if (shipment.grossWeightKg > 0) {
-        resolvedValue = String(shipment.grossWeightKg);
+        resolvedValue = String(Number((shipment.grossWeightKg + shipment.tareWeightKg).toFixed(2)));
       } else {
         resolvedValue = '';
       }
     }
 
-    // 4. Combined Name & Address formatting if label suggests both
-    const labelLower = field.labelInTemplate.toLowerCase();
-    if (field.mappedShipmentKey === 'shipperAddress' && labelLower.includes('name') && labelLower.includes('address')) {
-      if (shipment.shipperName && shipment.shipperAddress) {
-        resolvedValue = `${shipment.shipperName}\n${shipment.shipperAddress}`;
+    // 4. Composite Party Blocks (Shipper, Consignee, Notify Party)
+    const hasSeparateShipperAddress = format.fields.some(
+      f => f.fieldId !== field.fieldId && f.mappedShipmentKey === 'shipperAddress'
+    );
+    const isShipperPartyBox =
+      field.mappedShipmentKey === 'shipperAddress' ||
+      (field.mappedShipmentKey === 'shipperName' && !hasSeparateShipperAddress) ||
+      fieldIdLower.includes('box_1_shipper') ||
+      fieldIdLower === 'bl_shipper' ||
+      (labelLower.includes('shipper') && !labelLower.includes('reference') && !labelLower.includes('declaration'));
+
+    if (isShipperPartyBox && !hasSeparateShipperAddress) {
+      const parts: string[] = [];
+      if (shipment.shipperName && shipment.shipperName.trim()) {
+        parts.push(shipment.shipperName.trim());
       }
-    } else if (field.mappedShipmentKey === 'consigneeAddress' && labelLower.includes('name') && labelLower.includes('address')) {
+      if (shipment.shipperAddress && shipment.shipperAddress.trim()) {
+        const addr = shipment.shipperAddress.trim();
+        if (!shipment.shipperName || !addr.toLowerCase().startsWith(shipment.shipperName.trim().toLowerCase())) {
+          parts.push(addr);
+        } else {
+          parts.length = 0;
+          parts.push(addr);
+        }
+      }
+      if (shipment.onBehalfOf && shipment.onBehalfOf.trim()) {
+        parts.push(`ON BEHALF OF:\n${shipment.onBehalfOf.trim()}`);
+      }
+      resolvedValue = parts.filter(Boolean).join('\n');
+    }
+
+    const hasSeparateConsigneeAddress = format.fields.some(
+      f => f.fieldId !== field.fieldId && f.mappedShipmentKey === 'consigneeAddress'
+    );
+    const isConsigneePartyBox =
+      field.mappedShipmentKey === 'consigneeAddress' ||
+      (field.mappedShipmentKey === 'consigneeName' && !hasSeparateConsigneeAddress) ||
+      fieldIdLower.includes('box_6_consignee') ||
+      fieldIdLower === 'bl_consignee' ||
+      labelLower.includes('consignee');
+
+    if (isConsigneePartyBox && !hasSeparateConsigneeAddress) {
       if (shipment.consigneeName && shipment.consigneeAddress) {
-        resolvedValue = `${shipment.consigneeName}\n${shipment.consigneeAddress}`;
-      }
-    } else if (field.mappedShipmentKey === 'notifyPartyAddress' && labelLower.includes('name') && labelLower.includes('address')) {
-      if (shipment.notifyPartyName && shipment.notifyPartyAddress) {
-        resolvedValue = `${shipment.notifyPartyName}\n${shipment.notifyPartyAddress}`;
+        const addr = shipment.consigneeAddress.trim();
+        const name = shipment.consigneeName.trim();
+        if (!addr.toLowerCase().startsWith(name.toLowerCase())) {
+          resolvedValue = `${name}\n${addr}`;
+        } else {
+          resolvedValue = addr;
+        }
+      } else if (shipment.consigneeName || shipment.consigneeAddress) {
+        resolvedValue = (shipment.consigneeAddress || shipment.consigneeName).trim();
       }
     }
 
-    // 5. Container & Seal combined box
+    const hasSeparateNotifyAddress = format.fields.some(
+      f => f.fieldId !== field.fieldId && f.mappedShipmentKey === 'notifyPartyAddress'
+    );
+    const isNotifyPartyBox =
+      field.mappedShipmentKey === 'notifyPartyAddress' ||
+      (field.mappedShipmentKey === 'notifyPartyName' && !hasSeparateNotifyAddress) ||
+      fieldIdLower.includes('notify_party') ||
+      labelLower.includes('notify party');
+
+    if (isNotifyPartyBox && !hasSeparateNotifyAddress) {
+      if (shipment.notifyPartyName && shipment.notifyPartyAddress) {
+        const addr = shipment.notifyPartyAddress.trim();
+        const name = shipment.notifyPartyName.trim();
+        if (!addr.toLowerCase().startsWith(name.toLowerCase())) {
+          resolvedValue = `${name}\n${addr}`;
+        } else {
+          resolvedValue = addr;
+        }
+      } else if (shipment.notifyPartyName || shipment.notifyPartyAddress) {
+        resolvedValue = (shipment.notifyPartyAddress || shipment.notifyPartyName).trim();
+      }
+    }
+
+    // 5. Shipper's Reference / Invoice Reference (Box 4):
+    // If invoiceNumbers is non-empty, include them alongside shipperReference so invoice numbers are never lost
+    const isShipperRefBox =
+      field.mappedShipmentKey === 'shipperReference' ||
+      fieldIdLower.includes('shipper_ref') ||
+      fieldIdLower === 'bl_export_references' ||
+      labelLower.includes("shipper's ref") ||
+      labelLower.includes('shipper reference') ||
+      labelLower.includes('export references');
+
+    if (isShipperRefBox) {
+      const invStr = shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0
+        ? shipment.invoiceNumbers.join(', ')
+        : '';
+      const refStr = shipment.shipperReference ? shipment.shipperReference.trim() : '';
+
+      if (refStr && invStr) {
+        if (!refStr.toLowerCase().includes(invStr.toLowerCase())) {
+          resolvedValue = `${refStr}\nINV: ${invStr}`;
+        } else {
+          resolvedValue = refStr;
+        }
+      } else if (invStr) {
+        resolvedValue = `INV: ${invStr}`;
+      } else if (refStr) {
+        resolvedValue = refStr;
+      }
+    }
+
+    // 6. Box 14 / Combined DG Cargo Description Block
+    const hasSeparateUnField = format.fields.some(
+      f => f.fieldId !== field.fieldId && (f.mappedShipmentKey === 'unNumber' || f.fieldId.toLowerCase().includes('un_number'))
+    );
+    const hasSeparateMarksField = format.fields.some(
+      f => f.fieldId !== field.fieldId && f.mappedShipmentKey === 'shippingMarks'
+    );
+
+    const isCombinedDgCargoBox =
+      format.documentType === 'DG' &&
+      (
+        fieldIdLower.includes('box_14_cargo') ||
+        fieldIdLower.includes('box14') ||
+        fieldIdLower.includes('combined_cargo') ||
+        (labelLower.includes('number and kind of packages') && labelLower.includes('description of goods')) ||
+        (labelLower.includes('shipping marks') && labelLower.includes('description')) ||
+        ((field.mappedShipmentKey === 'productDescription' || field.mappedShipmentKey === 'properShippingName') && !hasSeparateUnField)
+      );
+
+    if (isCombinedDgCargoBox) {
+      const includeMarks = !hasSeparateMarksField || labelLower.includes('shipping marks') || labelLower.includes('marks & nos');
+      resolvedValue = buildCombinedDgCargoDescription(shipment, includeMarks);
+    }
+
+    // 7. Container & Seal combined box
     if (
-      (field.fieldId.includes('container_seal') || (labelLower.includes('container') && labelLower.includes('seal'))) &&
+      (fieldIdLower.includes('container_seal') || (labelLower.includes('container') && labelLower.includes('seal'))) &&
       field.fieldType !== 'table'
     ) {
       if (shipment.containerNumber && shipment.sealNumber) {
@@ -82,9 +280,9 @@ export function buildMappedManifest(
       }
     }
 
-    // 6. Vessel and Voyage combined box
+    // 8. Vessel and Voyage combined box
     if (
-      (field.fieldId.includes('vessel_voyage') || (labelLower.includes('vessel') && labelLower.includes('voyage'))) &&
+      (fieldIdLower.includes('vessel_voyage') || (labelLower.includes('vessel') && labelLower.includes('voyage'))) &&
       shipment.vesselName
     ) {
       resolvedValue = shipment.voyageNumber
@@ -108,37 +306,107 @@ export function buildMappedManifest(
 }
 
 /**
- * Updates central ExtractedShipmentJSON when an operator edits a mapped field in either DG or BL manifest
+ * Updates central ExtractedShipmentJSON when an operator edits a mapped field in either DG or BL manifest.
+ * Handles two-way decomposition of composite fields back to atomic shipment state.
  */
 export function updateShipmentFromManifestField(
   currentShipment: ExtractedShipmentJSON,
   field: MappedManifestField,
   newValue: string
 ): ExtractedShipmentJSON {
-  if (!field.mappedShipmentKey || !(field.mappedShipmentKey in currentShipment)) {
-    return currentShipment;
-  }
-
   const updated: ExtractedShipmentJSON = { ...currentShipment };
   const key = field.mappedShipmentKey;
-  const currentVal = updated[key];
+  const fieldIdLower = field.fieldId.toLowerCase();
+  const labelLower = field.labelInTemplate.toLowerCase();
 
-  if (typeof currentVal === 'number') {
-    const parsedNum = parseFloat(newValue.replace(/,/g, ''));
-    (updated as any)[key] = isNaN(parsedNum) ? 0 : parsedNum;
-  } else if (typeof currentVal === 'boolean') {
-    (updated as any)[key] = newValue.trim().toLowerCase() === 'true' || newValue.trim().toLowerCase() === 'yes';
-  } else if (Array.isArray(currentVal)) {
-    (updated as any)[key] = newValue
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-  } else {
-    (updated as any)[key] = newValue;
+  if (key && key in updated) {
+    const currentVal = updated[key];
+
+    if (typeof currentVal === 'number') {
+      const parsedNum = parseFloat(newValue.replace(/,/g, ''));
+      (updated as any)[key] = isNaN(parsedNum) ? 0 : parsedNum;
+    } else if (typeof currentVal === 'boolean') {
+      (updated as any)[key] = newValue.trim().toLowerCase() === 'true' || newValue.trim().toLowerCase() === 'yes';
+    } else if (Array.isArray(currentVal)) {
+      (updated as any)[key] = newValue
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+    } else {
+      (updated as any)[key] = newValue;
+    }
   }
 
-  // Decompose composite fields back to their components if applicable
-  if (field.fieldId.includes('container_seal') || field.labelInTemplate.toLowerCase().includes('seal')) {
+  // Two-way composite decomposition:
+
+  // 1. Shipper Party Block (Shipper Name, Address, and ON BEHALF OF)
+  if (
+    key === 'shipperAddress' ||
+    key === 'shipperName' ||
+    fieldIdLower.includes('shipper') ||
+    (labelLower.includes('shipper') && !labelLower.includes('ref'))
+  ) {
+    if (newValue.includes('ON BEHALF OF:')) {
+      const [shipperPart, onBehalfPart] = newValue.split(/ON BEHALF OF:\s*/i);
+      updated.onBehalfOf = onBehalfPart.trim();
+      const lines = shipperPart.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 0) {
+        updated.shipperName = lines[0];
+        updated.shipperAddress = lines.slice(1).join('\n') || lines[0];
+      }
+    } else {
+      const lines = newValue.trim().split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 1) {
+        updated.shipperName = lines[0];
+        updated.shipperAddress = lines.slice(1).join('\n');
+      }
+    }
+  }
+
+  // 2. Consignee Party Block
+  if (
+    key === 'consigneeAddress' ||
+    key === 'consigneeName' ||
+    fieldIdLower.includes('consignee') ||
+    labelLower.includes('consignee')
+  ) {
+    const lines = newValue.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length > 1) {
+      updated.consigneeName = lines[0];
+      updated.consigneeAddress = lines.slice(1).join('\n');
+    }
+  }
+
+  // 3. Notify Party Block
+  if (
+    key === 'notifyPartyAddress' ||
+    key === 'notifyPartyName' ||
+    fieldIdLower.includes('notify') ||
+    labelLower.includes('notify')
+  ) {
+    const lines = newValue.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length > 1) {
+      updated.notifyPartyName = lines[0];
+      updated.notifyPartyAddress = lines.slice(1).join('\n');
+    }
+  }
+
+  // 4. Shipper's Reference & Invoice Reference
+  if (
+    key === 'shipperReference' ||
+    fieldIdLower.includes('shipper_ref') ||
+    labelLower.includes("shipper's ref") ||
+    labelLower.includes('export ref')
+  ) {
+    if (newValue.includes('INV:')) {
+      const [refPart, invPart] = newValue.split(/INV:\s*/i);
+      updated.shipperReference = refPart.trim();
+      updated.invoiceNumbers = invPart.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+
+  // 5. Container & Seal decomposition
+  if (fieldIdLower.includes('container_seal') || labelLower.includes('seal')) {
     if (newValue.includes('/')) {
       const parts = newValue.split('/').map(s => s.trim());
       updated.containerNumber = parts[0] || updated.containerNumber;
@@ -146,11 +414,27 @@ export function updateShipmentFromManifestField(
     }
   }
 
-  if (field.fieldId.includes('vessel_voyage') || field.labelInTemplate.toLowerCase().includes('voyage')) {
+  // 6. Vessel & Voyage decomposition
+  if (fieldIdLower.includes('vessel_voyage') || labelLower.includes('voyage')) {
     if (newValue.includes('/')) {
       const parts = newValue.split('/').map(s => s.trim());
       updated.vesselName = parts[0] || updated.vesselName;
       updated.voyageNumber = parts[1] || updated.voyageNumber;
+    }
+  }
+
+  // 7. Direct VGM / Total Gross Mass including Tare adjustment
+  const isVgm =
+    fieldIdLower.includes('vgm') ||
+    fieldIdLower.includes('total_gross_incl_tare') ||
+    labelLower.includes('total gross (incl') ||
+    labelLower.includes('incl. tare') ||
+    labelLower.includes('including tare');
+
+  if (isVgm) {
+    const enteredVgm = parseFloat(newValue.replace(/,/g, ''));
+    if (!isNaN(enteredVgm) && updated.grossWeightKg > 0 && enteredVgm > updated.grossWeightKg) {
+      updated.tareWeightKg = Number((enteredVgm - updated.grossWeightKg).toFixed(2));
     }
   }
 

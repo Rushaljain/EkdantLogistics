@@ -306,8 +306,24 @@ export function App(): React.JSX.Element {
       setBlCustomOverrides(prev => ({ ...prev, [field.fieldId]: newValue }));
     }
 
-    if (field.mappedShipmentKey) {
-      setShipmentJson(prev => updateShipmentFromManifestField(prev, field, newValue));
+    // Always enrich underlying shipment state with two-way decomposition
+    setShipmentJson(prev => updateShipmentFromManifestField(prev, field, newValue));
+
+    // When tareWeightKg or grossWeightKg is edited, clear any custom overrides on VGM fields
+    // so live arithmetic (grossWeightKg + tareWeightKg) recalculates and renders immediately
+    if (field.mappedShipmentKey === 'tareWeightKg' || field.mappedShipmentKey === 'grossWeightKg') {
+      const clearVgmOverrides = (prev: Record<string, string>) => {
+        const next = { ...prev };
+        for (const k of Object.keys(next)) {
+          const kLower = k.toLowerCase();
+          if (kLower.includes('vgm') || kLower.includes('total_gross') || kLower.includes('incl_tare')) {
+            delete next[k];
+          }
+        }
+        return next;
+      };
+      setDgCustomOverrides(clearVgmOverrides);
+      setBlCustomOverrides(clearVgmOverrides);
     }
   };
 

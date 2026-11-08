@@ -44,6 +44,7 @@ export const DEFAULT_DG_FORMAT: FormatSchemaJSON = {
     { fieldId: 'box_18_cube', labelInTemplate: '18. Cube (m³)', sectionName: 'Weights & Measurements', fieldType: 'number', mappedShipmentKey: 'volumeCbm' },
     { fieldId: 'box_19_container_seal', labelInTemplate: '19. Container Identification No. / Seal No.', sectionName: 'Equipment & Containers', fieldType: 'text', mappedShipmentKey: 'containerNumber' },
     { fieldId: 'box_19_tare_weight', labelInTemplate: '19b. Container Tare Mass (kg)', sectionName: 'Equipment & Containers', fieldType: 'number', mappedShipmentKey: 'tareWeightKg' },
+    { fieldId: 'box_19_total_gross_incl_tare', labelInTemplate: '19c. Total gross (incl. tare) (kg)', sectionName: 'Equipment & Containers', fieldType: 'number', mappedShipmentKey: 'grossWeightKg' },
     { fieldId: 'box_20_container_packing_cert', labelInTemplate: '20. Container / Vehicle Packing Certificate (Name/Status of Declarant)', sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarantName' },
     { fieldId: 'box_21_emergency_contact', labelInTemplate: '21. 24-Hour Emergency Response Contact Name & Telephone', sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'emergencyContactPhone' },
     { fieldId: 'box_22_shipper_declaration', labelInTemplate: "22. Shipper's Declaration (Place and Date)", sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarationPlaceAndDate' }
@@ -225,6 +226,15 @@ CRITICAL ZERO-CONTAMINATION RULES:
    - "isDangerousGoods", "unNumber", "imoClass", "properShippingName", "packingGroup", "marinePollutant", "flashPoint", "emsNumber", "unPackingCode"
    - "emergencyContactName", "emergencyContactPhone", "dgDeclarantName", "dgDeclarantStatus", "dgDeclarationPlaceAndDate"
 
+4. COMPOSITE SHIPPING BOXES:
+   - If a box combines Shipper Name and Address into a single box (e.g. "1. Shipper / Consignor (Name and Address)"), map it to "shipperAddress".
+   - If a box combines Consignee Name and Address into a single box, map it to "consigneeAddress".
+   - If a box combines Notify Party Name and Address, map it to "notifyPartyAddress".
+   - If a DG box combines Marks, Packaging, and Cargo/DG Description (e.g. "14. Shipping marks *Number and kind of packages; description of goods"), map it to "productDescription".
+   - If a box combines Container Number and Seal Number, map it to "containerNumber".
+   - If a box specifies "Total Gross Mass (incl. tare)" or "Verified Gross Mass (VGM)", map it to "grossWeightKg".
+   - If a box combines Vessel and Voyage, map it to "vesselName".
+
 OUTPUT STRICT JSON adhering to:
 {
   "formatId": "string",
@@ -336,9 +346,7 @@ Strictly ensure NO sample or draft shipment values are stored in the schema.
     'gemini-2.5-flash',
     'gemini-2.0-flash',
     'gemini-1.5-flash',
-    'gemini-flash-latest',
-    'gemini-3.5-flash',
-    'gemini-3.8-flash'
+    'gemini-flash-latest'
   ];
   let lastError: Error | null = null;
   let rawJson: any = null;

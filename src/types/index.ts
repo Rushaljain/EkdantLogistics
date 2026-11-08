@@ -111,6 +111,7 @@ export interface ExtractedShipmentJSON {
   // Invoices & Document References
   invoiceNumbers: string[];
   invoiceDates: string[];
+  invoiceValues?: number[];
   bookingNumber: string;
   shippingBillNumbers: string;
   shipperReference: string;
@@ -278,6 +279,7 @@ export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): Ex
     notifyPartyAddress: '',
     invoiceNumbers: [],
     invoiceDates: [],
+    invoiceValues: [],
     bookingNumber: '',
     shippingBillNumbers: '',
     shipperReference: '',

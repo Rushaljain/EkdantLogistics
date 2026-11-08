@@ -34,23 +34,24 @@ CRITICAL EXTRACTION RULES:
    - Preserve exact strings from the source text. Do NOT normalize "NIL" to "NA" or "NO" to "NA".
    - Capture complete postal addresses including postal codes, PIN, or ZIP codes.
    - Scan full text inside Exporter / Shipper, Consignee, and Notify boxes:
-     * Extract "shipperGstin" (labels: "GSTIN", "GST No"), "shipperIec" (labels: "IEC", "IE Code", "BIN"), and "shipperPan" (labels: "PAN") into their dedicated fields even when printed inside an address block or adjacent reference cells.
+     * Extract "shipperGstin" (labels: "GSTIN", "GST No"), "shipperIec" (labels: "IEC", "IE Code", "BIN", "BIN : <code>" from exporter or "Other reference(s)" boxes), and "shipperPan" (labels: "PAN") into their dedicated fields even when printed inside an address block or adjacent reference cells.
      * In "notifyPartyAddress" and "consigneeAddress", retain the complete block including "Email", "Mobile"/"Tel", "VAT Reg. No.", and "Company Reg. No." lines.
-   - Keep "On Behalf Of" entities in the "onBehalfOf" field; never merge them into "shipperName" or "shipperAddress".
+   - "onBehalfOf": Extract the COMPLETE multi-row block under "(ON BEHALF OF)" or "FOR AND ON BEHALF OF" (company name + all street, building, district, city, and postal code rows beneath it). Never truncate or merge into "shipperName" or "shipperAddress".
 
 3. DUAL-POPULATED CARGO & DANGEROUS GOODS DESCRIPTIONS:
    - Set isDangerousGoods to true whenever any UN Number, IMO/Hazard Class, or Packing Group is explicitly present in the source document(s). Otherwise, set it to false.
-   - Always populate "productDescription" from the commercial goods description column/box (labels: "Description of Goods", "Commodity", "Item Description").
+   - Always populate "productDescription" from the commercial goods description column/box (labels: "Description of Goods", "Commodity", "Item Description"). Combine all consecutive commodity description lines printed under "Description of Goods".
    - If the cargo is hazardous/dangerous goods and no separate "Proper Shipping Name" is explicitly labeled, populate BOTH "productDescription" and "properShippingName" rather than leaving "productDescription" blank.
 
 4. GENERIC LABEL SYNONYM MAPPING:
    - "hsnCode": Match labels ("H.S. Code No.", "H.S Code", "HSN", "Tariff Code", "Commodity Code", "Schedule B"). Extract the numeric classification code string.
    - "imoClass": Match labels ("IMO CLASS", "IMCO CLASS", "Hazard Class", "DG Class", "Class"). Extract the numeric or decimal class string (e.g. "8", "3", "2.1").
-   - "shippingMarks": Match labels ("Marks & Nos", "Marks & Numbers", "Marks & Nos / Container No.", "Shipping Marks"). Combine both text markings and package/pallet serial ranges printed in that box.
+   - "shippingMarks": Match labels ("Marks & Nos", "Marks & Numbers", "Marks & Nos / Container No.", "Shipping Marks"). Extract ALL rows in that column from top to bottom (combine buyer marks, package/pallet serial ranges, and any hazard/brand/HS lines printed lower in that column).
    - "brandName": Match labels ("Brand", "Make", "Trademark"). If multiple brand labels or table columns exist (e.g. primary brand and sub-brand/model line), combine or capture the specific product brand stated.
    - "shipperReference": Match labels ("Exporter's Ref", "EXPORT REF NO", "Buyer's Order No. & Date", "PO No", "SO NO", "Order No"). Combine exporter reference and buyer order numbers if both are present.
    - "incoterm": Match labels ("Delivery", "Terms of Delivery", "Incoterms", "Trade Terms", e.g. "CFR", "CIF", "FOB", "EXW" along with the named port/place).
-   - "totalInvoiceValue": Match the final payable bottom-line invoice total (labels: "Total CFR Amount", "Total CIF Amount", "Total Invoice Amount", "Grand Total", "Amount Chargeable"). Handle international decimal formatting (period vs comma for thousands/cents) by verifying that Sub Total - Discount + Freight = Total.
+   - "totalInvoiceValue": Match the final payable bottom-line invoice total (labels: "Total CFR Amount", "Total CIF Amount", "Total Invoice Amount", "Grand Total", "Amount Chargeable"). Handle international decimal formatting (period vs comma for thousands/cents).
+   - "invoiceValues": An array of numbers. Extract each commercial invoice's individual final payable amount (e.g. Total CFR, Total FOB, Grand Total) in the exact same 1-to-1 index order as "invoiceNumbers". Do not mentally sum them into a single value.
 
 5. PACKAGING HIERARCHY SEPARATION:
    - "outerPackagingCount": Number of outer packages (e.g. pallets, crates).
@@ -66,9 +67,9 @@ CRITICAL EXTRACTION RULES:
      * "grossWeightKg": Gross weight of this specific pallet in kg.
      * "sourceFile": Exact filename of the document containing that palletized packing table.
 
-6. REFERENCE VS. CARRIER BOOKING SEPARATION:
+6. REFERENCE VS. CARRIER BOOKING SEPARATION & 1-TO-1 INVOICE PAIRING:
    - Put commercial invoice numbers in "invoiceNumbers" array.
-   - Put invoice dates in "invoiceDates" array.
+   - Put invoice dates in "invoiceDates" array in the exact same index order as "invoiceNumbers". Multiple invoices issued on the same date must retain their corresponding date at the matching index (do not deduplicate).
    - ONLY populate "bookingNumber" if an explicit Carrier Booking Number or Dangerous Goods Booking Reference is stated. Never copy the commercial invoice number into bookingNumber.
 `;
 
@@ -224,9 +225,7 @@ export async function parseDocumentsToJSON(
     'gemini-2.5-flash',
     'gemini-2.0-flash',
     'gemini-1.5-flash',
-    'gemini-flash-latest',
-    'gemini-3.5-flash',
-    'gemini-3.8-flash'
+    'gemini-flash-latest'
   ];
   let lastError: Error | null = null;
   let parsedRawJson: any = null;
@@ -353,9 +352,20 @@ function normalizeExtractedJSON(
   clean.invoiceNumbers = Array.isArray(raw.invoiceNumbers)
     ? raw.invoiceNumbers.map(str).filter(Boolean)
     : (raw.invoiceNumber ? [str(raw.invoiceNumber)] : []);
-  clean.invoiceDates = Array.isArray(raw.invoiceDates)
-    ? raw.invoiceDates.map(str).filter(Boolean)
-    : (raw.invoiceDate ? [str(raw.invoiceDate)] : []);
+
+  // Preserve 1-to-1 pairing of invoiceNumbers and invoiceDates without deduplication
+  if (Array.isArray(raw.invoiceDates)) {
+    clean.invoiceDates = raw.invoiceDates.map(str);
+  } else if (raw.invoiceDate) {
+    clean.invoiceDates = [str(raw.invoiceDate)];
+  } else {
+    clean.invoiceDates = [];
+  }
+
+  // If multiple invoices share the same single invoice date, replicate that date for all invoices
+  if (clean.invoiceNumbers.length > 1 && clean.invoiceDates.length === 1) {
+    clean.invoiceDates = Array(clean.invoiceNumbers.length).fill(clean.invoiceDates[0]);
+  }
 
   clean.bookingNumber = str(raw.bookingNumber);
   clean.shippingBillNumbers = str(raw.shippingBillNumbers);
@@ -400,7 +410,17 @@ function normalizeExtractedJSON(
   clean.volumeCbm = num(raw.volumeCbm);
 
   clean.currency = str(raw.currency);
-  clean.totalInvoiceValue = num(raw.totalInvoiceValue);
+  if (Array.isArray(raw.invoiceValues) && raw.invoiceValues.length > 0) {
+    const vals: number[] = raw.invoiceValues.map(num);
+    clean.invoiceValues = vals;
+    // Deterministic sum of per-invoice totals
+    clean.totalInvoiceValue = Number(
+      vals.reduce((sum: number, v: number) => sum + (Number(v) || 0), 0).toFixed(2)
+    );
+  } else {
+    clean.totalInvoiceValue = num(raw.totalInvoiceValue);
+    clean.invoiceValues = clean.totalInvoiceValue > 0 ? [clean.totalInvoiceValue] : [];
+  }
   clean.incoterm = str(raw.incoterm);
   clean.freightTerms = str(raw.freightTerms);
   clean.movementType = str(raw.movementType);
