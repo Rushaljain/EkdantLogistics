@@ -2,81 +2,8 @@
 // Matches ExtractedShipmentJSON against FormatSchemaJSON and provides two-way sync between DG & BL manifests
 
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
+import { resolveFieldValueByKeywords, buildCombinedDgCargoBlock } from './manifestKeywordReference.ts';
 
-/**
- * Assembles a comprehensive multimodal DG cargo description block from ExtractedShipmentJSON.
- * Used when a target DG template provides a combined Box 14 / package & goods description field.
- */
-function buildCombinedDgCargoDescription(
-  shipment: ExtractedShipmentJSON,
-  includeMarks: boolean = true
-): string {
-  const blocks: string[] = [];
-
-  // 1. Marks & Numbers
-  if (includeMarks && shipment.shippingMarks && shipment.shippingMarks.trim()) {
-    blocks.push(`MARKS & NUMBERS:\n${shipment.shippingMarks.trim()}`);
-  }
-
-  // 2. Packages (Outer and Inner)
-  const pkgLines: string[] = [];
-  if (shipment.outerPackagingCount > 0) {
-    pkgLines.push(`${shipment.outerPackagingCount} ${shipment.outerPackagingType || 'PALLETS'}`);
-  }
-  if (shipment.innerPackageCount > 0) {
-    let innerText = `${shipment.innerPackageCount} ${shipment.innerPackageType || 'BOXES'}`;
-    if (shipment.innerPackingDescription && shipment.innerPackingDescription.trim()) {
-      innerText += ` (${shipment.innerPackingDescription.trim()})`;
-    }
-    pkgLines.push(innerText);
-  }
-  if (pkgLines.length > 0) {
-    blocks.push(`PACKAGES:\n${pkgLines.join(' / ')}`);
-  }
-
-  // 3. Commodity / Proper Shipping Name (+ Brand & HSN)
-  const primaryDesc = shipment.properShippingName || shipment.productDescription;
-  if (primaryDesc && primaryDesc.trim()) {
-    let descLine = primaryDesc.trim();
-    if (shipment.brandName && !descLine.toLowerCase().includes(shipment.brandName.toLowerCase())) {
-      descLine += ` (BRAND: ${shipment.brandName.trim()})`;
-    }
-    if (shipment.hsnCode && !descLine.includes(shipment.hsnCode.trim())) {
-      descLine += ` [HSN: ${shipment.hsnCode.trim()}]`;
-    }
-    blocks.push(`COMMODITY / DESCRIPTION:\n${descLine}`);
-  }
-
-  // 4. DG Classification
-  const dgLines: string[] = [];
-  if (shipment.unNumber && shipment.unNumber.trim()) {
-    dgLines.push(`UN NO: ${shipment.unNumber.trim()}`);
-  }
-  if (shipment.imoClass && shipment.imoClass.trim()) {
-    dgLines.push(`IMO CLASS: ${shipment.imoClass.trim()}`);
-  }
-  if (shipment.packingGroup && shipment.packingGroup.trim()) {
-    dgLines.push(`PACKING GROUP: ${shipment.packingGroup.trim()}`);
-  }
-  if (shipment.flashPoint && shipment.flashPoint.trim()) {
-    dgLines.push(`FLASH POINT: ${shipment.flashPoint.trim()}`);
-  }
-  if (shipment.emsNumber && shipment.emsNumber.trim()) {
-    dgLines.push(`EMS: ${shipment.emsNumber.trim()}`);
-  }
-  if (shipment.unPackingCode && shipment.unPackingCode.trim()) {
-    dgLines.push(`UN PACKING CODE: ${shipment.unPackingCode.trim()}`);
-  }
-  if (shipment.marinePollutant) {
-    dgLines.push('MARINE POLLUTANT: YES');
-  }
-
-  if (dgLines.length > 0) {
-    blocks.push(`DG CLASSIFICATION:\n${dgLines.join(', ')}`);
-  }
-
-  return blocks.join('\n\n');
-}
 
 /**
  * Builds a dynamic mapped manifest list from a shipment JSON and a target format schema.
@@ -265,7 +192,7 @@ export function buildMappedManifest(
 
     if (isCombinedDgCargoBox) {
       const includeMarks = !hasSeparateMarksField || labelLower.includes('shipping marks') || labelLower.includes('marks & nos');
-      resolvedValue = buildCombinedDgCargoDescription(shipment, includeMarks);
+      resolvedValue = buildCombinedDgCargoBlock(shipment, includeMarks);
     }
 
     // 7. Container & Seal combined box
@@ -290,9 +217,23 @@ export function buildMappedManifest(
         : shipment.vesselName;
     }
 
-    // 9. Smart Fallback Keyword Chains (when primary & composite resolvedValue is still empty)
-    const isValueBlank = !resolvedValue || resolvedValue.trim() === '' || resolvedValue.trim() === '0' || resolvedValue.trim() === '---';
+    // 9. Global Keyword Reference & Cascading Fallback Engine
+    let isValueBlank = !resolvedValue || resolvedValue.trim() === '' || resolvedValue.trim() === '0' || resolvedValue.trim() === '---';
 
+    if (isValueBlank) {
+      const keywordResolved = resolveFieldValueByKeywords(
+        field.labelInTemplate,
+        field.fieldId,
+        shipment,
+        format.documentType
+      );
+      if (keywordResolved) {
+        resolvedValue = keywordResolved;
+        isValueBlank = false;
+      }
+    }
+
+    // 10. Secondary Smart Fallback Keyword Chains (when still blank)
     if (isValueBlank && !isVgmField) {
       // Chain 1: Transport Document / Booking / Reference Number Fields
       const isTransportDocOrRefField =
