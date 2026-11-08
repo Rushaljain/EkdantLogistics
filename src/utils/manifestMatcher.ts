@@ -290,8 +290,137 @@ export function buildMappedManifest(
         : shipment.vesselName;
     }
 
-    // Determine status: strictly "" or "0" is PENDING_BLANK
-    const isPopulated = resolvedValue.trim() !== '' && resolvedValue.trim() !== '0';
+    // 9. Smart Fallback Keyword Chains (when primary & composite resolvedValue is still empty)
+    const isValueBlank = !resolvedValue || resolvedValue.trim() === '' || resolvedValue.trim() === '0' || resolvedValue.trim() === '---';
+
+    if (isValueBlank && !isVgmField) {
+      // Chain 1: Transport Document / Booking / Reference Number Fields
+      const isTransportDocOrRefField =
+        !labelLower.includes('container') &&
+        !labelLower.includes('seal') &&
+        !labelLower.includes('declaration') &&
+        (
+          field.mappedShipmentKey === 'bookingNumber' ||
+          field.mappedShipmentKey === 'shipperReference' ||
+          field.mappedShipmentKey === 'forwarderReference' ||
+          fieldIdLower.includes('booking') ||
+          fieldIdLower.includes('transport_doc') ||
+          fieldIdLower.includes('doc_no') ||
+          fieldIdLower.includes('document_no') ||
+          fieldIdLower.includes('bill_of_lading') ||
+          labelLower.includes('transport document') ||
+          labelLower.includes('booking') ||
+          labelLower.includes('bill of lading') ||
+          labelLower.includes('b/l no') ||
+          labelLower.includes('bol no') ||
+          labelLower.includes('document no') ||
+          labelLower.includes('invoice ref') ||
+          labelLower.includes('export ref') ||
+          labelLower.includes('reference')
+        );
+
+      if (isTransportDocOrRefField) {
+        // Fallback 1: Commercial invoice numbers joined
+        if (shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0) {
+          resolvedValue = shipment.invoiceNumbers.join(', ');
+        }
+        // Fallback 2: Shipper reference
+        else if (shipment.shipperReference && shipment.shipperReference.trim()) {
+          resolvedValue = shipment.shipperReference.trim();
+        }
+      }
+
+      // Chain 2: Shipping Marks / Package Description Fields
+      const isMarksOrPackageField =
+        field.mappedShipmentKey === 'shippingMarks' ||
+        field.mappedShipmentKey === 'productDescription' ||
+        fieldIdLower.includes('shipping_marks') ||
+        fieldIdLower.includes('cargo_description') ||
+        fieldIdLower.includes('package') ||
+        labelLower.includes('shipping marks') ||
+        labelLower.includes('marks & nos') ||
+        labelLower.includes('marks and numbers') ||
+        labelLower.includes('packages') ||
+        labelLower.includes('package description') ||
+        labelLower.includes('description of goods');
+
+      if ((!resolvedValue || resolvedValue.trim() === '') && isMarksOrPackageField) {
+        // If it's a numeric package count field
+        if (field.fieldType === 'number' || labelLower.includes('package count') || labelLower.includes('total number of packages')) {
+          if (shipment.totalPallets > 0) {
+            resolvedValue = String(shipment.totalPallets);
+          } else if (shipment.outerPackagingCount > 0) {
+            resolvedValue = String(shipment.outerPackagingCount);
+          } else if (shipment.totalBoxes > 0) {
+            resolvedValue = String(shipment.totalBoxes);
+          } else if (shipment.innerPackageCount > 0) {
+            resolvedValue = String(shipment.innerPackageCount);
+          }
+        } else {
+          // Fallback 1: shipment.shippingMarks
+          if (shipment.shippingMarks && shipment.shippingMarks.trim()) {
+            resolvedValue = shipment.shippingMarks.trim();
+          }
+          // Fallback 2: combine shipment.productDescription + packaging counts
+          else {
+            const pkgParts: string[] = [];
+            if (shipment.outerPackagingCount > 0) {
+              pkgParts.push(`${shipment.outerPackagingCount} ${shipment.outerPackagingType || 'PALLETS'}`);
+            }
+            if (shipment.innerPackageCount > 0) {
+              pkgParts.push(`${shipment.innerPackageCount} ${shipment.innerPackageType || 'BOXES'}`);
+            }
+            const pkgStr = pkgParts.join(' / ');
+            const descStr = shipment.productDescription || shipment.properShippingName || '';
+            if (pkgStr && descStr) {
+              resolvedValue = `${pkgStr}\n${descStr}`;
+            } else if (pkgStr || descStr) {
+              resolvedValue = pkgStr || descStr;
+            }
+          }
+        }
+      }
+
+      // Chain 3: Port & Routing Fields (portOfLoading, portOfDischarge, finalDestination)
+      const isPodField =
+        field.mappedShipmentKey === 'portOfDischarge' ||
+        field.mappedShipmentKey === 'portOfDischargeDg' ||
+        fieldIdLower.includes('port_of_discharge') ||
+        fieldIdLower.includes('discharge') ||
+        labelLower.includes('port of discharge') ||
+        labelLower.includes('discharge port');
+
+      const isDestField =
+        field.mappedShipmentKey === 'finalDestination' ||
+        field.mappedShipmentKey === 'placeOfDelivery' ||
+        fieldIdLower.includes('destination') ||
+        fieldIdLower.includes('place_of_delivery') ||
+        labelLower.includes('final destination') ||
+        labelLower.includes('destination') ||
+        labelLower.includes('place of delivery');
+
+      const isPolField =
+        field.mappedShipmentKey === 'portOfLoading' ||
+        field.mappedShipmentKey === 'placeOfReceipt' ||
+        fieldIdLower.includes('port_of_loading') ||
+        fieldIdLower.includes('place_of_receipt') ||
+        labelLower.includes('port of loading') ||
+        labelLower.includes('place of receipt');
+
+      if ((!resolvedValue || resolvedValue.trim() === '') && isPodField) {
+        // Fallback: If portOfDischarge is empty in a BL format, fallback to finalDestination / placeOfDelivery / portOfDischargeDg
+        resolvedValue = shipment.portOfDischarge || shipment.finalDestination || shipment.placeOfDelivery || shipment.portOfDischargeDg || '';
+      } else if ((!resolvedValue || resolvedValue.trim() === '') && isDestField) {
+        // Fallback: If finalDestination is empty, fallback to portOfDischarge / placeOfDelivery
+        resolvedValue = shipment.finalDestination || shipment.portOfDischarge || shipment.placeOfDelivery || '';
+      } else if ((!resolvedValue || resolvedValue.trim() === '') && isPolField) {
+        // Fallback: If portOfLoading is empty, fallback to placeOfReceipt (and vice versa)
+        resolvedValue = shipment.portOfLoading || shipment.placeOfReceipt || '';
+      }
+    }
+
+    // Determine status: strictly "" or "0" is PENDING_BLANK. If populated via fallback or primary, mark POPULATED
+    const isPopulated = resolvedValue.trim() !== '' && resolvedValue.trim() !== '0' && resolvedValue.trim() !== '---';
 
     return {
       fieldId: field.fieldId,
