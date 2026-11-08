@@ -1493,7 +1493,7 @@ interface ManifestEditorSectionProps {
   onFilterChange: (filter: 'ALL' | 'POPULATED' | 'PENDING') => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
-  stats: { total: number; populated: number; pending: number; percentage: number };
+  stats: ReturnType<typeof getManifestStats>;
   onBack: () => void;
   onProceed: () => void;
   proceedButtonLabel: string;
@@ -1629,7 +1629,7 @@ function ManifestEditorSection({
 
         {/* Stats & Search/Filter Controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-xl bg-slate-950 p-1 border border-slate-800 text-xs">
               <button
                 onClick={() => onFilterChange('ALL')}
@@ -1665,9 +1665,20 @@ function ManifestEditorSection({
               </button>
             </div>
 
-            <span className="text-[11px] font-mono text-slate-400 hidden sm:inline">
-              {stats.percentage}% Matched
+            {/* Granular Invoice vs Stage 2 Badges */}
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-emerald-950/80 text-emerald-400 border border-emerald-800/80">
+              Invoice Data: {stats.invoiceDataPopulated}/{stats.invoiceDataTotal} ({stats.invoiceDataPercentage}%)
             </span>
+            {stats.stage2Pending > 0 && (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+                Carrier/Equipment Pending: {stats.stage2Pending}
+              </span>
+            )}
+            {stats.signaturePending > 0 && (
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700">
+                Signatures Pending: {stats.signaturePending}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">

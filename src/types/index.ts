@@ -570,5 +570,6 @@ export interface MappedManifestField {
   mappedShipmentKey: keyof ExtractedShipmentJSON | '';
   value: string;
   status: 'POPULATED' | 'PENDING_BLANK';
+  fieldCategory?: 'INVOICE_DATA' | 'STAGE2_CARRIER' | 'SIGNATURE_HAULIER';
 }
 

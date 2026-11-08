@@ -74,7 +74,9 @@ export function buildCombinedDgCargoBlock(
   if (shipment.unPackingCode && shipment.unPackingCode.trim()) {
     dgLines.push(`UN PACKING CODE: ${shipment.unPackingCode.trim()}`);
   }
-  if (shipment.marinePollutant) {
+  if (shipment.isDangerousGoods || shipment.unNumber) {
+    dgLines.push(`MARINE POLLUTANT: ${shipment.marinePollutant ? 'YES' : 'NO'}`);
+  } else if (shipment.marinePollutant) {
     dgLines.push('MARINE POLLUTANT: YES');
   }
 
@@ -236,7 +238,17 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 7. Box 14 / Combined DG Cargo Description Block
+  // 7. Page of Page (Box 3)
+  {
+    id: 'page_of_page',
+    description: 'Document Page Index (Box 3)',
+    keywords: ['page of page', 'page_of_page', 'box_3_page', '3 page of page', 'page of', 'page no', 'page number'],
+    resolver: () => {
+      return '1 OF 1';
+    }
+  },
+
+  // 8. Box 14 / Combined DG Cargo Description Block
   {
     id: 'combined_dg_cargo',
     description: 'Combined DG Marks, Packages, Commodity, and Hazard Classification',
@@ -545,10 +557,25 @@ export const KEYWORD_RULES: KeywordRule[] = [
   {
     id: 'dg_declarant',
     description: 'Container / Vehicle Packing Certificate (Name/Status of Declarant)',
-    keywords: ['packing certificate', 'declarant', 'name/status of declarant'],
+    keywords: [
+      'name/status of declarant',
+      'name / status of declarant',
+      'packing certificate',
+      'declarant',
+      'signatory',
+      'name and status of declarant',
+      'status of declarant'
+    ],
+    excludeKeywords: ['signature of declarant', 'driver', 'signature on behalf'],
     resolver: (shipment) => {
       const parts = [shipment.dgDeclarantName, shipment.dgDeclarantStatus].filter(Boolean);
-      return parts.join(' - ');
+      if (parts.length > 0) {
+        return parts.join(' - ');
+      }
+      if (shipment.shipperName && shipment.shipperName.trim()) {
+        return shipment.shipperName.trim();
+      }
+      return '';
     }
   },
 
@@ -556,9 +583,27 @@ export const KEYWORD_RULES: KeywordRule[] = [
   {
     id: 'shipper_declaration',
     description: "Shipper's Declaration Place and Date",
-    keywords: ["shipper's declaration (place and date)", 'shipper declaration', 'place and date of declaration'],
+    keywords: [
+      'place and date',
+      'place & date',
+      'date and place',
+      "shipper's declaration (place and date)",
+      "shipper's declaration",
+      'shipper declaration',
+      'place and date of declaration',
+      'declaration place'
+    ],
+    excludeKeywords: ['driver', 'carrier'],
     resolver: (shipment) => {
-      return shipment.dgDeclarationPlaceAndDate || '';
+      if (shipment.dgDeclarationPlaceAndDate && shipment.dgDeclarationPlaceAndDate.trim()) {
+        return shipment.dgDeclarationPlaceAndDate.trim();
+      }
+      const port = shipment.portOfLoading || shipment.placeOfReceipt;
+      const date = shipment.invoiceDates && shipment.invoiceDates.length > 0 ? shipment.invoiceDates[0] : '';
+      if (port && date) {
+        return `${port} / ${date}`;
+      }
+      return port || date || '';
     }
   },
 
@@ -566,9 +611,19 @@ export const KEYWORD_RULES: KeywordRule[] = [
   {
     id: 'freight_terms',
     description: 'Freight Payment Terms (Prepaid / Collect)',
-    keywords: ['freight payable', 'freight terms', 'freight prepaid', 'freight collect'],
+    keywords: ['freight payable', 'freight terms', 'freight prepaid', 'freight collect', 'freight:'],
     resolver: (shipment) => {
-      return shipment.freightTerms || '';
+      if (shipment.freightTerms && shipment.freightTerms.trim()) {
+        return shipment.freightTerms.trim();
+      }
+      const inc = (shipment.incoterm || '').toUpperCase().trim();
+      if (/^(CFR|CIF|CPT|CIP|DAP|DPU|DDP)/.test(inc)) {
+        return 'FREIGHT PREPAID';
+      }
+      if (/^(FOB|EXW|FCA|FAS)/.test(inc)) {
+        return 'FREIGHT COLLECT';
+      }
+      return '';
     }
   },
 
@@ -576,9 +631,15 @@ export const KEYWORD_RULES: KeywordRule[] = [
   {
     id: 'movement_type',
     description: 'Cargo Movement Type (e.g. FCL/FCL, CY/CY)',
-    keywords: ['movement type', 'fcl/fcl', 'cy/cy', 'cfs/cfs'],
+    keywords: ['movement type', 'movement:', 'fcl/fcl', 'cy/cy', 'cfs/cfs'],
     resolver: (shipment) => {
-      return shipment.movementType || '';
+      if (shipment.movementType && shipment.movementType.trim()) {
+        return shipment.movementType.trim();
+      }
+      if (shipment.containerType || shipment.totalPallets > 0 || shipment.outerPackagingCount > 0) {
+        return 'FCL/FCL';
+      }
+      return '';
     }
   },
 

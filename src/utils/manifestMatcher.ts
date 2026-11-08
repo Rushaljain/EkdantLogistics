@@ -171,7 +171,28 @@ export function buildMappedManifest(
       }
     }
 
-    // 6. Box 14 / Combined DG Cargo Description Block
+    // 6. Composite Package Count & Type (e.g. "12 PALLETS (2880 BOXES)")
+    const isCompositePkgCount =
+      (fieldIdLower.includes('package') || labelLower.includes('package') || labelLower.includes('packages')) &&
+      (labelLower.includes('number and kind') || labelLower.includes('kind of package') || labelLower.includes('no. & kind') || labelLower.includes('no of pkgs') || labelLower.includes('total packages') || labelLower.includes('total pkgs') || labelLower.includes('packages or units') || labelLower.includes('packages / units')) &&
+      !labelLower.includes('description');
+
+    if (isCompositePkgCount && customOverrides[field.fieldId] === undefined) {
+      const outerCount = shipment.outerPackagingCount > 0 ? shipment.outerPackagingCount : shipment.totalPallets;
+      const outerType = shipment.outerPackagingType ? shipment.outerPackagingType.trim() : 'PALLETS';
+      const innerCount = shipment.innerPackageCount > 0 ? shipment.innerPackageCount : (shipment.totalBoxes > 0 ? shipment.totalBoxes : shipment.totalPackages);
+      const innerType = shipment.innerPackageType ? shipment.innerPackageType.trim() : 'BOXES';
+
+      if (outerCount > 0 && innerCount > 0) {
+        resolvedValue = `${outerCount} ${outerType} (${innerCount} ${innerType})`;
+      } else if (outerCount > 0) {
+        resolvedValue = `${outerCount} ${outerType}`;
+      } else if (innerCount > 0) {
+        resolvedValue = `${innerCount} ${innerType}`;
+      }
+    }
+
+    // 7. Box 14 / Combined DG Cargo Description Block
     const hasSeparateUnField = format.fields.some(
       f => f.fieldId !== field.fieldId && (f.mappedShipmentKey === 'unNumber' || f.fieldId.toLowerCase().includes('un_number'))
     );
@@ -190,12 +211,65 @@ export function buildMappedManifest(
         ((field.mappedShipmentKey === 'productDescription' || field.mappedShipmentKey === 'properShippingName') && !hasSeparateUnField)
       );
 
-    if (isCombinedDgCargoBox) {
+    if (isCombinedDgCargoBox && customOverrides[field.fieldId] === undefined) {
       const includeMarks = !hasSeparateMarksField || labelLower.includes('shipping marks') || labelLower.includes('marks & nos');
       resolvedValue = buildCombinedDgCargoBlock(shipment, includeMarks);
     }
 
-    // 7. Container & Seal combined box
+    // 8. Master BL Cargo Description & Packages Composite Assembly
+    const isBlCargoDescriptionBox =
+      format.documentType === 'BL' &&
+      customOverrides[field.fieldId] === undefined &&
+      (
+        fieldIdLower.includes('cargo_description') ||
+        fieldIdLower.includes('description_of_goods') ||
+        fieldIdLower.includes('description_of_packages') ||
+        labelLower.includes('description of goods') ||
+        labelLower.includes('description of packages') ||
+        labelLower.includes('kind of packages') ||
+        labelLower.includes('particulars furnished by shipper') ||
+        (labelLower.includes('packages') && labelLower.includes('description'))
+      );
+
+    if (isBlCargoDescriptionBox) {
+      const descLines: string[] = [];
+      const outerCount = shipment.outerPackagingCount > 0 ? shipment.outerPackagingCount : shipment.totalPallets;
+      const outerType = shipment.outerPackagingType ? shipment.outerPackagingType.trim() : 'PALLETS';
+      const innerCount = shipment.innerPackageCount > 0 ? shipment.innerPackageCount : (shipment.totalBoxes > 0 ? shipment.totalBoxes : shipment.totalPackages);
+      const innerType = shipment.innerPackageType ? shipment.innerPackageType.trim() : 'BOXES';
+
+      if (outerCount > 0 && innerCount > 0) {
+        descLines.push(`${outerCount} ${outerType} (${innerCount} ${innerType})`);
+      } else if (outerCount > 0) {
+        descLines.push(`${outerCount} ${outerType}`);
+      } else if (innerCount > 0) {
+        descLines.push(`${innerCount} ${innerType}`);
+      }
+
+      if (shipment.productDescription && shipment.productDescription.trim()) {
+        descLines.push(shipment.productDescription.trim());
+      }
+      if (shipment.brandName && shipment.brandName.trim()) {
+        descLines.push(`BRAND: ${shipment.brandName.trim()}`);
+      }
+      if (shipment.hsnCode && shipment.hsnCode.trim()) {
+        descLines.push(`HSN CODE: ${shipment.hsnCode.trim()}`);
+      }
+      if (shipment.isDangerousGoods || shipment.unNumber) {
+        const dgInfoParts: string[] = [];
+        if (shipment.unNumber) dgInfoParts.push(`UN NO: ${shipment.unNumber}`);
+        if (shipment.imoClass) dgInfoParts.push(`IMO CLASS: ${shipment.imoClass}`);
+        if (shipment.packingGroup) dgInfoParts.push(`PG: ${shipment.packingGroup}`);
+        if (dgInfoParts.length > 0) {
+          descLines.push(dgInfoParts.join(' | '));
+        }
+      }
+      if (descLines.length > 0) {
+        resolvedValue = descLines.join('\n');
+      }
+    }
+
+    // 9. Container & Seal combined box
     if (
       (fieldIdLower.includes('container_seal') || (labelLower.includes('container') && labelLower.includes('seal'))) &&
       field.fieldType !== 'table'
@@ -207,7 +281,7 @@ export function buildMappedManifest(
       }
     }
 
-    // 8. Vessel and Voyage combined box
+    // 10. Vessel and Voyage combined box
     if (
       (fieldIdLower.includes('vessel_voyage') || (labelLower.includes('vessel') && labelLower.includes('voyage'))) &&
       shipment.vesselName
@@ -217,7 +291,7 @@ export function buildMappedManifest(
         : shipment.vesselName;
     }
 
-    // 9. Global Keyword Reference & Cascading Fallback Engine
+    // 11. Global Keyword Reference & Cascading Fallback Engine
     let isValueBlank = !resolvedValue || resolvedValue.trim() === '' || resolvedValue.trim() === '0' || resolvedValue.trim() === '---';
 
     if (isValueBlank) {
@@ -363,6 +437,57 @@ export function buildMappedManifest(
     // Determine status: strictly "" or "0" is PENDING_BLANK. If populated via fallback or primary, mark POPULATED
     const isPopulated = resolvedValue.trim() !== '' && resolvedValue.trim() !== '0' && resolvedValue.trim() !== '---';
 
+    // Assign fieldCategory: Stage-2 Carrier / Operational fields vs Signatures vs Core Invoice Data
+    let fieldCategory: 'INVOICE_DATA' | 'STAGE2_CARRIER' | 'SIGNATURE_HAULIER' = 'INVOICE_DATA';
+
+    const isSignature =
+      fieldIdLower.includes('signature') ||
+      fieldIdLower.includes('haulier') ||
+      fieldIdLower.includes('driver') ||
+      fieldIdLower.includes('vehicle_reg') ||
+      fieldIdLower.includes('receiving_org') ||
+      labelLower.includes('signature') ||
+      labelLower.includes('haulier') ||
+      labelLower.includes('vehicle reg') ||
+      labelLower.includes('driver') ||
+      labelLower.includes('receiving organization') ||
+      labelLower.includes('certificate of packing') ||
+      labelLower.includes('container packing certificate') ||
+      labelLower.includes('shipper declaration');
+
+    const isStage2 =
+      fieldIdLower.includes('container') ||
+      fieldIdLower.includes('seal') ||
+      fieldIdLower.includes('tare') ||
+      fieldIdLower.includes('vgm') ||
+      fieldIdLower.includes('vessel') ||
+      fieldIdLower.includes('voyage') ||
+      fieldIdLower.includes('carrier') ||
+      fieldIdLower.includes('pre_carriage') ||
+      fieldIdLower.includes('shipping_bill') ||
+      fieldIdLower.includes('free_time') ||
+      fieldIdLower.includes('cube') ||
+      fieldIdLower.includes('volume') ||
+      labelLower.includes('container') ||
+      labelLower.includes('seal') ||
+      labelLower.includes('tare') ||
+      labelLower.includes('incl. tare') ||
+      labelLower.includes('vgm') ||
+      labelLower.includes('vessel') ||
+      labelLower.includes('voyage') ||
+      labelLower.includes('carrier') ||
+      labelLower.includes('pre-carriage') ||
+      labelLower.includes('shipping bill') ||
+      labelLower.includes('free time') ||
+      labelLower.includes('cube') ||
+      labelLower.includes('measurement');
+
+    if (isSignature) {
+      fieldCategory = 'SIGNATURE_HAULIER';
+    } else if (isStage2) {
+      fieldCategory = 'STAGE2_CARRIER';
+    }
+
     return {
       fieldId: field.fieldId,
       labelInTemplate: field.labelInTemplate,
@@ -370,7 +495,8 @@ export function buildMappedManifest(
       fieldType: field.fieldType,
       mappedShipmentKey: field.mappedShipmentKey,
       value: isPopulated ? resolvedValue : '',
-      status: isPopulated ? 'POPULATED' : 'PENDING_BLANK'
+      status: isPopulated ? 'POPULATED' : 'PENDING_BLANK',
+      fieldCategory
     };
   });
 }
@@ -520,7 +646,28 @@ export function getManifestStats(fields: MappedManifestField[]) {
   const pending = total - populated;
   const percentage = total > 0 ? Math.round((populated / total) * 100) : 0;
 
-  return { total, populated, pending, percentage };
+  // Breakdown by fieldCategory
+  const invoiceDataFields = fields.filter(f => f.fieldCategory === 'INVOICE_DATA' || !f.fieldCategory);
+  const invoiceDataTotal = invoiceDataFields.length;
+  const invoiceDataPopulated = invoiceDataFields.filter(f => f.status === 'POPULATED').length;
+  const invoiceDataPending = invoiceDataTotal - invoiceDataPopulated;
+  const invoiceDataPercentage = invoiceDataTotal > 0 ? Math.round((invoiceDataPopulated / invoiceDataTotal) * 100) : 0;
+
+  const stage2Pending = fields.filter(f => f.fieldCategory === 'STAGE2_CARRIER' && f.status === 'PENDING_BLANK').length;
+  const signaturePending = fields.filter(f => f.fieldCategory === 'SIGNATURE_HAULIER' && f.status === 'PENDING_BLANK').length;
+
+  return {
+    total,
+    populated,
+    pending,
+    percentage,
+    invoiceDataTotal,
+    invoiceDataPopulated,
+    invoiceDataPending,
+    invoiceDataPercentage,
+    stage2Pending,
+    signaturePending
+  };
 }
 
 /**

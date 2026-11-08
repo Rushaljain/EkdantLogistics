@@ -374,14 +374,14 @@ function normalizeExtractedJSON(
 
   clean.carrierName = str(raw.carrierName);
   clean.preCarriageBy = str(raw.preCarriageBy);
-  clean.placeOfReceipt = str(raw.placeOfReceipt);
+  clean.portOfLoading = str(raw.portOfLoading);
+  clean.placeOfReceipt = str(raw.placeOfReceipt) || clean.portOfLoading;
   clean.vesselName = str(raw.vesselName);
   clean.voyageNumber = str(raw.voyageNumber);
-  clean.portOfLoading = str(raw.portOfLoading);
   clean.portOfDischarge = str(raw.portOfDischarge);
   clean.portOfDischargeDg = str(raw.portOfDischargeDg);
-  clean.placeOfDelivery = str(raw.placeOfDelivery);
   clean.finalDestination = str(raw.finalDestination);
+  clean.placeOfDelivery = str(raw.placeOfDelivery) || clean.finalDestination || clean.portOfDischarge;
 
   clean.containerNumber = str(raw.containerNumber);
   clean.sealNumber = str(raw.sealNumber);
