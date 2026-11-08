@@ -116,8 +116,8 @@ export const KEYWORD_RULES: KeywordRule[] = [
   // 2. Shipper Party Block (with Name, Address, IEC, and ON BEHALF OF)
   {
     id: 'shipper_party',
-    description: 'Shipper / Consignor / Exporter Party Details',
-    keywords: ['shipper', 'consignor', 'exporter'],
+    description: 'Shipper / Consignor / Exporter / Sender Party Details',
+    keywords: ['shipper', 'consignor', 'exporter', 'sender'],
     excludeKeywords: ['reference', "shipper's ref", 'export ref', 'declaration', 'signature'],
     resolver: (shipment) => {
       const parts: string[] = [];
@@ -252,26 +252,96 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 8. Shipping Marks & Numbers / Packages
+  // 8. Cargo Description / Proper Shipping Name with Brand & HSN Fallbacks
   {
-    id: 'shipping_marks_and_packages',
+    id: 'cargo_description_proper_shipping_name',
+    description: 'Cargo Description / Proper Shipping Name with Brand and HSN Fallbacks',
+    keywords: [
+      'proper shipping name',
+      'cargo description',
+      'description of goods',
+      'commodity',
+      'nature of goods',
+      'goods description',
+      'bl_cargo_description'
+    ],
+    excludeKeywords: ['marks', 'package count', 'total number of packages', 'tare', 'gross', 'net', 'vgm'],
+    resolver: (shipment) => {
+      // Primary: properShippingName
+      if (shipment.properShippingName && shipment.properShippingName.trim()) {
+        return shipment.properShippingName.trim();
+      }
+      // Fallback 1: productDescription
+      if (shipment.productDescription && shipment.productDescription.trim()) {
+        return shipment.productDescription.trim();
+      }
+      // Fallback 2: brandName + hsnCode
+      const brandHsnParts: string[] = [];
+      if (shipment.brandName && shipment.brandName.trim()) {
+        brandHsnParts.push(shipment.brandName.trim());
+      }
+      if (shipment.hsnCode && shipment.hsnCode.trim()) {
+        brandHsnParts.push(`HSN: ${shipment.hsnCode.trim()}`);
+      }
+      if (brandHsnParts.length > 0) {
+        return brandHsnParts.join(' | ');
+      }
+      return '';
+    }
+  },
+
+  // 9. Numeric Package Count
+  {
+    id: 'package_count',
+    description: 'Total Number of Packages / Package Count',
+    keywords: [
+      'total number of packages',
+      'package count',
+      'no of packages',
+      'no. of packages',
+      'number of packages',
+      'total packages'
+    ],
+    excludeKeywords: ['kind of packages', 'description of goods'],
+    resolver: (shipment) => {
+      if (shipment.totalPallets > 0) {
+        return String(shipment.totalPallets);
+      }
+      if (shipment.outerPackagingCount > 0) {
+        return String(shipment.outerPackagingCount);
+      }
+      if (shipment.totalBoxes > 0) {
+        return String(shipment.totalBoxes);
+      }
+      if (shipment.innerPackageCount > 0) {
+        return String(shipment.innerPackageCount);
+      }
+      return '';
+    }
+  },
+
+  // 10. Shipping Marks & Numbers / Packages
+  {
+    id: 'marks_and_numbers_packages',
     description: 'Shipping Marks, Numbers, and Packages',
     keywords: [
       'shipping marks',
       'marks & nos',
       'marks and numbers',
+      'marks & numbers',
+      'marks/nos',
       'package description',
       'packages',
-      'description of goods',
-      'cargo description'
+      'number and kind of packages',
+      'bl_packages_and_marks'
     ],
-    excludeKeywords: ['tare', 'gross weight', 'net weight', 'vgm'],
+    excludeKeywords: ['tare', 'gross weight', 'net weight', 'vgm', 'proper shipping name'],
     resolver: (shipment) => {
       // Primary: shippingMarks
       if (shipment.shippingMarks && shipment.shippingMarks.trim()) {
         return shipment.shippingMarks.trim();
       }
-      // Fallback: productDescription + packaging counts
+      // Fallback: productDescription + packaging counts (outerPackagingCount + outerPackagingType)
       const pkgParts: string[] = [];
       if (shipment.outerPackagingCount > 0) {
         pkgParts.push(`${shipment.outerPackagingCount} ${shipment.outerPackagingType || 'PALLETS'}`);
@@ -280,15 +350,15 @@ export const KEYWORD_RULES: KeywordRule[] = [
         pkgParts.push(`${shipment.innerPackageCount} ${shipment.innerPackageType || 'BOXES'}`);
       }
       const pkgStr = pkgParts.join(' / ');
-      const descStr = shipment.properShippingName || shipment.productDescription || '';
+      const descStr = shipment.productDescription || shipment.properShippingName || '';
       if (pkgStr && descStr) {
-        return `${pkgStr}\n${descStr}`;
+        return `${pkgStr} - ${descStr}`;
       }
       return pkgStr || descStr;
     }
   },
 
-  // 9. Container & Seal Numbers
+  // 11. Container & Seal Numbers
   {
     id: 'container_and_seal',
     description: 'Container Number and Seal Number Combined',
@@ -302,7 +372,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 10. Container Type & Size
+  // 12. Container Type & Size
   {
     id: 'container_type',
     description: 'Container Type / Size',
@@ -312,7 +382,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 11. Container Tare Weight (kg)
+  // 13. Container Tare Weight (kg)
   {
     id: 'tare_weight',
     description: 'Container Tare Mass (kg)',
@@ -325,7 +395,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 12. Gross Mass / Gross Weight (kg)
+  // 14. Gross Mass / Gross Weight (kg)
   {
     id: 'gross_weight',
     description: 'Gross Mass (kg)',
@@ -339,7 +409,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 13. Net Mass / Net Weight (kg)
+  // 15. Net Mass / Net Weight (kg)
   {
     id: 'net_weight',
     description: 'Net Mass (kg)',
@@ -352,7 +422,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 14. Volume / Measurement / Cube (CBM)
+  // 16. Volume / Measurement / Cube (CBM)
   {
     id: 'volume_measurement',
     description: 'Measurement / Volume / Cube (m³ / CBM)',
@@ -365,7 +435,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 15. Vessel and Voyage
+  // 17. Vessel and Voyage
   {
     id: 'vessel_and_voyage',
     description: 'Ocean Vessel Name and Voyage Number',
@@ -378,7 +448,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 16. Port of Discharge (POD)
+  // 18. Port of Discharge (POD)
   {
     id: 'port_of_discharge',
     description: 'Port of Discharge (with fallbacks to finalDestination / placeOfDelivery)',
@@ -394,7 +464,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 17. Final Destination / Place of Delivery
+  // 19. Final Destination / Place of Delivery
   {
     id: 'final_destination',
     description: 'Final Destination or Place of Delivery (with fallbacks)',
@@ -410,7 +480,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 18. Port of Loading (POL)
+  // 20. Port of Loading (POL)
   {
     id: 'port_of_loading',
     description: 'Port of Loading or Place of Receipt',
@@ -420,7 +490,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 19. Carrier / Shipping Line
+  // 21. Carrier / Shipping Line
   {
     id: 'carrier',
     description: 'Ocean Carrier Name',
@@ -430,7 +500,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 20. Pre-Carriage By
+  // 22. Pre-Carriage By
   {
     id: 'pre_carriage',
     description: 'Pre-Carriage By Details',
@@ -440,7 +510,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 21. Shipping Bill Numbers
+  // 23. Shipping Bill Numbers
   {
     id: 'shipping_bill',
     description: 'Shipping Bill Number(s) and Date',
@@ -450,7 +520,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 22. HSN / Tariff Classification Code
+  // 24. HSN / Tariff Classification Code
   {
     id: 'hsn_code',
     description: 'HSN / Tariff Classification Code',
@@ -460,7 +530,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 23. Emergency Response Contact
+  // 25. Emergency Response Contact
   {
     id: 'emergency_contact',
     description: '24-Hour Emergency Response Contact Name & Telephone',
@@ -471,7 +541,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 24. DG Declarant / Packing Certificate
+  // 26. DG Declarant / Packing Certificate
   {
     id: 'dg_declarant',
     description: 'Container / Vehicle Packing Certificate (Name/Status of Declarant)',
@@ -482,7 +552,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 25. Shipper Declaration Place & Date
+  // 27. Shipper Declaration Place & Date
   {
     id: 'shipper_declaration',
     description: "Shipper's Declaration Place and Date",
@@ -492,7 +562,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 26. Commercial Freight Terms
+  // 28. Commercial Freight Terms
   {
     id: 'freight_terms',
     description: 'Freight Payment Terms (Prepaid / Collect)',
@@ -502,7 +572,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 27. Movement Type
+  // 29. Movement Type
   {
     id: 'movement_type',
     description: 'Cargo Movement Type (e.g. FCL/FCL, CY/CY)',
@@ -512,7 +582,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 28. Free Time Clause
+  // 30. Free Time Clause
   {
     id: 'free_time',
     description: 'Free Time & Detention Clause',
