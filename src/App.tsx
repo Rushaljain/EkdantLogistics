@@ -104,17 +104,15 @@ export function App(): React.JSX.Element {
   const [fieldFilter, setFieldFilter] = useState<'ALL' | 'POPULATED' | 'PENDING'>('ALL');
   const [fieldSearch, setFieldSearch] = useState<string>('');
 
-  // Format Upload Modal State
-  const [showFormatUploadModal, setShowFormatUploadModal] = useState(false);
+  // Unified Format Library & Template Uploader State
+  const [showFormatLibraryModal, setShowFormatLibraryModal] = useState(false);
   const [formatUploadDocType, setFormatUploadDocType] = useState<FormatDocumentType>('DG');
   const [formatUploadName, setFormatUploadName] = useState<string>('');
   const [formatUploadFile, setFormatUploadFile] = useState<File | null>(null);
   const [isUploadingFormat, setIsUploadingFormat] = useState(false);
   const [formatUploadProgress, setFormatUploadProgress] = useState<ParseFormatProgress | null>(null);
   const [formatUploadError, setFormatUploadError] = useState<string | null>(null);
-
-  // Format Library Management Modal
-  const [showFormatLibraryModal, setShowFormatLibraryModal] = useState(false);
+  const [isDragOverFormat, setIsDragOverFormat] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const formatFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -313,21 +311,21 @@ export function App(): React.JSX.Element {
     }
   };
 
-  // Format Upload Handlers
-  const handleOpenFormatUpload = (docType: FormatDocumentType) => {
-    setFormatUploadDocType(docType);
-    setFormatUploadName('');
-    setFormatUploadFile(null);
-    setFormatUploadProgress(null);
+  // Open Unified Format Library & Template Uploader Modal
+  const handleOpenFormatLibrary = (preselectedDocType?: FormatDocumentType) => {
+    if (preselectedDocType) {
+      setFormatUploadDocType(preselectedDocType);
+    }
     setFormatUploadError(null);
-    setShowFormatUploadModal(true);
+    setShowFormatLibraryModal(true);
   };
 
   const handleExecuteFormatUpload = async () => {
-    if (!formatUploadFile || !formatUploadName.trim()) {
-      setFormatUploadError('Please provide both a template file and a format name.');
+    if (!formatUploadFile) {
+      setFormatUploadError('Please select or drop a template file (.pdf, .docx, .xlsx, .xls) to parse.');
       return;
     }
+    const nameToUse = formatUploadName.trim() || formatUploadFile.name.replace(/\.[^/.]+$/, '');
 
     setIsUploadingFormat(true);
     setFormatUploadProgress(null);
@@ -336,7 +334,7 @@ export function App(): React.JSX.Element {
     try {
       const extractedSchema = await parseTargetFormat(
         formatUploadFile,
-        formatUploadName.trim(),
+        nameToUse,
         formatUploadDocType,
         customApiKey || undefined,
         (progress) => setFormatUploadProgress(progress)
@@ -352,7 +350,13 @@ export function App(): React.JSX.Element {
         setSelectedBlFormatId(extractedSchema.formatId);
       }
 
-      setShowFormatUploadModal(false);
+      // Reset upload inputs after successful parsing
+      setFormatUploadFile(null);
+      setFormatUploadName('');
+      setFormatUploadProgress(null);
+      if (formatFileInputRef.current) {
+        formatFileInputRef.current.value = '';
+      }
     } catch (err: any) {
       console.error('Format upload failed:', err);
       setFormatUploadError(err?.message || 'Failed to extract format schema.');
@@ -431,14 +435,14 @@ export function App(): React.JSX.Element {
               </span>
             )}
 
-            {/* Manage Format Library */}
+            {/* Format Library & Upload Template */}
             <button
-              onClick={() => setShowFormatLibraryModal(true)}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
-              title="Manage Saved Format Library"
+              onClick={() => handleOpenFormatLibrary(activeStep === 3 ? 'BL' : 'DG')}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+              title="Format Library & Upload Template"
             >
               <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Format Library ({formats.length})</span>
+              <span>Format Library & Upload ({formats.length})</span>
             </button>
 
             {/* Gemini API Key Button */}
@@ -565,6 +569,20 @@ export function App(): React.JSX.Element {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
+                {apiError.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') && (
+                  <div className="bg-amber-950/60 border border-amber-500/60 rounded-xl p-3 text-xs text-amber-200 space-y-1.5">
+                    <div className="font-bold flex items-center space-x-1.5 text-amber-300">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>Unsupported Key / Token Format ("AQ...")</span>
+                    </div>
+                    <p className="leading-relaxed">
+                      The key configured starts with <code className="bg-slate-900 px-1.5 py-0.5 rounded text-amber-300 font-mono">AQ.</code>, which is an internal session token. Google Gemini API requires a standard API key starting with <code className="bg-slate-900 px-1.5 py-0.5 rounded text-cyan-300 font-mono">AIzaSy...</code>.
+                    </p>
+                    <p className="leading-relaxed">
+                      Please generate a free Gemini API key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-cyan-400 underline font-semibold hover:text-cyan-300">aistudio.google.com/apikey</a> and click <strong>"Update API Key"</strong> below.
+                    </p>
+                  </div>
+                )}
                 <div className="bg-slate-950/90 rounded-xl p-3.5 border border-red-900/60 font-mono text-xs overflow-x-auto text-red-300 max-h-48 whitespace-pre-wrap">
                   {apiError}
                 </div>
@@ -922,8 +940,8 @@ export function App(): React.JSX.Element {
             availableFormats={dgFormats}
             selectedFormatId={selectedDgFormatId}
             onSelectFormat={setSelectedDgFormatId}
-            onOpenUploadModal={() => handleOpenFormatUpload('DG')}
-            onManageFormats={() => setShowFormatLibraryModal(true)}
+            onOpenUploadModal={() => handleOpenFormatLibrary('DG')}
+            onManageFormats={() => handleOpenFormatLibrary('DG')}
             mappedFields={mappedDgFields}
             onFieldChange={(field, val) => handleFieldChange(field, 'DG', val)}
             filter={fieldFilter}
@@ -948,8 +966,8 @@ export function App(): React.JSX.Element {
             availableFormats={blFormats}
             selectedFormatId={selectedBlFormatId}
             onSelectFormat={setSelectedBlFormatId}
-            onOpenUploadModal={() => handleOpenFormatUpload('BL')}
-            onManageFormats={() => setShowFormatLibraryModal(true)}
+            onOpenUploadModal={() => handleOpenFormatLibrary('BL')}
+            onManageFormats={() => handleOpenFormatLibrary('BL')}
             mappedFields={mappedBlFields}
             onFieldChange={(field, val) => handleFieldChange(field, 'BL', val)}
             filter={fieldFilter}
@@ -1047,211 +1065,327 @@ export function App(): React.JSX.Element {
         )}
       </main>
 
-      {/* Upload New Format Modal */}
-      {showFormatUploadModal && (
+      {/* Unified Format Library & Template Uploader Modal */}
+      {showFormatLibraryModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <FolderPlus className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-sm font-bold text-white">Upload New Format Template</h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/40">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-800/80 flex items-center justify-center text-cyan-400">
+                  <FolderPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Format Library & Template Uploader</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Upload custom format files to extract reusable schemas, or switch and manage saved formats ({formats.length} in library).
+                  </p>
+                </div>
               </div>
               <button
-                onClick={() => setShowFormatUploadModal(false)}
-                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                onClick={() => {
+                  setShowFormatLibraryModal(false);
+                  setFormatUploadError(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Upload any sample format document (.pdf, .docx, .xlsx, .xls). Gemini will extract the structural field schema and box definitions into your Format Library without copying sample data.
-            </p>
-
-            {formatUploadError && (
-              <div className="p-3 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-200">
-                {formatUploadError}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Format Name:
-                </label>
-                <input
-                  type="text"
-                  value={formatUploadName}
-                  onChange={(e) => setFormatUploadName(e.target.value)}
-                  placeholder="e.g. CMA CGM DG Declaration or ONE Ocean BL"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Document Type:
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFormatUploadDocType('DG')}
-                    className={`py-2 text-xs font-bold rounded-xl border transition cursor-pointer ${
-                      formatUploadDocType === 'DG'
-                        ? 'bg-cyan-950 border-cyan-500 text-cyan-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Dangerous Goods (DG)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormatUploadDocType('BL')}
-                    className={`py-2 text-xs font-bold rounded-xl border transition cursor-pointer ${
-                      formatUploadDocType === 'BL'
-                        ? 'bg-cyan-950 border-cyan-500 text-cyan-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Bill of Lading (BL)
-                  </button>
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Section 1: Upload & Parse New Format Template */}
+              <section className="bg-slate-950/70 border border-cyan-900/40 rounded-xl p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                      Upload & Parse New Format Template
+                    </h4>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Accepts .pdf, .docx, .xlsx, .xls, .csv
+                  </span>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Template File (.pdf, .docx, .xlsx):
-                </label>
-                <input
-                  ref={formatFileInputRef}
-                  type="file"
-                  accept=".pdf,.docx,.xlsx,.xls,.csv"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      const file = e.target.files[0];
+                {formatUploadError && (
+                  <div className="p-3 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-200 flex items-start space-x-2">
+                    <AlertOctagon className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Extraction Error: </span>
+                      {formatUploadError}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                      Format Name (Optional):
+                    </label>
+                    <input
+                      type="text"
+                      value={formatUploadName}
+                      onChange={(e) => setFormatUploadName(e.target.value)}
+                      placeholder="Auto-derived from filename if blank"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-sans"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                      Document Type:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormatUploadDocType('DG')}
+                        className={`py-2 px-2 text-xs font-bold rounded-xl border transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                          formatUploadDocType === 'DG'
+                            ? 'bg-amber-950/80 border-amber-600 text-amber-300 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>DG Manifest (Step 2)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormatUploadDocType('BL')}
+                        className={`py-2 px-2 text-xs font-bold rounded-xl border transition cursor-pointer flex items-center justify-center space-x-1.5 ${
+                          formatUploadDocType === 'BL'
+                            ? 'bg-blue-950/80 border-blue-600 text-blue-300 shadow-sm'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <span>BL Manifest (Step 3)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Visible File Upload Dropzone */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragOverFormat(true);
+                  }}
+                  onDragLeave={() => setIsDragOverFormat(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOverFormat(false);
+                    if (e.dataTransfer.files?.[0]) {
+                      const file = e.dataTransfer.files[0];
                       setFormatUploadFile(file);
-                      if (!formatUploadName) {
-                        const base = file.name.replace(/\.[^/.]+$/, '');
-                        setFormatUploadName(base);
+                      if (!formatUploadName.trim()) {
+                        setFormatUploadName(file.name.replace(/\.[^/.]+$/, ''));
                       }
                     }
                   }}
-                  className="hidden"
-                  id="format-file-input"
-                />
-                <label
-                  htmlFor="format-file-input"
-                  className="w-full bg-slate-950 border border-dashed border-slate-700 hover:border-cyan-500 rounded-xl p-3 text-xs text-center flex items-center justify-center space-x-2 text-slate-300 cursor-pointer"
+                  className={`border-2 border-dashed rounded-xl p-4 text-center transition flex flex-col items-center justify-center space-y-2 cursor-pointer ${
+                    isDragOverFormat
+                      ? 'border-cyan-400 bg-cyan-950/40'
+                      : formatUploadFile
+                      ? 'border-emerald-600 bg-emerald-950/20'
+                      : 'border-slate-800 hover:border-slate-700 bg-slate-900/40'
+                  }`}
+                  onClick={() => formatFileInputRef.current?.click()}
                 >
-                  <FileUp className="w-4 h-4 text-cyan-400" />
-                  <span className="truncate">{formatUploadFile ? formatUploadFile.name : 'Select Template File'}</span>
-                </label>
-              </div>
+                  <input
+                    ref={formatFileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.xlsx,.xls,.csv"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        const file = e.target.files[0];
+                        setFormatUploadFile(file);
+                        if (!formatUploadName.trim()) {
+                          setFormatUploadName(file.name.replace(/\.[^/.]+$/, ''));
+                        }
+                      }
+                    }}
+                    className="hidden"
+                  />
 
-              {isUploadingFormat && formatUploadProgress && (
-                <div className="p-3 bg-cyan-950/60 border border-cyan-800/80 rounded-xl text-xs text-cyan-300 flex items-center space-x-2">
-                  <Sparkles className="w-4 h-4 animate-spin shrink-0" />
-                  <span>{formatUploadProgress.message}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-800">
-              <button
-                onClick={() => setShowFormatUploadModal(false)}
-                className="px-3.5 py-1.5 text-xs rounded-xl text-slate-400 hover:text-slate-200 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleExecuteFormatUpload}
-                disabled={isUploadingFormat || !formatUploadFile || !formatUploadName.trim()}
-                className="px-4 py-1.5 text-xs font-bold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer disabled:opacity-50 transition"
-              >
-                {isUploadingFormat ? 'Extracting...' : 'Parse & Save Schema'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Format Library Modal */}
-      {showFormatLibraryModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <div className="flex items-center space-x-2">
-                <FolderPlus className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-sm font-bold text-white">Saved Format Library ({formats.length})</h3>
-              </div>
-              <button
-                onClick={() => setShowFormatLibraryModal(false)}
-                className="text-slate-400 hover:text-white p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Target schemas stored in your browser format library. Built-in industry standards cannot be deleted.
-            </p>
-
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {formats.map((fmt) => {
-                const isDefault = fmt.formatId === DEFAULT_DG_FORMAT.formatId || fmt.formatId === DEFAULT_BL_FORMAT.formatId;
-                return (
-                  <div
-                    key={fmt.formatId}
-                    className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs"
-                  >
-                    <div className="space-y-0.5 truncate pr-3">
-                      <div className="flex items-center space-x-2">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${fmt.documentType === 'DG' ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-blue-950 text-blue-400 border border-blue-800'}`}>
-                          {fmt.documentType}
+                  {formatUploadFile ? (
+                    <div className="flex items-center justify-between w-full max-w-md px-3 py-1 bg-slate-900 border border-slate-700 rounded-lg">
+                      <div className="flex items-center space-x-2 truncate">
+                        <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span className="text-xs text-white font-medium truncate">{formatUploadFile.name}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          ({(formatUploadFile.size / 1024).toFixed(1)} KB)
                         </span>
-                        <span className="font-bold text-slate-200 truncate">{fmt.formatName}</span>
-                        {isDefault && (
-                          <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
-                            Built-in Default
-                          </span>
-                        )}
                       </div>
-                      <p className="text-[11px] text-slate-500">
-                        {fmt.sourceFileName} &bull; {fmt.fields.length} Fields Defined
-                      </p>
-                    </div>
-
-                    {!isDefault && (
                       <button
-                        onClick={() => handleDeleteFormat(fmt.formatId)}
-                        className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-900 cursor-pointer"
-                        title="Delete from library"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormatUploadFile(null);
+                          if (formatFileInputRef.current) formatFileInputRef.current.value = '';
+                        }}
+                        className="text-slate-400 hover:text-red-400 p-1 cursor-pointer"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
+                    </div>
+                  ) : (
+                    <>
+                      <FileUp className="w-6 h-6 text-slate-400" />
+                      <div>
+                        <span className="text-xs font-semibold text-cyan-400 hover:underline">
+                          Click to browse or drop template file here
+                        </span>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Supports .pdf, .docx (Word), .xlsx / .xls (Excel)
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Action Row */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <span className="text-[11px] text-slate-400">
+                    {isUploadingFormat && formatUploadProgress ? (
+                      <span className="text-cyan-400 flex items-center space-x-1.5 animate-pulse">
+                        <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                        <span>{formatUploadProgress.message}</span>
+                      </span>
+                    ) : (
+                      'Extracts field structure only — zero sample data copied.'
                     )}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleExecuteFormatUpload}
+                    disabled={isUploadingFormat || !formatUploadFile}
+                    className={`px-4 py-2 text-xs font-bold rounded-xl text-white shadow-md transition inline-flex items-center space-x-2 cursor-pointer ${
+                      isUploadingFormat || !formatUploadFile
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                        : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-600/20'
+                    }`}
+                  >
+                    <Plus className={`w-3.5 h-3.5 ${isUploadingFormat ? 'animate-spin' : ''}`} />
+                    <span>{isUploadingFormat ? 'Parsing Structure...' : 'Parse & Add to Format Library'}</span>
+                  </button>
+                </div>
+              </section>
+
+              {/* Section 2: Saved Format Library List */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Saved Target Formats in Library ({formats.length})
+                  </h4>
+                  <div className="flex items-center space-x-1.5 text-[10px] font-mono">
+                    <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800">
+                      {dgFormats.length} DG Formats
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800">
+                      {blFormats.length} BL Formats
+                    </span>
                   </div>
-                );
-              })}
+                </div>
+
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {formats.map((fmt) => {
+                    const isDefault = fmt.formatId === DEFAULT_DG_FORMAT.formatId || fmt.formatId === DEFAULT_BL_FORMAT.formatId;
+                    const isCurrentSelected =
+                      (fmt.documentType === 'DG' && selectedDgFormatId === fmt.formatId) ||
+                      (fmt.documentType === 'BL' && selectedBlFormatId === fmt.formatId);
+
+                    return (
+                      <div
+                        key={fmt.formatId}
+                        className={`p-3 rounded-xl border flex items-center justify-between text-xs transition ${
+                          isCurrentSelected
+                            ? 'bg-slate-950 border-cyan-500 ring-1 ring-cyan-500/20'
+                            : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="space-y-0.5 truncate pr-3">
+                          <div className="flex items-center space-x-2">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              fmt.documentType === 'DG'
+                                ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                                : 'bg-blue-950 text-blue-400 border border-blue-800'
+                            }`}>
+                              {fmt.documentType}
+                            </span>
+                            <span className="font-bold text-slate-200 truncate">{fmt.formatName}</span>
+                            {isDefault && (
+                              <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
+                                Built-in Default
+                              </span>
+                            )}
+                            {isCurrentSelected && (
+                              <span className="text-[10px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-1.5 py-0.5 rounded font-bold">
+                                Active for {fmt.documentType}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500">
+                            File: {fmt.sourceFileName} &bull; {fmt.fields.length} Fields Defined
+                          </p>
+                        </div>
+
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (fmt.documentType === 'DG') {
+                                setSelectedDgFormatId(fmt.formatId);
+                              } else {
+                                setSelectedBlFormatId(fmt.formatId);
+                              }
+                            }}
+                            className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition cursor-pointer ${
+                              isCurrentSelected
+                                ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                                : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+                            }`}
+                          >
+                            {isCurrentSelected ? 'Active' : 'Select'}
+                          </button>
+
+                          {!isDefault && (
+                            <button
+                              onClick={() => handleDeleteFormat(fmt.formatId)}
+                              className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-900 cursor-pointer transition"
+                              title="Delete template from library"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/60">
               <button
                 onClick={() => {
-                  if (confirm('Clear custom templates from format library? Built-in defaults will remain.')) {
+                  if (confirm('Clear custom templates from format library? Built-in standard defaults will remain.')) {
                     clearFormatLibrary();
                     setFormats(getSavedFormats());
                   }
                 }}
-                className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 cursor-pointer"
+                className="text-xs text-red-400 hover:text-red-300 cursor-pointer"
               >
                 Clear Custom Formats
               </button>
               <button
-                onClick={() => setShowFormatLibraryModal(false)}
-                className="px-4 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer"
+                onClick={() => {
+                  setShowFormatLibraryModal(false);
+                  setFormatUploadError(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer transition"
               >
-                Close
+                Done
               </button>
             </div>
           </div>
@@ -1275,8 +1409,16 @@ export function App(): React.JSX.Element {
               </button>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Configure your Google AI Studio or Gemini API key. If left blank, the app uses the built-in system key from environment variables.
+              Configure your Google AI Studio Gemini API key (starts with <code className="text-cyan-400 font-mono">AIzaSy...</code>). You can generate a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-cyan-400 underline font-semibold hover:text-cyan-300">aistudio.google.com/apikey</a>.
             </p>
+            {customApiKey.startsWith('AQ.') && (
+              <div className="bg-amber-950/60 border border-amber-500/60 rounded-xl p-2.5 text-xs text-amber-200 flex items-start space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  Keys starting with <strong>AQ.</strong> are unsupported session tokens. Please enter an <strong>AIzaSy...</strong> key.
+                </span>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label htmlFor="api-key-input" className="text-xs font-semibold text-slate-300">
                 Custom API Key:
@@ -1286,7 +1428,7 @@ export function App(): React.JSX.Element {
                 type="password"
                 value={customApiKey}
                 onChange={(e) => setCustomApiKey(e.target.value)}
-                placeholder="AIzaSy... or AQ... (or leave blank to use default)"
+                placeholder="AIzaSy... (from aistudio.google.com/apikey)"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
               />
             </div>
