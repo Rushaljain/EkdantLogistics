@@ -89,6 +89,12 @@ export function buildMappedManifest(
           parts.push(addr);
         }
       }
+      if (shipment.shipperIec && shipment.shipperIec.trim()) {
+        parts.push(`IEC: ${shipment.shipperIec.trim()}`);
+      }
+      if (shipment.shipperGstin && shipment.shipperGstin.trim()) {
+        parts.push(`GSTIN: ${shipment.shipperGstin.trim()}`);
+      }
       if (shipment.onBehalfOf && shipment.onBehalfOf.trim()) {
         parts.push(`ON BEHALF OF:\n${shipment.onBehalfOf.trim()}`);
       }
@@ -542,20 +548,29 @@ export function updateShipmentFromManifestField(
     fieldIdLower.includes('shipper') ||
     (labelLower.includes('shipper') && !labelLower.includes('ref'))
   ) {
+    let shipperContent = newValue;
     if (newValue.includes('ON BEHALF OF:')) {
       const [shipperPart, onBehalfPart] = newValue.split(/ON BEHALF OF:\s*/i);
       updated.onBehalfOf = onBehalfPart.trim();
-      const lines = shipperPart.trim().split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length > 0) {
-        updated.shipperName = lines[0];
-        updated.shipperAddress = lines.slice(1).join('\n') || lines[0];
+      shipperContent = shipperPart;
+    }
+
+    const rawLines = shipperContent.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    const cleanAddressLines: string[] = [];
+
+    for (const line of rawLines) {
+      if (/^IEC:\s*/i.test(line)) {
+        updated.shipperIec = line.replace(/^IEC:\s*/i, '').trim();
+      } else if (/^GSTIN:\s*/i.test(line)) {
+        updated.shipperGstin = line.replace(/^GSTIN:\s*/i, '').trim();
+      } else {
+        cleanAddressLines.push(line);
       }
-    } else {
-      const lines = newValue.trim().split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length > 1) {
-        updated.shipperName = lines[0];
-        updated.shipperAddress = lines.slice(1).join('\n');
-      }
+    }
+
+    if (cleanAddressLines.length > 0) {
+      updated.shipperName = cleanAddressLines[0];
+      updated.shipperAddress = cleanAddressLines.slice(1).join('\n') || cleanAddressLines[0];
     }
   }
 

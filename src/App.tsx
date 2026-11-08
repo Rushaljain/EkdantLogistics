@@ -26,7 +26,10 @@ import {
   FolderPlus,
   CheckCheck,
   SlidersHorizontal,
-  Layers2
+  Printer,
+  Package,
+  ExternalLink,
+  FileCheck
 } from 'lucide-react';
 import type {
   UploadMode,
@@ -63,6 +66,13 @@ import {
   getManifestStats,
   groupManifestFieldsBySection
 } from './utils/manifestMatcher.ts';
+import {
+  generateManifestHtml,
+  downloadManifestHtml,
+  printManifestToPdf,
+  downloadManifestDocx,
+  downloadCompleteShipmentPackage
+} from './utils/documentExporter.ts';
 
 export function App(): React.JSX.Element {
   const [mode, setMode] = useState<UploadMode>('SINGLE_INVOICE');
@@ -113,6 +123,11 @@ export function App(): React.JSX.Element {
   const [formatUploadProgress, setFormatUploadProgress] = useState<ParseFormatProgress | null>(null);
   const [formatUploadError, setFormatUploadError] = useState<string | null>(null);
   const [isDragOverFormat, setIsDragOverFormat] = useState(false);
+
+  // Step 4 Output Render & Verification Center State
+  const [outputTab, setOutputTab] = useState<'DG' | 'BL' | 'PALLETS'>('DG');
+  const [includePalletAnnex, setIncludePalletAnnex] = useState(true);
+  const [isExportingZip, setIsExportingZip] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const formatFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -999,69 +1014,380 @@ export function App(): React.JSX.Element {
           />
         )}
 
-        {/* STEP 4: Output Render Preview */}
+        {/* STEP 4: Output Render & Verification Center */}
         {activeStep === 4 && (
-          <section className="bg-slate-900/60 border border-slate-800 rounded-2xl p-8 space-y-6 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white mx-auto shadow-lg shadow-cyan-600/30">
-              <Layers2 className="w-7 h-7" />
-            </div>
-
-            <div>
-              <h3 className="text-base font-bold text-white uppercase tracking-wider">
-                Phase 3 Manifest Matching Complete
-              </h3>
-              <p className="text-xs text-slate-400 max-w-lg mx-auto mt-1">
-                Both DG and BL manifests are 100% synchronized against target format schemas. Phase 4 will render carrier-agnostic printable HTML and PDF outputs directly adhering to these matched templates.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto text-left">
-              {/* DG Card */}
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-cyan-400">DG Manifest</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                    {dgStats.populated} / {dgStats.total} Populated
-                  </span>
+          <section className="space-y-6">
+            {/* Top Readiness & Completeness Banner */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-600/30">
+                    <FileCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-white tracking-wide">
+                      Multi-Format Output &amp; Verification Center
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      Compile verified DG and BL manifests into Print-Ready PDF, Editable Word (.docx), Maritime HTML, or a complete shipment ZIP bundle.
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-300 font-medium truncate">{activeDgFormat.formatName}</p>
-                <div className="text-[11px] text-slate-400 space-y-0.5">
-                  <div>Vessel: {shipmentJson.vesselName || 'Pending'} {shipmentJson.voyageNumber ? `(${shipmentJson.voyageNumber})` : ''}</div>
-                  <div>Booking: {shipmentJson.bookingNumber || 'Pending'}</div>
-                  <div>UN Number: {shipmentJson.unNumber || 'N/A'} (Class {shipmentJson.imoClass || '---'})</div>
-                </div>
+
+                {/* Master ZIP Export Button */}
                 <button
-                  onClick={() => handleDownloadJson(mappedDgFields, `MappedDGManifest_${Date.now()}.json`)}
-                  className="w-full mt-2 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-white cursor-pointer transition border border-slate-700"
+                  onClick={async () => {
+                    setIsExportingZip(true);
+                    try {
+                      await downloadCompleteShipmentPackage(
+                        shipmentJson,
+                        activeDgFormat,
+                        mappedDgFields,
+                        activeBlFormat,
+                        mappedBlFields,
+                        { includePalletAnnex }
+                      );
+                    } finally {
+                      setIsExportingZip(false);
+                    }
+                  }}
+                  disabled={isExportingZip}
+                  className="px-5 py-2.5 text-xs font-bold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 transition inline-flex items-center space-x-2 cursor-pointer disabled:opacity-50"
                 >
-                  Download DG JSON
+                  <Package className={`w-4 h-4 ${isExportingZip ? 'animate-spin' : ''}`} />
+                  <span>{isExportingZip ? 'Packaging ZIP Archive...' : 'Download Complete Shipment Package (.zip)'}</span>
                 </button>
               </div>
 
-              {/* BL Card */}
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-blue-400">BL Manifest</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                    {blStats.populated} / {blStats.total} Populated
+              {/* Side-by-Side Readiness Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* DG Readiness Card */}
+                <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">Dangerous Goods Declaration</span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                      {dgStats.populated} / {dgStats.total} Populated ({dgStats.percentage}%)
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-300 font-medium truncate">
+                    Template: {activeDgFormat.formatName}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                    <div>Booking: <span className="font-mono text-cyan-300">{shipmentJson.bookingNumber || 'Pending'}</span></div>
+                    <div>Vessel: <span className="text-slate-200">{shipmentJson.vesselName || 'Pending'}</span></div>
+                    <div>UN Number: <span className="font-mono text-amber-300">{shipmentJson.unNumber || 'N/A'}</span></div>
+                    <div>Marine Pollutant: <span className="font-bold text-slate-200">{shipmentJson.marinePollutant ? 'YES' : 'NO'}</span></div>
+                  </div>
+                </div>
+
+                {/* BL Readiness Card */}
+                <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse"></span>
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">Ocean Bill of Lading</span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                      {blStats.populated} / {blStats.total} Populated ({blStats.percentage}%)
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-300 font-medium truncate">
+                    Template: {activeBlFormat.formatName}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                    <div>Carrier: <span className="text-slate-200">{shipmentJson.carrierName || 'Pending'}</span></div>
+                    <div>Container: <span className="font-mono text-cyan-300">{shipmentJson.containerNumber || 'Pending'}</span></div>
+                    <div>Tare Mass: <span className="font-mono text-slate-200">{shipmentJson.tareWeightKg > 0 ? `${shipmentJson.tareWeightKg} kg` : 'Pending'}</span></div>
+                    <div>Total Gross VGM: <span className="font-mono font-bold text-emerald-400">{shipmentJson.grossWeightKg > 0 && shipmentJson.tareWeightKg > 0 ? `${(shipmentJson.grossWeightKg + shipmentJson.tareWeightKg).toFixed(2)} kg` : 'Pending'}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Stage-2 Carrier & Equipment Bar */}
+              <div className="bg-slate-950/70 border border-cyan-900/40 rounded-xl p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center space-x-2">
+                    <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">
+                      Quick Stage-2 Carrier &amp; Equipment Sync Bar
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    Changes made here synchronize immediately across DG and BL manifests and auto-compute VGM.
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 font-medium truncate">{activeBlFormat.formatName}</p>
-                <div className="text-[11px] text-slate-400 space-y-0.5">
-                  <div>Carrier: {shipmentJson.carrierName || 'Pending'}</div>
-                  <div>Container: {shipmentJson.containerNumber || 'Pending'} ({shipmentJson.containerType})</div>
-                  <div>Total Gross VGM: {shipmentJson.grossWeightKg > 0 && shipmentJson.tareWeightKg > 0 ? (shipmentJson.grossWeightKg + shipmentJson.tareWeightKg) + ' kg' : '---'}</div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Container No.</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.containerNumber}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, containerNumber: e.target.value }))}
+                      placeholder="e.g. MSKU1234567"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Seal No.</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.sealNumber}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, sealNumber: e.target.value }))}
+                      placeholder="e.g. SL987654"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Tare Wt (kg)</label>
+                    <input
+                      type="number"
+                      value={shipmentJson.tareWeightKg || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setShipmentJson(prev => ({ ...prev, tareWeightKg: val }));
+                      }}
+                      placeholder="e.g. 2300"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Carrier Name</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.carrierName}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, carrierName: e.target.value }))}
+                      placeholder="e.g. MAERSK / CMA CGM"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Vessel Name</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.vesselName}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, vesselName: e.target.value }))}
+                      placeholder="e.g. MSC ALTAIR"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Voyage No.</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.voyageNumber}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, voyageNumber: e.target.value }))}
+                      placeholder="e.g. 2401E"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Booking No.</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.bookingNumber}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, bookingNumber: e.target.value }))}
+                      placeholder="e.g. BKG-8899"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleDownloadJson(mappedBlFields, `MappedBLManifest_${Date.now()}.json`)}
-                  className="w-full mt-2 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-white cursor-pointer transition border border-slate-700"
-                >
-                  Download BL JSON
-                </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-center space-x-3 pt-4">
+            {/* Live Interactive Document Preview Section */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="inline-flex rounded-xl bg-slate-950 p-1 border border-slate-800 text-xs">
+                    <button
+                      onClick={() => setOutputTab('DG')}
+                      className={`px-3 py-1 font-semibold rounded-lg transition cursor-pointer flex items-center space-x-1.5 ${
+                        outputTab === 'DG'
+                          ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>DG Declaration ({activeDgFormat.formatName})</span>
+                    </button>
+                    <button
+                      onClick={() => setOutputTab('BL')}
+                      className={`px-3 py-1 font-semibold rounded-lg transition cursor-pointer flex items-center space-x-1.5 ${
+                        outputTab === 'BL'
+                          ? 'bg-blue-950 text-blue-400 border border-blue-800'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>Master BL Draft ({activeBlFormat.formatName})</span>
+                    </button>
+                    <button
+                      onClick={() => setOutputTab('PALLETS')}
+                      className={`px-3 py-1 font-semibold rounded-lg transition cursor-pointer flex items-center space-x-1.5 ${
+                        outputTab === 'PALLETS'
+                          ? 'bg-cyan-950 text-cyan-400 border border-cyan-800'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Boxes className="w-3.5 h-3.5" />
+                      <span>Pallet Breakdown ({shipmentJson.pallets.length})</span>
+                    </button>
+                  </div>
+
+                  <label className="text-xs text-slate-300 flex items-center space-x-2 cursor-pointer ml-3 select-none">
+                    <input
+                      type="checkbox"
+                      checked={includePalletAnnex}
+                      onChange={(e) => setIncludePalletAnnex(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
+                    />
+                    <span className="text-[11px] text-slate-400">Include Pallet Annex on Output</span>
+                  </label>
+                </div>
+
+                {/* Per-Document Export Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {outputTab === 'DG' && (
+                    <>
+                      <button
+                        onClick={() => printManifestToPdf(shipmentJson, activeDgFormat, mappedDgFields, { includePalletAnnex })}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer shadow-sm transition inline-flex items-center space-x-1.5"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Print / Save PDF</span>
+                      </button>
+                      <button
+                        onClick={() => downloadManifestDocx(shipmentJson, activeDgFormat, mappedDgFields, { includePalletAnnex })}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer transition border border-slate-700 inline-flex items-center space-x-1.5"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Editable Word (.docx)</span>
+                      </button>
+                      <button
+                        onClick={() => downloadManifestHtml(shipmentJson, activeDgFormat, mappedDgFields, { includePalletAnnex })}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer transition border border-slate-700 inline-flex items-center space-x-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>HTML</span>
+                      </button>
+                      <button
+                        onClick={() => handleDownloadJson(mappedDgFields, `MappedDGManifest_${Date.now()}.json`)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer transition border border-slate-700 inline-flex items-center space-x-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>JSON</span>
+                      </button>
+                    </>
+                  )}
+
+                  {outputTab === 'BL' && (
+                    <>
+                      <button
+                        onClick={() => printManifestToPdf(shipmentJson, activeBlFormat, mappedBlFields, { includePalletAnnex })}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer shadow-sm transition inline-flex items-center space-x-1.5"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Print / Save PDF</span>
+                      </button>
+                      <button
+                        onClick={() => downloadManifestDocx(shipmentJson, activeBlFormat, mappedBlFields, { includePalletAnnex })}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer transition border border-slate-700 inline-flex items-center space-x-1.5"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Editable Word (.docx)</span>
+                      </button>
+                      <button
+                        onClick={() => downloadManifestHtml(shipmentJson, activeBlFormat, mappedBlFields, { includePalletAnnex })}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer transition border border-slate-700 inline-flex items-center space-x-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>HTML</span>
+                      </button>
+                      <button
+                        onClick={() => handleDownloadJson(mappedBlFields, `MappedBLManifest_${Date.now()}.json`)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer transition border border-slate-700 inline-flex items-center space-x-1.5"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>JSON</span>
+                      </button>
+                    </>
+                  )}
+
+                  {outputTab === 'PALLETS' && (
+                    <button
+                      onClick={() => handleDownloadJson(shipmentJson.pallets, `Pallets_Breakdown_${Date.now()}.json`)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-white cursor-pointer transition border border-slate-700 inline-flex items-center space-x-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Download Pallet JSON</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Document Preview Canvas */}
+              {outputTab === 'DG' && (
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 overflow-x-auto">
+                  <div
+                    className="bg-white text-slate-900 rounded-lg p-6 max-w-4xl mx-auto shadow-2xl font-sans"
+                    dangerouslySetInnerHTML={{
+                      __html: generateManifestHtml(shipmentJson, activeDgFormat, mappedDgFields, { includePalletAnnex })
+                        .replace(/<!DOCTYPE html>[\s\S]*?<body[^>]*>/i, '')
+                        .replace(/<\/body>[\s\S]*?<\/html>/i, '')
+                    }}
+                  />
+                </div>
+              )}
+
+              {outputTab === 'BL' && (
+                <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 overflow-x-auto">
+                  <div
+                    className="bg-white text-slate-900 rounded-lg p-6 max-w-4xl mx-auto shadow-2xl font-sans"
+                    dangerouslySetInnerHTML={{
+                      __html: generateManifestHtml(shipmentJson, activeBlFormat, mappedBlFields, { includePalletAnnex })
+                        .replace(/<!DOCTYPE html>[\s\S]*?<body[^>]*>/i, '')
+                        .replace(/<\/body>[\s\S]*?<\/html>/i, '')
+                    }}
+                  />
+                </div>
+              )}
+
+              {outputTab === 'PALLETS' && (
+                <div className="overflow-x-auto rounded-xl border border-slate-800">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-950 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+                      <tr>
+                        <th className="p-3">#</th>
+                        <th className="p-3">Pallet Number</th>
+                        <th className="p-3">Model / Description</th>
+                        <th className="p-3 text-right">Box Count</th>
+                        <th className="p-3 text-right">Net Wt (kg)</th>
+                        <th className="p-3 text-right">Gross Wt (kg)</th>
+                        <th className="p-3">Source File</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                      {shipmentJson.pallets.map((p, idx) => (
+                        <tr key={idx} className="hover:bg-slate-900/40 transition">
+                          <td className="p-3 text-slate-500">{idx + 1}</td>
+                          <td className="p-3 font-bold text-cyan-300">{p.palletNumber}</td>
+                          <td className="p-3 text-slate-300">{p.modelCode || '---'}</td>
+                          <td className="p-3 text-right text-white font-semibold">{p.boxCount}</td>
+                          <td className="p-3 text-right text-emerald-400">{p.netWeightKg.toFixed(2)}</td>
+                          <td className="p-3 text-right text-emerald-400">{p.grossWeightKg.toFixed(2)}</td>
+                          <td className="p-3 text-slate-400 text-[11px] truncate max-w-xs">{p.sourceFile}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Navigation Buttons */}
+            <div className="flex items-center justify-between pt-2">
               <button
                 onClick={() => setActiveStep(3)}
                 className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer transition inline-flex items-center space-x-1.5"
