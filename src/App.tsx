@@ -1751,16 +1751,8 @@ export function App(): React.JSX.Element {
               </button>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Configure your Google AI Studio Gemini API key (starts with <code className="text-cyan-400 font-mono">AIzaSy...</code>). You can generate a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-cyan-400 underline font-semibold hover:text-cyan-300">aistudio.google.com/apikey</a>.
+              Configure your Google AI Studio Gemini API key. You can generate a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-cyan-400 underline font-semibold hover:text-cyan-300">aistudio.google.com/apikey</a>.
             </p>
-            {customApiKey.startsWith('AQ.') && (
-              <div className="bg-amber-950/60 border border-amber-500/60 rounded-xl p-2.5 text-xs text-amber-200 flex items-start space-x-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <span>
-                  Keys starting with <strong>AQ.</strong> are unsupported session tokens. Please enter an <strong>AIzaSy...</strong> key.
-                </span>
-              </div>
-            )}
             <div className="space-y-1.5">
               <label htmlFor="api-key-input" className="text-xs font-semibold text-slate-300">
                 Custom API Key:
