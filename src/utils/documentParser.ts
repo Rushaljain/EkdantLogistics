@@ -223,11 +223,8 @@ export async function parseDocumentsToJSON(
 
   // Supported model endpoints to attempt in sequence (with automatic fallback on 404/503)
   const models = [
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-3-flash-preview',
-    'gemini-3.8-flash',
-    'gemini-flash-latest'
+    'gemini-flash-latest',
+    'gemini-3.8-flash'
   ];
   let lastError: Error | null = null;
   let parsedRawJson: any = null;
@@ -430,18 +427,14 @@ function normalizeExtractedJSON(
 
   clean.isDangerousGoods = Boolean(raw.isDangerousGoods);
   clean.unNumber = str(raw.unNumber);
-  clean.imoClass = str(raw.imoClass);
-  clean.properShippingName = str(raw.properShippingName);
-  clean.packingGroup = str(raw.packingGroup);
 
-  // Regulatory enrichment from standard IMDG dictionary when UN number is present
+  // Regulatory enrichment via standard IMDG UN lookup when present
   const unDigits = clean.unNumber.replace(/\D/g, '');
   const imdgRef = IMDG_UN_LOOKUP[unDigits];
-  if (imdgRef) {
-    if (!clean.properShippingName) clean.properShippingName = imdgRef.properShippingName;
-    if (!clean.imoClass) clean.imoClass = imdgRef.imoClass;
-    if (!clean.packingGroup) clean.packingGroup = imdgRef.packingGroup;
-  }
+
+  clean.imoClass = str(raw.imoClass) || imdgRef?.imoClass || '';
+  clean.properShippingName = str(raw.properShippingName) || imdgRef?.properShippingName || '';
+  clean.packingGroup = str(raw.packingGroup) || imdgRef?.packingGroup || '';
 
   // Global domain rule: hazardous cargo is universally identified by the presence of a UN Number, IMO Class, or Packing Group.
   const hasHazardIdentifiers = Boolean(

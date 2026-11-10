@@ -1120,8 +1120,8 @@ export function App(): React.JSX.Element {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
-                  <div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2.5">
+                  <div className="lg:col-span-2">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Container No.</label>
                     <input
                       type="text"
@@ -1131,7 +1131,7 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-2">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Seal No.</label>
                     <input
                       type="text"
@@ -1141,8 +1141,8 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Tare Wt (kg)</label>
+                  <div className="lg:col-span-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Tare (kg)</label>
                     <input
                       type="number"
                       value={shipmentJson.tareWeightKg || ''}
@@ -1154,7 +1154,7 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-2">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Carrier Name</label>
                     <input
                       type="text"
@@ -1164,7 +1164,7 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-2">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Vessel Name</label>
                     <input
                       type="text"
@@ -1174,7 +1174,7 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-1">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Voyage No.</label>
                     <input
                       type="text"
@@ -1184,7 +1184,7 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-2">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Booking No.</label>
                     <input
                       type="text"
@@ -1194,8 +1194,10 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Emergency Phone</label>
+
+                  {/* Additional Stage-2 Carrier / Operational Inputs */}
+                  <div className="lg:col-span-2">
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Emergency Contact</label>
                     <input
                       type="text"
                       value={shipmentJson.emergencyContactPhone}
@@ -1204,28 +1206,28 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-2">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Shipping Bill No(s)</label>
                     <input
                       type="text"
                       value={shipmentJson.shippingBillNumbers}
                       onChange={(e) => setShipmentJson(prev => ({ ...prev, shippingBillNumbers: e.target.value }))}
-                      placeholder="e.g. 1234567 DT. 10/11/2026"
+                      placeholder="e.g. SB-1234567, SB-1234568"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-3">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Free Time Clause</label>
                     <input
                       type="text"
                       value={shipmentJson.freeTimeClause}
                       onChange={(e) => setShipmentJson(prev => ({ ...prev, freeTimeClause: e.target.value }))}
-                      placeholder="e.g. 14 DAYS FREE DETENTION"
+                      placeholder="e.g. 14 DAYS FREE TIME AT POD"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                   </div>
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">DG Declarant Name</label>
+                  <div className="lg:col-span-3">
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Declarant Name / Status</label>
                     <input
                       type="text"
                       value={shipmentJson.dgDeclarantName}
@@ -1234,7 +1236,7 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                   </div>
-                  <div>
+                  <div className="lg:col-span-2">
                     <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Freight Terms</label>
                     <select
                       value={shipmentJson.freightTerms || 'FREIGHT PREPAID'}

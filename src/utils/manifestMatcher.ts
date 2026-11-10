@@ -255,14 +255,9 @@ export function buildMappedManifest(
       if (shipment.productDescription && shipment.productDescription.trim()) {
         descLines.push(shipment.productDescription.trim());
       }
-      const existingDescText = descLines.join(' ');
-      const hasBrandInDesc = /brand\s*name|brand\s*:/i.test(existingDescText);
-      if (
-        shipment.brandName &&
-        shipment.brandName.trim() &&
-        !hasBrandInDesc &&
-        !existingDescText.toLowerCase().includes(shipment.brandName.toLowerCase())
-      ) {
+      const existingText = descLines.join(' ');
+      const hasBrandMention = /brand\s*name|brand\s*:/i.test(existingText);
+      if (shipment.brandName && shipment.brandName.trim() && !hasBrandMention && !existingText.toLowerCase().includes(shipment.brandName.toLowerCase())) {
         descLines.push(`BRAND: ${shipment.brandName.trim()}`);
       }
       if (shipment.hsnCode && shipment.hsnCode.trim()) {
@@ -282,7 +277,27 @@ export function buildMappedManifest(
       }
     }
 
-    // 9. Container & Seal combined box
+    // Append synthesized pallet number ranges from shipment.pallets[] into Marks and Numbers when present
+    const isMarksField =
+      field.mappedShipmentKey === 'shippingMarks' ||
+      fieldIdLower.includes('shipping_marks') ||
+      fieldIdLower.includes('marks_and_numbers') ||
+      labelLower.includes('shipping marks') ||
+      labelLower.includes('marks & nos') ||
+      labelLower.includes('marks and numbers');
+
+    if (isMarksField && shipment.pallets && shipment.pallets.length > 0) {
+      const palletRanges = synthesizePalletRanges(shipment.pallets);
+      if (palletRanges.length > 0) {
+        const firstRange = palletRanges[0];
+        if (!resolvedValue.includes(firstRange)) {
+          const palletStr = `PALLET NOS: ${palletRanges.join(', ')}`;
+          resolvedValue = resolvedValue.trim() ? `${resolvedValue.trim()}\n${palletStr}` : palletStr;
+        }
+      }
+    }
+
+    // 10. Container & Seal combined box
     if (
       (fieldIdLower.includes('container_seal') || (labelLower.includes('container') && labelLower.includes('seal'))) &&
       field.fieldType !== 'table'
@@ -389,16 +404,8 @@ export function buildMappedManifest(
           if (shipment.shippingMarks && shipment.shippingMarks.trim()) {
             resolvedValue = shipment.shippingMarks.trim();
           }
-          // Automatically append synthesized pallet ranges if available
-          if (shipment.pallets && shipment.pallets.length > 0) {
-            const palletRanges = synthesizePalletRanges(shipment.pallets);
-            const palletStr = palletRanges.join(', ');
-            if (palletStr && !resolvedValue.includes(palletRanges[0])) {
-              resolvedValue = resolvedValue ? `${resolvedValue}\nPALLET NOS: ${palletStr}` : `PALLET NOS: ${palletStr}`;
-            }
-          }
           // Fallback 2: combine shipment.productDescription + packaging counts
-          if (!resolvedValue || resolvedValue.trim() === '') {
+          else {
             const pkgParts: string[] = [];
             if (shipment.outerPackagingCount > 0) {
               pkgParts.push(`${shipment.outerPackagingCount} ${shipment.outerPackagingType || 'PALLETS'}`);
