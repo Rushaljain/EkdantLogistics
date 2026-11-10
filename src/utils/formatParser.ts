@@ -22,6 +22,7 @@ export const DEFAULT_DG_FORMAT: FormatSchemaJSON = {
   fields: [
     { fieldId: 'box_1_shipper', labelInTemplate: '1. Shipper / Consignor (Name, Address, IEC, GSTIN)', sectionName: 'Parties', fieldType: 'multiline', mappedShipmentKey: 'shipperAddress' },
     { fieldId: 'box_2_transport_doc_no', labelInTemplate: '2. Transport Document Number', sectionName: 'Reference', fieldType: 'text', mappedShipmentKey: 'bookingNumber' },
+    { fieldId: 'box_3_page_of_page', labelInTemplate: '3. Page of Page', sectionName: 'Reference', fieldType: 'text', mappedShipmentKey: '' },
     { fieldId: 'box_4_shipper_ref', labelInTemplate: "4. Shipper's Reference", sectionName: 'Reference', fieldType: 'text', mappedShipmentKey: 'shipperReference' },
     { fieldId: 'box_6_consignee', labelInTemplate: '6. Consignee (Name and Address)', sectionName: 'Parties', fieldType: 'multiline', mappedShipmentKey: 'consigneeAddress' },
     { fieldId: 'box_7_carrier', labelInTemplate: '7. Carrier (Name and Details)', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'carrierName' },
@@ -110,14 +111,15 @@ export function getSavedFormats(): FormatSchemaJSON[] {
       return [DEFAULT_DG_FORMAT, DEFAULT_BL_FORMAT];
     }
 
-    // Ensure built-in defaults are present if not in user list
-    const hasDefaultDg = list.some(f => f.formatId === DEFAULT_DG_FORMAT.formatId);
-    const hasDefaultBl = list.some(f => f.formatId === DEFAULT_BL_FORMAT.formatId);
+    // Always overwrite standard built-in defaults with the latest code definitions
+    // so any schema fixes/restored boxes apply immediately without stale localStorage caching
+    const customFormats = list.filter(
+      f => f.formatId !== DEFAULT_DG_FORMAT.formatId && f.formatId !== DEFAULT_BL_FORMAT.formatId
+    );
 
-    const merged = [...list];
-    if (!hasDefaultDg) merged.unshift(DEFAULT_DG_FORMAT);
-    if (!hasDefaultBl) merged.unshift(DEFAULT_BL_FORMAT);
-
+    const merged = [DEFAULT_DG_FORMAT, DEFAULT_BL_FORMAT, ...customFormats];
+    // Sync back fresh defaults into localStorage
+    window.localStorage.setItem(FORMAT_LIBRARY_KEY, JSON.stringify(merged));
     return merged;
   } catch (err) {
     console.warn('[FormatParser] Failed to load saved formats from localStorage:', err);

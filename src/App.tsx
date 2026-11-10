@@ -1194,6 +1194,57 @@ export function App(): React.JSX.Element {
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
                     />
                   </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Emergency Phone</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.emergencyContactPhone}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, emergencyContactPhone: e.target.value }))}
+                      placeholder="e.g. +91 98765 43210"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Shipping Bill No(s)</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.shippingBillNumbers}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, shippingBillNumbers: e.target.value }))}
+                      placeholder="e.g. 1234567 DT. 10/11/2026"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Free Time Clause</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.freeTimeClause}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, freeTimeClause: e.target.value }))}
+                      placeholder="e.g. 14 DAYS FREE DETENTION"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">DG Declarant Name</label>
+                    <input
+                      type="text"
+                      value={shipmentJson.dgDeclarantName}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, dgDeclarantName: e.target.value }))}
+                      placeholder="e.g. AUTHORIZED SIGNATORY"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Freight Terms</label>
+                    <select
+                      value={shipmentJson.freightTerms || 'FREIGHT PREPAID'}
+                      onChange={(e) => setShipmentJson(prev => ({ ...prev, freightTerms: e.target.value }))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+                    >
+                      <option value="FREIGHT PREPAID">FREIGHT PREPAID</option>
+                      <option value="FREIGHT COLLECT">FREIGHT COLLECT</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>

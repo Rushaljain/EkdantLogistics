@@ -4,6 +4,7 @@
 import type { ExtractedPallet, ExtractedShipmentJSON, UploadMode } from '../types/index.ts';
 import { createEmptyShipmentJSON } from '../types/index.ts';
 import { preFilterWorkbook, type PreFilterResult } from './spreadsheetPreFilter.ts';
+import { IMDG_UN_LOOKUP } from './manifestKeywordReference.ts';
 
 export interface ParseSessionProgress {
   stage: 'reading' | 'prefiltering' | 'ai_extracting' | 'consolidating' | 'done';
@@ -338,7 +339,7 @@ function normalizeExtractedJSON(
   };
 
   clean.uploadMode = mode;
-  clean.shipperName = str(raw.shipperName);
+  clean.shipperName = str(raw.shipperName).replace(/\bLIMITESD\b/gi, 'LIMITED');
   clean.shipperAddress = str(raw.shipperAddress);
   clean.shipperIec = str(raw.shipperIec);
   clean.shipperGstin = str(raw.shipperGstin);
@@ -433,6 +434,15 @@ function normalizeExtractedJSON(
   clean.properShippingName = str(raw.properShippingName);
   clean.packingGroup = str(raw.packingGroup);
 
+  // Regulatory enrichment from standard IMDG dictionary when UN number is present
+  const unDigits = clean.unNumber.replace(/\D/g, '');
+  const imdgRef = IMDG_UN_LOOKUP[unDigits];
+  if (imdgRef) {
+    if (!clean.properShippingName) clean.properShippingName = imdgRef.properShippingName;
+    if (!clean.imoClass) clean.imoClass = imdgRef.imoClass;
+    if (!clean.packingGroup) clean.packingGroup = imdgRef.packingGroup;
+  }
+
   // Global domain rule: hazardous cargo is universally identified by the presence of a UN Number, IMO Class, or Packing Group.
   const hasHazardIdentifiers = Boolean(
     (clean.unNumber && clean.unNumber.trim() !== '') ||
@@ -445,8 +455,8 @@ function normalizeExtractedJSON(
   }
   clean.marinePollutant = Boolean(raw.marinePollutant);
   clean.flashPoint = str(raw.flashPoint);
-  clean.emsNumber = str(raw.emsNumber);
-  clean.segregationGroup = str(raw.segregationGroup);
+  clean.emsNumber = str(raw.emsNumber) || imdgRef?.emsNumber || '';
+  clean.segregationGroup = str(raw.segregationGroup) || imdgRef?.segregationGroup || '';
   clean.unPackingCode = str(raw.unPackingCode);
   clean.emergencyContactName = str(raw.emergencyContactName);
   clean.emergencyContactPhone = str(raw.emergencyContactPhone);

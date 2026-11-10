@@ -2,7 +2,7 @@
 // Matches ExtractedShipmentJSON against FormatSchemaJSON and provides two-way sync between DG & BL manifests
 
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
-import { resolveFieldValueByKeywords, buildCombinedDgCargoBlock } from './manifestKeywordReference.ts';
+import { resolveFieldValueByKeywords, buildCombinedDgCargoBlock, synthesizePalletRanges } from './manifestKeywordReference.ts';
 
 
 /**
@@ -255,7 +255,14 @@ export function buildMappedManifest(
       if (shipment.productDescription && shipment.productDescription.trim()) {
         descLines.push(shipment.productDescription.trim());
       }
-      if (shipment.brandName && shipment.brandName.trim()) {
+      const existingDescText = descLines.join(' ');
+      const hasBrandInDesc = /brand\s*name|brand\s*:/i.test(existingDescText);
+      if (
+        shipment.brandName &&
+        shipment.brandName.trim() &&
+        !hasBrandInDesc &&
+        !existingDescText.toLowerCase().includes(shipment.brandName.toLowerCase())
+      ) {
         descLines.push(`BRAND: ${shipment.brandName.trim()}`);
       }
       if (shipment.hsnCode && shipment.hsnCode.trim()) {
@@ -382,8 +389,16 @@ export function buildMappedManifest(
           if (shipment.shippingMarks && shipment.shippingMarks.trim()) {
             resolvedValue = shipment.shippingMarks.trim();
           }
+          // Automatically append synthesized pallet ranges if available
+          if (shipment.pallets && shipment.pallets.length > 0) {
+            const palletRanges = synthesizePalletRanges(shipment.pallets);
+            const palletStr = palletRanges.join(', ');
+            if (palletStr && !resolvedValue.includes(palletRanges[0])) {
+              resolvedValue = resolvedValue ? `${resolvedValue}\nPALLET NOS: ${palletStr}` : `PALLET NOS: ${palletStr}`;
+            }
+          }
           // Fallback 2: combine shipment.productDescription + packaging counts
-          else {
+          if (!resolvedValue || resolvedValue.trim() === '') {
             const pkgParts: string[] = [];
             if (shipment.outerPackagingCount > 0) {
               pkgParts.push(`${shipment.outerPackagingCount} ${shipment.outerPackagingType || 'PALLETS'}`);

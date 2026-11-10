@@ -1,7 +1,7 @@
 // Ekdant Logistics - Global Semantic Keyword Reference & Cascading Fallback Engine
 // Pure generic semantic mappings across standard IMO DG Declaration and Ocean Bill of Lading formats
 
-import type { ExtractedShipmentJSON, FormatDocumentType } from '../types/index.ts';
+import type { ExtractedShipmentJSON, FormatDocumentType, ExtractedPallet } from '../types/index.ts';
 
 export interface KeywordRule {
   id: string;
@@ -9,6 +9,135 @@ export interface KeywordRule {
   keywords: string[];
   excludeKeywords?: string[];
   resolver: (shipment: ExtractedShipmentJSON, docType?: FormatDocumentType) => string;
+}
+
+/**
+ * Standard IMDG Code UN Regulatory Dictionary
+ * Provides universal regulatory defaults for common multimodal dangerous goods.
+ */
+export interface ImdgUnDefinition {
+  properShippingName: string;
+  imoClass: string;
+  packingGroup: string;
+  emsNumber: string;
+  segregationGroup: string;
+}
+
+export const IMDG_UN_LOOKUP: Record<string, ImdgUnDefinition> = {
+  '2794': {
+    properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
+    imoClass: '8',
+    packingGroup: 'III',
+    emsNumber: 'F-A, S-B',
+    segregationGroup: 'SGG1 - Acids'
+  },
+  '2795': {
+    properShippingName: 'BATTERIES, WET, FILLED WITH ALKALI',
+    imoClass: '8',
+    packingGroup: 'III',
+    emsNumber: 'F-A, S-B',
+    segregationGroup: 'SGG18 - Alkalis'
+  },
+  '2800': {
+    properShippingName: 'BATTERIES, WET, NON-SPILLABLE',
+    imoClass: '8',
+    packingGroup: 'III',
+    emsNumber: 'F-A, S-B',
+    segregationGroup: 'SGG1 - Acids'
+  },
+  '3090': {
+    properShippingName: 'LITHIUM METAL BATTERIES',
+    imoClass: '9',
+    packingGroup: 'II',
+    emsNumber: 'F-A, S-I',
+    segregationGroup: ''
+  },
+  '3091': {
+    properShippingName: 'LITHIUM METAL BATTERIES CONTAINED IN EQUIPMENT',
+    imoClass: '9',
+    packingGroup: 'II',
+    emsNumber: 'F-A, S-I',
+    segregationGroup: ''
+  },
+  '3480': {
+    properShippingName: 'LITHIUM ION BATTERIES',
+    imoClass: '9',
+    packingGroup: 'II',
+    emsNumber: 'F-A, S-I',
+    segregationGroup: ''
+  },
+  '3481': {
+    properShippingName: 'LITHIUM ION BATTERIES CONTAINED IN EQUIPMENT',
+    imoClass: '9',
+    packingGroup: 'II',
+    emsNumber: 'F-A, S-I',
+    segregationGroup: ''
+  }
+};
+
+/**
+ * Synthesizes contiguous numeric or per-prefix pallet identifier ranges from pallet entries.
+ * E.g. ["4533", "4534", "4535", "4956", "TAL/1703/2026", "TAL/1704/2026"]
+ * => ["4533 TO 4535", "4956", "TAL/1703/2026 TO TAL/1704/2026"]
+ */
+export function synthesizePalletRanges(pallets: ExtractedPallet[]): string[] {
+  if (!pallets || pallets.length === 0) return [];
+
+  // Group by sourceFile or prefix
+  const rawList = pallets.map(p => (p.palletNumber || '').trim()).filter(Boolean);
+  if (rawList.length === 0) return [];
+
+  const ranges: string[] = [];
+  let currentStart = rawList[0];
+  let currentEnd = rawList[0];
+
+  // Helper to extract numeric suffix and prefix
+  const splitId = (id: string): { prefix: string; num: number; width: number } | null => {
+    const match = id.match(/^(.*?)(\d+)$/);
+    if (!match) return null;
+    return {
+      prefix: match[1],
+      num: parseInt(match[2], 10),
+      width: match[2].length
+    };
+  };
+
+  let prevParsed = splitId(currentStart);
+
+  for (let i = 1; i < rawList.length; i++) {
+    const id = rawList[i];
+    const parsed = splitId(id);
+
+    if (
+      prevParsed &&
+      parsed &&
+      prevParsed.prefix === parsed.prefix &&
+      parsed.num === prevParsed.num + 1
+    ) {
+      // Contiguous sequence
+      currentEnd = id;
+      prevParsed = parsed;
+    } else {
+      // End current range and start new
+      if (currentStart === currentEnd) {
+        ranges.push(currentStart);
+      } else {
+        ranges.push(`${currentStart} TO ${currentEnd}`);
+      }
+      currentStart = id;
+      currentEnd = id;
+      prevParsed = parsed;
+    }
+  }
+
+  // Push final range
+  if (currentStart === currentEnd) {
+    ranges.push(currentStart);
+  } else {
+    ranges.push(`${currentStart} TO ${currentEnd}`);
+  }
+
+  return ranges;
 }
 
 /**
@@ -21,8 +150,18 @@ export function buildCombinedDgCargoBlock(
   const blocks: string[] = [];
 
   // 1. Marks & Numbers
-  if (includeMarks && shipment.shippingMarks && shipment.shippingMarks.trim()) {
-    blocks.push(`MARKS & NUMBERS:\n${shipment.shippingMarks.trim()}`);
+  if (includeMarks) {
+    let marksText = (shipment.shippingMarks || '').trim();
+    if (shipment.pallets && shipment.pallets.length > 0) {
+      const palletRanges = synthesizePalletRanges(shipment.pallets);
+      const palletStr = palletRanges.join(', ');
+      if (palletStr && !marksText.includes(palletRanges[0])) {
+        marksText = marksText ? `${marksText}\nPALLET NOS: ${palletStr}` : `PALLET NOS: ${palletStr}`;
+      }
+    }
+    if (marksText) {
+      blocks.push(`MARKS & NUMBERS:\n${marksText}`);
+    }
   }
 
   // 2. Packages (Outer and Inner)
@@ -42,10 +181,21 @@ export function buildCombinedDgCargoBlock(
   }
 
   // 3. Commodity / Proper Shipping Name (+ Brand & HSN)
-  const primaryDesc = shipment.properShippingName || shipment.productDescription;
+  const unDigits = (shipment.unNumber || '').replace(/\D/g, '');
+  const imdgRef = IMDG_UN_LOOKUP[unDigits];
+  const officialPsn = imdgRef ? imdgRef.properShippingName : (shipment.properShippingName || '');
+  const commDesc = shipment.productDescription || '';
+
+  const primaryDesc = officialPsn || commDesc;
   if (primaryDesc && primaryDesc.trim()) {
     let descLine = primaryDesc.trim();
-    if (shipment.brandName && !descLine.toLowerCase().includes(shipment.brandName.toLowerCase())) {
+    if (commDesc && commDesc.trim() && officialPsn && commDesc.trim() !== officialPsn.trim()) {
+      descLine += `\nTECHNICAL NAME: ${commDesc.trim()}`;
+    }
+
+    // Deduplicate brand line: only append if not already mentioned in description
+    const hasBrandMention = /brand\s*name|brand\s*:/i.test(descLine);
+    if (shipment.brandName && !hasBrandMention && !descLine.toLowerCase().includes(shipment.brandName.toLowerCase())) {
       descLine += ` (BRAND: ${shipment.brandName.trim()})`;
     }
     if (shipment.hsnCode && !descLine.includes(shipment.hsnCode.trim())) {
@@ -59,17 +209,24 @@ export function buildCombinedDgCargoBlock(
   if (shipment.unNumber && shipment.unNumber.trim()) {
     dgLines.push(`UN NO: ${shipment.unNumber.trim()}`);
   }
-  if (shipment.imoClass && shipment.imoClass.trim()) {
-    dgLines.push(`IMO CLASS: ${shipment.imoClass.trim()}`);
+  const imoClass = shipment.imoClass || imdgRef?.imoClass || '';
+  if (imoClass) {
+    dgLines.push(`IMO CLASS: ${imoClass}`);
   }
-  if (shipment.packingGroup && shipment.packingGroup.trim()) {
-    dgLines.push(`PACKING GROUP: ${shipment.packingGroup.trim()}`);
+  const pg = shipment.packingGroup || imdgRef?.packingGroup || '';
+  if (pg) {
+    dgLines.push(`PACKING GROUP: ${pg}`);
   }
   if (shipment.flashPoint && shipment.flashPoint.trim()) {
     dgLines.push(`FLASH POINT: ${shipment.flashPoint.trim()}`);
   }
-  if (shipment.emsNumber && shipment.emsNumber.trim()) {
-    dgLines.push(`EMS: ${shipment.emsNumber.trim()}`);
+  const ems = shipment.emsNumber || imdgRef?.emsNumber || '';
+  if (ems) {
+    dgLines.push(`EMS: ${ems}`);
+  }
+  const sgg = shipment.segregationGroup || imdgRef?.segregationGroup || '';
+  if (sgg) {
+    dgLines.push(`SEGREGATION: ${sgg}`);
   }
   if (shipment.unPackingCode && shipment.unPackingCode.trim()) {
     dgLines.push(`UN PACKING CODE: ${shipment.unPackingCode.trim()}`);
@@ -264,7 +421,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     }
   },
 
-  // 8. Cargo Description / Proper Shipping Name with Brand & HSN Fallbacks
+  // 8. Cargo Description / Proper Shipping Name with IMDG Defaults, Brand & HSN Fallbacks
   {
     id: 'cargo_description_proper_shipping_name',
     description: 'Cargo Description / Proper Shipping Name with Brand and HSN Fallbacks',
@@ -278,10 +435,21 @@ export const KEYWORD_RULES: KeywordRule[] = [
       'bl_cargo_description'
     ],
     excludeKeywords: ['marks', 'package count', 'total number of packages', 'tare', 'gross', 'net', 'vgm'],
-    resolver: (shipment) => {
+    resolver: (shipment, docType) => {
+      const unDigits = (shipment.unNumber || '').replace(/\D/g, '');
+      const imdgRef = IMDG_UN_LOOKUP[unDigits];
+
+      // If document is DG, strictly prefer the official IMDG Proper Shipping Name
+      if (docType === 'DG' && imdgRef) {
+        return imdgRef.properShippingName;
+      }
+
       // Primary: properShippingName
       if (shipment.properShippingName && shipment.properShippingName.trim()) {
         return shipment.properShippingName.trim();
+      }
+      if (imdgRef) {
+        return imdgRef.properShippingName;
       }
       // Fallback 1: productDescription
       if (shipment.productDescription && shipment.productDescription.trim()) {
@@ -345,14 +513,26 @@ export const KEYWORD_RULES: KeywordRule[] = [
       'package description',
       'packages',
       'number and kind of packages',
-      'bl_packages_and_marks'
+      'bl_packages_and_marks',
+      'bl_shipping_marks'
     ],
     excludeKeywords: ['tare', 'gross weight', 'net weight', 'vgm', 'proper shipping name'],
     resolver: (shipment) => {
-      // Primary: shippingMarks
-      if (shipment.shippingMarks && shipment.shippingMarks.trim()) {
-        return shipment.shippingMarks.trim();
+      let marks = (shipment.shippingMarks || '').trim();
+
+      // Automatically append synthesized pallet ranges if available and not yet present
+      if (shipment.pallets && shipment.pallets.length > 0) {
+        const palletRanges = synthesizePalletRanges(shipment.pallets);
+        const palletStr = palletRanges.join(', ');
+        if (palletStr && !marks.includes(palletRanges[0])) {
+          marks = marks ? `${marks}\nPALLET NOS: ${palletStr}` : `PALLET NOS: ${palletStr}`;
+        }
       }
+
+      if (marks) {
+        return marks;
+      }
+
       // Fallback: productDescription + packaging counts (outerPackagingCount + outerPackagingType)
       const pkgParts: string[] = [];
       if (shipment.outerPackagingCount > 0) {
