@@ -4,7 +4,7 @@
 import type { ExtractedPallet, ExtractedShipmentJSON, UploadMode } from '../types/index.ts';
 import { createEmptyShipmentJSON } from '../types/index.ts';
 import { preFilterWorkbook, type PreFilterResult } from './spreadsheetPreFilter.ts';
-import { IMDG_UN_LOOKUP } from './manifestKeywordReference.ts';
+import { IMDG_UN_LOOKUP, normalizeShipmentState } from './manifestKeywordReference.ts';
 
 export interface ParseSessionProgress {
   stage: 'reading' | 'prefiltering' | 'ai_extracting' | 'consolidating' | 'done';
@@ -202,7 +202,23 @@ export async function parseDocumentsToJSON(
     ? 'Upload Mode is SINGLE_INVOICE. All provided files belong to 1 single shipment. Merge commercial invoice, packing list, and carrier DG sheets into one combined shipment JSON.'
     : 'Upload Mode is MULTI_INVOICE. Documents contain multiple commercial invoices. Extract all invoice numbers, all pallets in physical order, and carrier/vessel details.';
 
-  const userPrompt = `${modeInstruction}\n\nReturn strict JSON adhering to the ExtractedShipmentJSON schema with all fields populated strictly as stated in the documents. If a field is not found in the documents, return "" for string or 0 for number.`;
+  // Collect all deterministic batch references from spreadsheet pre-filters
+  const allExtractedRefs: string[] = [];
+  filterResults.forEach(fr => {
+    if (fr.extractedReferences && fr.extractedReferences.length > 0) {
+      fr.extractedReferences.forEach(ref => {
+        if (!allExtractedRefs.includes(ref)) {
+          allExtractedRefs.push(ref);
+        }
+      });
+    }
+  });
+
+  const refInjectionBlock = allExtractedRefs.length > 0
+    ? `\n\n[DETERMINISTIC BATCH REFERENCES]:\nThe following purchase order / export references were identified across the batch sheets: ${allExtractedRefs.join(', ')}.\nEnsure all distinct buyer's order or exporter references are captured in "shipperReference" (joined by comma/space).`
+    : '';
+
+  const userPrompt = `${modeInstruction}${refInjectionBlock}\n\nReturn strict JSON adhering to the ExtractedShipmentJSON schema with all fields populated strictly as stated in the documents. If a field is not found in the documents, return "" for string or 0 for number.`;
 
   const requestBody = {
     contents: [
@@ -470,7 +486,9 @@ function normalizeExtractedJSON(
 
   clean.sourceFiles = sourceFiles;
   clean.extractedAt = new Date().toISOString();
-  return clean;
+
+  // Run deterministic state normalizer
+  return normalizeShipmentState(clean);
 }
 
 /**

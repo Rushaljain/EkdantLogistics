@@ -2,7 +2,13 @@
 // Matches ExtractedShipmentJSON against FormatSchemaJSON and provides two-way sync between DG & BL manifests
 
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
-import { resolveFieldValueByKeywords, buildCombinedDgCargoBlock, synthesizePalletRanges } from './manifestKeywordReference.ts';
+import {
+  resolveFieldValueByKeywords,
+  buildCombinedDgCargoBlock,
+  synthesizePalletRanges,
+  normalizeShipmentState,
+  IMDG_UN_LOOKUP
+} from './manifestKeywordReference.ts';
 
 
 /**
@@ -10,10 +16,12 @@ import { resolveFieldValueByKeywords, buildCombinedDgCargoBlock, synthesizePalle
  * Populates known fields, evaluates composite math (e.g. VGM), and marks status.
  */
 export function buildMappedManifest(
-  shipment: ExtractedShipmentJSON,
+  rawShipment: ExtractedShipmentJSON,
   format: FormatSchemaJSON,
   customOverrides: Record<string, string> = {}
 ): MappedManifestField[] {
+  // Always normalize shipment state at line 1 to eliminate any execution-order conflicts
+  const shipment = normalizeShipmentState(rawShipment);
   return format.fields.map((field) => {
     let resolvedValue = '';
 
@@ -222,7 +230,25 @@ export function buildMappedManifest(
       resolvedValue = buildCombinedDgCargoBlock(shipment, includeMarks);
     }
 
-    // 8. Master BL Cargo Description & Packages Composite Assembly
+    // 8. Strict Proper Shipping Name field (Box 15b): strictly official IMDG PSN, never the long commercial description
+    const isPsnField =
+      field.mappedShipmentKey === 'properShippingName' ||
+      fieldIdLower.includes('proper_shipping_name') ||
+      labelLower.includes('proper shipping name');
+
+    if (isPsnField && customOverrides[field.fieldId] === undefined) {
+      if (shipment.properShippingName && shipment.properShippingName.trim()) {
+        resolvedValue = shipment.properShippingName.trim();
+      } else if (shipment.unNumber) {
+        const unDigits = shipment.unNumber.replace(/\D/g, '');
+        const imdgRef = IMDG_UN_LOOKUP[unDigits];
+        if (imdgRef) {
+          resolvedValue = imdgRef.properShippingName;
+        }
+      }
+    }
+
+    // 9. Master BL Cargo Description & Packages Composite Assembly
     const isBlCargoDescriptionBox =
       format.documentType === 'BL' &&
       customOverrides[field.fieldId] === undefined &&
@@ -239,17 +265,20 @@ export function buildMappedManifest(
 
     if (isBlCargoDescriptionBox) {
       const descLines: string[] = [];
+      const contType = shipment.containerType ? shipment.containerType.trim() : "20'";
+      descLines.push(`1 X ${contType} FCL SAID TO CONTAIN`);
+
       const outerCount = shipment.outerPackagingCount > 0 ? shipment.outerPackagingCount : shipment.totalPallets;
       const outerType = shipment.outerPackagingType ? shipment.outerPackagingType.trim() : 'PALLETS';
       const innerCount = shipment.innerPackageCount > 0 ? shipment.innerPackageCount : (shipment.totalBoxes > 0 ? shipment.totalBoxes : shipment.totalPackages);
       const innerType = shipment.innerPackageType ? shipment.innerPackageType.trim() : 'BOXES';
 
       if (outerCount > 0 && innerCount > 0) {
-        descLines.push(`${outerCount} ${outerType} (${innerCount} ${innerType})`);
+        descLines.push(`TOTAL ${outerCount} ${outerType} (${innerCount} ${innerType})`);
       } else if (outerCount > 0) {
-        descLines.push(`${outerCount} ${outerType}`);
+        descLines.push(`TOTAL ${outerCount} ${outerType}`);
       } else if (innerCount > 0) {
-        descLines.push(`${innerCount} ${innerType}`);
+        descLines.push(`TOTAL ${innerCount} ${innerType}`);
       }
 
       if (shipment.productDescription && shipment.productDescription.trim()) {
@@ -261,17 +290,27 @@ export function buildMappedManifest(
         descLines.push(`BRAND: ${shipment.brandName.trim()}`);
       }
       if (shipment.hsnCode && shipment.hsnCode.trim()) {
-        descLines.push(`HSN CODE: ${shipment.hsnCode.trim()}`);
+        descLines.push(`H.S. CODE NO. ${shipment.hsnCode.trim()}`);
+      }
+      if (shipment.shippingBillNumbers && shipment.shippingBillNumbers.trim()) {
+        descLines.push(`SHIPPING BILL NO(S): ${shipment.shippingBillNumbers.trim()}`);
       }
       if (shipment.isDangerousGoods || shipment.unNumber) {
         const dgInfoParts: string[] = [];
-        if (shipment.unNumber) dgInfoParts.push(`UN NO: ${shipment.unNumber}`);
-        if (shipment.imoClass) dgInfoParts.push(`IMO CLASS: ${shipment.imoClass}`);
+        if (shipment.unNumber) dgInfoParts.push(`UN NO. ${shipment.unNumber.replace(/^UN\s*/i, '')}`);
+        if (shipment.imoClass) dgInfoParts.push(`IMCO CLASS: ${shipment.imoClass}`);
         if (shipment.packingGroup) dgInfoParts.push(`PG: ${shipment.packingGroup}`);
         if (dgInfoParts.length > 0) {
           descLines.push(dgInfoParts.join(' | '));
         }
       }
+      if (shipment.freightTerms && shipment.freightTerms.trim()) {
+        descLines.push(shipment.freightTerms.trim().toUpperCase());
+      }
+      if (shipment.freeTimeClause && shipment.freeTimeClause.trim()) {
+        descLines.push(`"${shipment.freeTimeClause.trim()}"`);
+      }
+
       if (descLines.length > 0) {
         resolvedValue = descLines.join('\n');
       }

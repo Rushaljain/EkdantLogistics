@@ -19,6 +19,7 @@ export interface PreFilterResult {
   keptSheets: string[];
   ignoredSheets: string[];
   filterLog: string[];
+  extractedReferences?: string[];
 }
 
 /**
@@ -171,6 +172,20 @@ export function preFilterWorkbook(buffer: ArrayBuffer, fileName: string): PreFil
     filterLog.push(`Excluded unreferenced tabs: ${ignoredSheets.join(', ')}`);
   }
 
+  // Scan kept sheets for generic reference patterns (Buyer's Order No, Exporter's Ref, Other Reference(s))
+  const extractedReferences: string[] = [];
+  const refRegex = /(?:buyer'?s?\s*order\s*(?:no\.?|ref\.?)|exporter'?s?\s*ref\.?|other\s*reference\(?s?\)?|purchase\s*order\s*no\.?)\s*[:\-\s]\s*([A-Za-z0-9_\-()/]{3,30})/gi;
+
+  for (const s of sheets.filter(sh => sh.isKept)) {
+    let m: RegExpExecArray | null;
+    while ((m = refRegex.exec(s.cleanGridText)) !== null) {
+      const val = m[1].trim();
+      if (val && !extractedReferences.includes(val) && !/^(DATE|NIL|NA|NO|NONE)$/i.test(val)) {
+        extractedReferences.push(val);
+      }
+    }
+  }
+
   const combinedText = sheets
     .filter(s => s.isKept)
     .map(s => `=== FILE: ${fileName} | SHEET: ${s.sheetName} ===\n${s.cleanGridText}`)
@@ -182,6 +197,7 @@ export function preFilterWorkbook(buffer: ArrayBuffer, fileName: string): PreFil
     combinedText,
     keptSheets,
     ignoredSheets,
-    filterLog
+    filterLog,
+    extractedReferences
   };
 }

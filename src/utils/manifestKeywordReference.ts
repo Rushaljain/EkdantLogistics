@@ -76,68 +76,202 @@ export const IMDG_UN_LOOKUP: Record<string, ImdgUnDefinition> = {
 };
 
 /**
- * Synthesizes contiguous numeric or per-prefix pallet identifier ranges from pallet entries.
- * E.g. ["4533", "4534", "4535", "4956", "TAL/1703/2026", "TAL/1704/2026"]
- * => ["4533 TO 4535", "4956", "TAL/1703/2026 TO TAL/1704/2026"]
+ * Synthesizes pallet identifier ranges from pallet entries, grouped deterministically by sourceFile
+ * (in order of appearance) and prefix pattern.
+ * Within each per-file/prefix group, collapses the first and last pallet into "FIRST TO LAST"
+ * (or single "FIRST" if count === 1).
+ * E.g.
+ * 4533..4546 in File 1 => "4533 TO 4546"
+ * 4956..4963 in File 2 => "4956 TO 4963"
+ * 4964 in File 3 => "4964"
+ * TAL/1703/2026..TAL/1705/2026 in File 4 => "TAL/1703/2026 TO TAL/1705/2026"
  */
 export function synthesizePalletRanges(pallets: ExtractedPallet[]): string[] {
   if (!pallets || pallets.length === 0) return [];
 
-  // Group by sourceFile or prefix
-  const rawList = pallets.map(p => (p.palletNumber || '').trim()).filter(Boolean);
-  if (rawList.length === 0) return [];
+  // Group pallets by sourceFile while preserving file appearance order
+  const fileGroups: Map<string, ExtractedPallet[]> = new Map();
+  pallets.forEach((p, idx) => {
+    const fileKey = p.sourceFile ? p.sourceFile.trim() : `file_group_${idx}`;
+    if (!fileGroups.has(fileKey)) {
+      fileGroups.set(fileKey, []);
+    }
+    fileGroups.get(fileKey)!.push(p);
+  });
 
-  const ranges: string[] = [];
-  let currentStart = rawList[0];
-  let currentEnd = rawList[0];
-
-  // Helper to extract numeric suffix and prefix
-  const splitId = (id: string): { prefix: string; num: number; width: number } | null => {
-    const match = id.match(/^(.*?)(\d+)$/);
-    if (!match) return null;
-    return {
-      prefix: match[1],
-      num: parseInt(match[2], 10),
-      width: match[2].length
-    };
+  const extractPrefixAndNum = (id: string): { prefix: string; num: number | null; suffix: string } => {
+    const trimmed = (id || '').trim();
+    // Match prefix, number, and optional suffix (e.g. TAL/1703/2026 or 4533)
+    const slashMatch = trimmed.match(/^(.*?\/)?(\d+)(\/[^/]+)?$/);
+    if (slashMatch) {
+      return {
+        prefix: slashMatch[1] || '',
+        num: parseInt(slashMatch[2], 10),
+        suffix: slashMatch[3] || ''
+      };
+    }
+    const endMatch = trimmed.match(/^(.*?)(\d+)$/);
+    if (endMatch) {
+      return { prefix: endMatch[1], num: parseInt(endMatch[2], 10), suffix: '' };
+    }
+    return { prefix: trimmed, num: null, suffix: '' };
   };
 
-  let prevParsed = splitId(currentStart);
+  const allRanges: string[] = [];
 
-  for (let i = 1; i < rawList.length; i++) {
-    const id = rawList[i];
-    const parsed = splitId(id);
+  for (const group of fileGroups.values()) {
+    const validPallets = group.filter(p => (p.palletNumber || '').trim() !== '');
+    if (validPallets.length === 0) continue;
 
-    if (
-      prevParsed &&
-      parsed &&
-      prevParsed.prefix === parsed.prefix &&
-      parsed.num === prevParsed.num + 1
-    ) {
-      // Contiguous sequence
-      currentEnd = id;
-      prevParsed = parsed;
-    } else {
-      // End current range and start new
-      if (currentStart === currentEnd) {
-        ranges.push(currentStart);
+    // Subgroup within this file by prefix + suffix pattern
+    const prefixBuckets: ExtractedPallet[][] = [];
+    let currentBucket: ExtractedPallet[] = [validPallets[0]];
+    const firstInfo = extractPrefixAndNum(validPallets[0].palletNumber);
+    let currentKey = `${firstInfo.prefix}__${firstInfo.suffix}`;
+
+    for (let i = 1; i < validPallets.length; i++) {
+      const p = validPallets[i];
+      const info = extractPrefixAndNum(p.palletNumber);
+      const key = `${info.prefix}__${info.suffix}`;
+      if (key === currentKey) {
+        currentBucket.push(p);
       } else {
-        ranges.push(`${currentStart} TO ${currentEnd}`);
+        prefixBuckets.push(currentBucket);
+        currentBucket = [p];
+        currentKey = key;
       }
-      currentStart = id;
-      currentEnd = id;
-      prevParsed = parsed;
+    }
+    if (currentBucket.length > 0) {
+      prefixBuckets.push(currentBucket);
+    }
+
+    // For each bucket, collapse first to last
+    for (const b of prefixBuckets) {
+      const firstId = (b[0].palletNumber || '').trim();
+      const lastId = (b[b.length - 1].palletNumber || '').trim();
+      if (b.length === 1 || firstId === lastId) {
+        allRanges.push(firstId);
+      } else {
+        allRanges.push(`${firstId} TO ${lastId}`);
+      }
     }
   }
 
-  // Push final range
-  if (currentStart === currentEnd) {
-    ranges.push(currentStart);
-  } else {
-    ranges.push(`${currentStart} TO ${currentEnd}`);
+  return allRanges;
+}
+
+/**
+ * Deterministically normalizes and enriches shipment state:
+ * 1. OCR / typo sanitization across corporate names and declarant
+ * 2. Boilerplate stripping from marks and description
+ * 3. Regulatory IMDG UN enrichment (Proper Shipping Name, EMS, Segregation)
+ * 4. Pallet range synthesis appended to shippingMarks
+ * 5. Routing and declaration fallback cascades
+ */
+export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShipmentJSON {
+  const clean: ExtractedShipmentJSON = { ...raw };
+
+  // 1. OCR / Header Typo & Whitespace Sanitization
+  const sanitizeSuffix = (name: string): string => {
+    if (!name) return '';
+    return name
+      .replace(/\bLIMITESD\b/gi, 'LIMITED')
+      .replace(/\bPVTD\b/gi, 'PVT')
+      .trim();
+  };
+
+  clean.shipperName = sanitizeSuffix(clean.shipperName);
+  clean.consigneeName = sanitizeSuffix(clean.consigneeName);
+  clean.notifyPartyName = sanitizeSuffix(clean.notifyPartyName);
+  clean.dgDeclarantName = sanitizeSuffix(clean.dgDeclarantName);
+
+  // Strip empty form boilerplate lines (e.g. "Brand :", "B/L NO :", "B/L Date :")
+  const stripBoilerplate = (text: string): string => {
+    if (!text) return '';
+    return text
+      .split('\n')
+      .filter(line => !/^(brand|b\/l\s*no|b\/l\s*date|invoice\s*no|date)\s*:\s*$/i.test(line.trim()))
+      .join('\n')
+      .trim();
+  };
+
+  clean.shippingMarks = stripBoilerplate(clean.shippingMarks);
+  clean.productDescription = stripBoilerplate(clean.productDescription);
+
+  // 2. Standard IMDG Code UN-Number Regulatory Enrichment
+  if (clean.unNumber && clean.unNumber.trim()) {
+    const unDigits = clean.unNumber.replace(/\D/g, '');
+    const imdgRef = IMDG_UN_LOOKUP[unDigits];
+
+    if (imdgRef) {
+      // If properShippingName is empty, or equals/contains the commercial productDescription,
+      // override with official IMDG PSN and keep commercial description in productDescription
+      const currentPsn = (clean.properShippingName || '').trim();
+      const currentDesc = (clean.productDescription || '').trim();
+
+      const isPsnCommercial =
+        !currentPsn ||
+        (currentDesc && currentPsn.toLowerCase().includes(currentDesc.toLowerCase())) ||
+        (currentDesc && currentDesc.toLowerCase().includes(currentPsn.toLowerCase())) ||
+        currentPsn.toLowerCase() !== imdgRef.properShippingName.toLowerCase();
+
+      if (isPsnCommercial) {
+        clean.properShippingName = imdgRef.properShippingName;
+      }
+      if (!clean.imoClass || clean.imoClass.trim() === '') {
+        clean.imoClass = imdgRef.imoClass;
+      }
+      if (!clean.packingGroup || clean.packingGroup.trim() === '') {
+        clean.packingGroup = imdgRef.packingGroup;
+      }
+      if (!clean.emsNumber || clean.emsNumber.trim() === '') {
+        clean.emsNumber = imdgRef.emsNumber;
+      }
+      if (!clean.segregationGroup || clean.segregationGroup.trim() === '') {
+        clean.segregationGroup = imdgRef.segregationGroup;
+      }
+      clean.isDangerousGoods = true;
+    }
   }
 
-  return ranges;
+  // 3. Deterministic Pallet Range Synthesis into shippingMarks
+  if (clean.pallets && clean.pallets.length > 0) {
+    const synthesizedRanges = synthesizePalletRanges(clean.pallets);
+    if (synthesizedRanges.length > 0) {
+      let currentMarks = (clean.shippingMarks || '').trim();
+      const missingRanges = synthesizedRanges.filter(range => {
+        // If range contains "TO", check if full range or start/end is already in marks
+        return !currentMarks.includes(range);
+      });
+
+      if (missingRanges.length > 0) {
+        const palletBlock = `PALLET NOS: ${missingRanges.join(', ')}`;
+        clean.shippingMarks = currentMarks ? `${currentMarks}\n${palletBlock}` : palletBlock;
+      }
+    }
+  }
+
+  // 4. Routing, declarant, and declaration date fallbacks
+  if (!clean.placeOfReceipt || clean.placeOfReceipt.trim() === '') {
+    clean.placeOfReceipt = clean.portOfLoading || '';
+  }
+  if (!clean.placeOfDelivery || clean.placeOfDelivery.trim() === '') {
+    clean.placeOfDelivery = clean.finalDestination || clean.portOfDischarge || '';
+  }
+  if (!clean.dgDeclarantName || clean.dgDeclarantName.trim() === '') {
+    clean.dgDeclarantName = clean.shipperName || '';
+  }
+  if (!clean.dgDeclarationPlaceAndDate || clean.dgDeclarationPlaceAndDate.trim() === '') {
+    const loc = clean.portOfLoading || clean.placeOfReceipt || '';
+    const dateStr = clean.invoiceDates?.[clean.invoiceDates.length - 1] || clean.invoiceDates?.[0] || '';
+    if (loc && dateStr) {
+      clean.dgDeclarationPlaceAndDate = `${loc} / ${dateStr}`;
+    } else if (loc || dateStr) {
+      clean.dgDeclarationPlaceAndDate = loc || dateStr;
+    }
+  }
+
+  return clean;
 }
 
 /**
