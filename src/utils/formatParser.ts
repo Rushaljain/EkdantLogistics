@@ -343,10 +343,13 @@ Strictly ensure NO sample or draft shipment values are stored in the schema.
     }
   };
 
-  // Supported model endpoints to attempt in sequence (with automatic fallback on 404/503)
+  // Supported model endpoints to attempt in sequence (with automatic fallback on 404/503/429)
   const models = [
-    'gemini-flash-latest',
-    'gemini-3.8-flash'
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3-flash-preview',
+    'gemini-flash-latest'
   ];
   let lastError: Error | null = null;
   let rawJson: any = null;
@@ -360,7 +363,7 @@ Strictly ensure NO sample or draft shipment values are stored in the schema.
   }
 
   for (const model of models) {
-    const endpoint = apiKey.startsWith('AIza')
+    const endpoint = apiKey.startsWith('AIza') || apiKey.startsWith('AQ.')
       ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
       : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -373,7 +376,7 @@ Strictly ensure NO sample or draft shipment values are stored in the schema.
 
       if (!res.ok) {
         const errText = await res.text();
-        if ((res.status === 404 || res.status === 503) && models.indexOf(model) < models.length - 1) {
+        if ((res.status === 404 || res.status === 503 || res.status === 429) && models.indexOf(model) < models.length - 1) {
           console.warn(`Format parser: model ${model} returned HTTP ${res.status}, retrying next candidate...`);
           lastError = new Error(`Format extraction failed on ${model}: ${errText}`);
           continue;
