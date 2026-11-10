@@ -237,13 +237,10 @@ export async function parseDocumentsToJSON(
     }
   };
 
-  // Supported model endpoints to attempt in sequence (with automatic fallback on 404/503/429)
+  // Supported model endpoints to attempt in sequence (with automatic fallback on 404/503)
   const models = [
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-flash-lite-latest',
-    'gemini-3-flash-preview',
-    'gemini-flash-latest'
+    'gemini-flash-latest',
+    'gemini-3.8-flash'
   ];
   let lastError: Error | null = null;
   let parsedRawJson: any = null;
@@ -272,8 +269,8 @@ export async function parseDocumentsToJSON(
 
       if (!res.ok) {
         const errorText = await res.text();
-        // If model is not found (404), temporarily overloaded (503), or quota rate-limited (429), attempt next candidate
-        if ((res.status === 404 || res.status === 503 || res.status === 429) && models.indexOf(model) < models.length - 1) {
+        // If model is not found (404) or temporarily overloaded (503), attempt next candidate
+        if ((res.status === 404 || res.status === 503) && models.indexOf(model) < models.length - 1) {
           console.warn(`Model ${model} returned HTTP ${res.status}, attempting next model candidate...`);
           lastError = new Error(`Gemini API Error (HTTP ${res.status} on ${model}): ${errorText}`);
           continue;
