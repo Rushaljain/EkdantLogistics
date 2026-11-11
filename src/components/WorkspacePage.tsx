@@ -108,9 +108,6 @@ export function WorkspacePage({
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [copiedJson, setCopiedJson] = useState(false);
 
-  // Bottom action bar export target toggle
-  const [exportTargetDoc, setExportTargetDoc] = useState<FormatDocumentType>('DG');
-
   const toggleSection = (sectionName: string) => {
     setCollapsedSections((prev) => ({
       ...prev,
@@ -1147,56 +1144,36 @@ export function WorkspacePage({
 
         {/* Right Export Buttons */}
         <div className="flex items-center space-x-2 shrink-0">
-          <div className="flex bg-surface-secondary border border-divider rounded p-0.5 mr-1">
-            <button
-              onClick={() => setExportTargetDoc('DG')}
-              className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
-                exportTargetDoc === 'DG' ? 'bg-brand-primary text-brand-primary-text' : 'text-content-secondary hover:text-content-primary'
-              }`}
+          <div className="relative">
+            <select
+              value=""
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val) return;
+                const targetDoc: FormatDocumentType = activeTab === 'bl_manifest' ? 'BL' : 'DG';
+                if (val === 'PDF') {
+                  onPrintPdf(targetDoc);
+                } else if (val === 'Word') {
+                  onDownloadDocx(targetDoc);
+                } else if (val === 'HTML') {
+                  onDownloadHtml(targetDoc);
+                }
+              }}
+              className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
             >
-              DG
-            </button>
-            <button
-              onClick={() => setExportTargetDoc('BL')}
-              className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
-                exportTargetDoc === 'BL' ? 'bg-brand-primary text-brand-primary-text' : 'text-content-secondary hover:text-content-primary'
-              }`}
-            >
-              BL
-            </button>
+              <option value="" disabled>
+                Export Document ({activeTab === 'bl_manifest' ? 'BL' : 'DG'})
+              </option>
+              <option value="PDF">PDF Document</option>
+              <option value="Word">Word (.docx)</option>
+              <option value="HTML">Maritime HTML</option>
+            </select>
           </div>
-
-          <button
-            onClick={() => onPrintPdf(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider transition-colors"
-            title={`Print-Ready PDF (${exportTargetDoc})`}
-          >
-            <Printer className="w-3.5 h-3.5 text-brand-primary" />
-            <span className="hidden sm:inline">PDF</span>
-          </button>
-
-          <button
-            onClick={() => onDownloadDocx(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider transition-colors"
-            title={`Editable Word Document (${exportTargetDoc})`}
-          >
-            <FileText className="w-3.5 h-3.5 text-brand-primary" />
-            <span className="hidden sm:inline">Word</span>
-          </button>
-
-          <button
-            onClick={() => onDownloadHtml(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider transition-colors"
-            title={`Maritime Submission HTML (${exportTargetDoc})`}
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
-            <span className="hidden sm:inline">HTML</span>
-          </button>
 
           <button
             onClick={onDownloadZip}
             disabled={isExportingZip}
-            className="flex items-center space-x-1.5 px-3 py-1 rounded bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all"
             title="Download Complete Shipment Package (.zip)"
           >
             <Package className={`w-3.5 h-3.5 ${isExportingZip ? 'animate-spin' : ''}`} />
