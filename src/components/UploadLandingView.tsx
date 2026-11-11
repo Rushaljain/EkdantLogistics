@@ -5,7 +5,7 @@ import {
   FileSpreadsheet,
   File,
   X,
-  Sparkles,
+  Loader2,
   Play,
   AlertTriangle,
   Boxes
@@ -22,7 +22,7 @@ interface UploadLandingViewProps {
   onRemoveFile: (index: number) => void;
   onClearFiles: () => void;
   isParsing: boolean;
-  parseProgress: ParseSessionProgress | null;
+  parseProgress?: ParseSessionProgress | null;
   apiError: string | null;
   onExecuteParsing: () => void;
   onLoadDemoJson?: () => void;
@@ -38,7 +38,6 @@ export function UploadLandingView({
   onRemoveFile,
   onClearFiles,
   isParsing,
-  parseProgress,
   apiError,
   onExecuteParsing
 }: UploadLandingViewProps): React.JSX.Element {
@@ -177,30 +176,6 @@ export function UploadLandingView({
             </div>
           )}
 
-          {/* Progress Bar */}
-          {isParsing && parseProgress && (
-            <div className="space-y-1.5 p-3 rounded-lg bg-surface-secondary border border-divider">
-              <div className="flex justify-between text-xs font-mono text-brand-primary">
-                <span>{parseProgress.message || 'Extracting shipment truth...'}</span>
-                <span>
-                  {parseProgress.processedFiles}/{parseProgress.totalFiles}
-                </span>
-              </div>
-              <div className="h-1.5 bg-action-disabled rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-brand-primary transition-all duration-300"
-                  style={{
-                    width: `${
-                      parseProgress.totalFiles > 0
-                        ? Math.round((parseProgress.processedFiles / parseProgress.totalFiles) * 100)
-                        : 50
-                    }%`
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
           {/* Primary Action Button */}
           <div className="space-y-2.5 pt-1">
             <button
@@ -214,7 +189,7 @@ export function UploadLandingView({
             >
               {isParsing ? (
                 <>
-                  <Sparkles className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Processing Documents...</span>
                 </>
               ) : (
