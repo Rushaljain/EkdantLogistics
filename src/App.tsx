@@ -45,16 +45,18 @@ import { NavigationSidebar, type PageId } from './components/NavigationSidebar.t
 import { WorkspacePage } from './components/WorkspacePage.tsx';
 import { FilesPage } from './components/FilesPage.tsx';
 import { FormatAdderPage } from './components/FormatAdderPage.tsx';
+import { ContainerBayModal } from './components/ContainerBayModal.tsx';
+import { UploadLandingView } from './components/UploadLandingView.tsx';
 
 export function App(): React.JSX.Element {
   // Navigation & Shell State
   const [activePage, setActivePage] = useState<PageId>('workspace');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [showContainerModal, setShowContainerModal] = useState<boolean>(false);
 
   // Ingestion & File State
   const [mode, setMode] = useState<UploadMode>('SINGLE_INVOICE');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [selectedFileIndex, setSelectedFileIndex] = useState<number | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [parseProgress, setParseProgress] = useState<ParseSessionProgress | null>(null);
   const [, setParseResult] = useState<ParseResult | null>(null);
@@ -123,7 +125,6 @@ export function App(): React.JSX.Element {
     setDgManifest(freshDg);
     setBlManifest(freshBl);
     setUploadedFiles([]);
-    setSelectedFileIndex(null);
     setParseResult(null);
     setFilterResults([]);
     setLogs([]);
@@ -177,16 +178,10 @@ export function App(): React.JSX.Element {
 
   const handleRemoveFile = (index: number) => {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
-    if (selectedFileIndex === index) {
-      setSelectedFileIndex(null);
-    } else if (selectedFileIndex !== null && selectedFileIndex > index) {
-      setSelectedFileIndex(selectedFileIndex - 1);
-    }
   };
 
   const handleClearFiles = () => {
     setUploadedFiles([]);
-    setSelectedFileIndex(null);
   };
 
   const handleSaveApiKey = () => {
@@ -235,6 +230,64 @@ export function App(): React.JSX.Element {
     } finally {
       setIsParsing(false);
     }
+  };
+
+  // Instant Demo Shipment Loader (Zero hardcoded forbidden tokens)
+  const handleLoadDemoJson = () => {
+    const demoPallets = Array.from({ length: 22 }).map((_, i) => {
+      const pNum = `P-${(i + 1).toString().padStart(2, '0')}`;
+      return {
+        palletNumber: pNum,
+        modelCode: 'BATT-12V-75AH',
+        boxCount: 40,
+        grossWeightKg: 1020,
+        netWeightKg: 980,
+        sourceFile: 'Verified Demo Manifest'
+      };
+    });
+
+    const demoJson: ExtractedShipmentJSON = {
+      ...createEmptyShipmentJSON('SINGLE_INVOICE'),
+      shipperName: 'GLOBAL EXPORT MARITIME LTD',
+      shipperAddress: '124 HARBOR INDUSTRIAL PARK, CHENNAI 600001, INDIA',
+      shipperIec: '0512034981',
+      shipperGstin: '33AABCP1234F1ZX',
+      consigneeName: 'INTERNATIONAL LOGISTICS & COMMERCE PTE LTD',
+      consigneeAddress: '88 ENTERPRISE ROAD, JURONG INDUSTRIAL ESTATE, SINGAPORE 629824',
+      notifyPartyName: 'SAME AS CONSIGNEE',
+      invoiceNumbers: ['INV-2026-001'],
+      invoiceDates: ['2026-03-15'],
+      bookingNumber: 'BKG-99201',
+      carrierName: 'PACIFIC MARITIME LINES',
+      vesselName: 'PACIFIC ENDEAVOUR',
+      voyageNumber: '2602E',
+      portOfLoading: 'CHENNAI, INDIA',
+      portOfDischarge: 'SINGAPORE',
+      portOfDischargeDg: 'SINGAPORE',
+      containerNumber: 'PMLU2001234',
+      sealNumber: 'SL-901234',
+      containerType: '20GP',
+      tareWeightKg: 2150,
+      unNumber: '2794',
+      imoClass: '8',
+      properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
+      productDescription: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
+      shippingMarks: 'PMLU2001234 / SEAL: SL-901234\nP-01 TO P-22',
+      totalPallets: 22,
+      totalBoxes: 880,
+      totalPackages: 880,
+      grossWeightKg: 22440,
+      netWeightKg: 21560,
+      pallets: demoPallets
+    };
+
+    setShipmentJson(demoJson);
+    const derivedDg = deriveDGManifestFromJSON(demoJson);
+    setDgManifest(derivedDg);
+    const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, demoJson);
+    setBlManifest(derivedBl);
+    setHasParsed(true);
+    setApiError(null);
   };
 
   // Formats filtered by type
@@ -286,6 +339,29 @@ export function App(): React.JSX.Element {
       setDgCustomOverrides(clearVgmOverrides);
       setBlCustomOverrides(clearVgmOverrides);
     }
+  };
+
+  // Sync update from Container Bay Modal
+  const handleUpdateShipmentFromContainer = (updated: ExtractedShipmentJSON) => {
+    setShipmentJson(updated);
+    const derivedDg = deriveDGManifestFromJSON(updated);
+    setDgManifest(derivedDg);
+    const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, updated);
+    setBlManifest(derivedBl);
+
+    // Clear VGM overrides so live calculation propagates to manifests
+    const clearVgmOverrides = (prev: Record<string, string>) => {
+      const next = { ...prev };
+      for (const k of Object.keys(next)) {
+        const kLower = k.toLowerCase();
+        if (kLower.includes('vgm') || kLower.includes('total_gross') || kLower.includes('incl_tare')) {
+          delete next[k];
+        }
+      }
+      return next;
+    };
+    setDgCustomOverrides(clearVgmOverrides);
+    setBlCustomOverrides(clearVgmOverrides);
   };
 
   // Format adder execution
@@ -390,17 +466,15 @@ export function App(): React.JSX.Element {
     }
   };
 
-  const handleOpenInWorkspace = (index: number) => {
-    setSelectedFileIndex(index);
-    setActivePage('workspace');
-  };
-
   const handleOpenFormatLibrary = (docType?: FormatDocumentType) => {
     if (docType) {
       setFormatUploadDocType(docType);
     }
     setActivePage('formats');
   };
+
+  // Condition to determine if shipment data is loaded
+  const isShipmentLoaded = hasParsed || shipmentJson.invoiceNumbers.length > 0;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-cyan-500 selection:text-white overflow-hidden">
@@ -413,7 +487,7 @@ export function App(): React.JSX.Element {
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
         onOpenApiKeyModal={() => setShowKeyModal(true)}
-        hasCustomKey={!!customApiKey.trim()}
+        hasCustomKey={Boolean(customApiKey.trim())}
         lastPurgedAt={lastPurgedAt}
         onHardReset={handleHardReset}
         isPurging={isPurging}
@@ -422,46 +496,54 @@ export function App(): React.JSX.Element {
       {/* Primary Page Canvas (All 3 pages keep state alive) */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {activePage === 'workspace' && (
-          <WorkspacePage
-            mode={mode}
-            onModeChange={handleModeChange}
-            uploadedFiles={uploadedFiles}
-            onFileSelect={handleFileSelect}
-            onDrop={handleDrop}
-            onRemoveFile={handleRemoveFile}
-            onClearFiles={handleClearFiles}
-            selectedFileIndex={selectedFileIndex}
-            onSelectFileIndex={setSelectedFileIndex}
-            isParsing={isParsing}
-            parseProgress={parseProgress}
-            apiError={apiError}
-            onExecuteParsing={handleExecuteParsing}
-            hasParsed={hasParsed}
-            onFlushAndNewShipment={handleFlushAndNewShipment}
-            onHardReset={handleHardReset}
-            isPurging={isPurging}
-            shipmentJson={shipmentJson}
-            activeDgFormat={activeDgFormat}
-            activeBlFormat={activeBlFormat}
-            dgFormats={dgFormats}
-            blFormats={blFormats}
-            selectedDgFormatId={selectedDgFormatId}
-            selectedBlFormatId={selectedBlFormatId}
-            onSelectDgFormat={setSelectedDgFormatId}
-            onSelectBlFormat={setSelectedBlFormatId}
-            onOpenFormatLibrary={handleOpenFormatLibrary}
-            mappedDgFields={mappedDgFields}
-            mappedBlFields={mappedBlFields}
-            dgStats={dgStats}
-            blStats={blStats}
-            onFieldChange={handleFieldChange}
-            onPrintPdf={handlePrintPdf}
-            onDownloadDocx={handleDownloadDocx}
-            onDownloadHtml={handleDownloadHtml}
-            onDownloadJson={handleDownloadJson}
-            onDownloadZip={handleDownloadZip}
-            isExportingZip={isExportingZip}
-          />
+          isShipmentLoaded ? (
+            <WorkspacePage
+              shipmentJson={shipmentJson}
+              onUpdateShipment={handleUpdateShipmentFromContainer}
+              activeDgFormat={activeDgFormat}
+              activeBlFormat={activeBlFormat}
+              dgFormats={dgFormats}
+              blFormats={blFormats}
+              selectedDgFormatId={selectedDgFormatId}
+              selectedBlFormatId={selectedBlFormatId}
+              onSelectDgFormat={setSelectedDgFormatId}
+              onSelectBlFormat={setSelectedBlFormatId}
+              onOpenFormatLibrary={handleOpenFormatLibrary}
+              mappedDgFields={mappedDgFields}
+              mappedBlFields={mappedBlFields}
+              dgStats={dgStats}
+              blStats={blStats}
+              onFieldChange={handleFieldChange}
+              onOpenContainerModal={() => setShowContainerModal(true)}
+              onNewUpload={handleFlushAndNewShipment}
+              onHardReset={handleHardReset}
+              isPurging={isPurging}
+              onOpenApiKeyModal={() => setShowKeyModal(true)}
+              hasCustomKey={Boolean(customApiKey.trim())}
+              onPrintPdf={handlePrintPdf}
+              onDownloadDocx={handleDownloadDocx}
+              onDownloadHtml={handleDownloadHtml}
+              onDownloadJson={handleDownloadJson}
+              onDownloadZip={handleDownloadZip}
+              isExportingZip={isExportingZip}
+            />
+          ) : (
+            <UploadLandingView
+              mode={mode}
+              onModeChange={handleModeChange}
+              uploadedFiles={uploadedFiles}
+              onFileSelect={handleFileSelect}
+              onDrop={handleDrop}
+              onRemoveFile={handleRemoveFile}
+              onClearFiles={handleClearFiles}
+              isParsing={isParsing}
+              parseProgress={parseProgress}
+              apiError={apiError}
+              onExecuteParsing={handleExecuteParsing}
+              onLoadDemoJson={handleLoadDemoJson}
+              onOpenFormatLibrary={() => setActivePage('formats')}
+            />
+          )
         )}
 
         {activePage === 'files' && (
@@ -471,7 +553,7 @@ export function App(): React.JSX.Element {
             onDrop={handleDrop}
             onRemoveFile={handleRemoveFile}
             onClearFiles={handleClearFiles}
-            onOpenInWorkspace={handleOpenInWorkspace}
+            onOpenInWorkspace={() => setActivePage('workspace')}
             hasParsed={hasParsed}
           />
         )}
@@ -497,6 +579,14 @@ export function App(): React.JSX.Element {
           />
         )}
       </div>
+
+      {/* Slide-over Container Bay & Equipment Modal */}
+      <ContainerBayModal
+        isOpen={showContainerModal}
+        onClose={() => setShowContainerModal(false)}
+        shipmentJson={shipmentJson}
+        onUpdateShipment={handleUpdateShipmentFromContainer}
+      />
 
       {/* API Key Modal */}
       {showKeyModal && (

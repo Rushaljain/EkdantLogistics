@@ -1,58 +1,38 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  UploadCloud,
-  FileSpreadsheet,
+  Boxes,
   FileText,
-  File,
-  X,
-  Play,
-  AlertTriangle,
-  RotateCcw,
-  Sparkles,
+  FileSpreadsheet,
+  Table as TableIcon,
+  Package,
+  Printer,
   Download,
   Copy,
   Check,
   Search,
-  Printer,
-  Package,
   ExternalLink,
   ChevronDown,
   ChevronRight,
   Plus,
-  Table as TableIcon,
-  FolderPlus
+  RotateCcw,
+  Sparkles,
+  FolderPlus,
+  Key
 } from 'lucide-react';
 import type {
-  UploadMode,
   ExtractedShipmentJSON,
   FormatSchemaJSON,
   MappedManifestField,
   FormatDocumentType
 } from '../types/index.ts';
-import type { ParseSessionProgress } from '../utils/documentParser.ts';
 import { groupManifestFieldsBySection } from '../utils/manifestMatcher.ts';
+import { generateManifestHtml } from '../utils/documentExporter.ts';
+
+export type WorkspaceTab = 'extracted_data' | 'dg_manifest' | 'bl_manifest' | 'export_center';
 
 interface WorkspacePageProps {
-  mode: UploadMode;
-  onModeChange: (mode: UploadMode) => void;
-  uploadedFiles: File[];
-  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
-  onRemoveFile: (index: number) => void;
-  onClearFiles: () => void;
-  selectedFileIndex: number | null;
-  onSelectFileIndex: (index: number | null) => void;
-  isParsing: boolean;
-  parseProgress: ParseSessionProgress | null;
-  apiError: string | null;
-  onExecuteParsing: () => void;
-  hasParsed: boolean;
-  onFlushAndNewShipment: () => void;
-  onHardReset: () => void;
-  isPurging: boolean;
-
-  // Shipment & Manifest State
   shipmentJson: ExtractedShipmentJSON;
+  onUpdateShipment: (updated: ExtractedShipmentJSON) => void;
   activeDgFormat: FormatSchemaJSON;
   activeBlFormat: FormatSchemaJSON;
   dgFormats: FormatSchemaJSON[];
@@ -69,6 +49,14 @@ interface WorkspacePageProps {
   blStats: { populated: number; total: number; percentage: number };
   onFieldChange: (field: MappedManifestField, docType: FormatDocumentType, newValue: string) => void;
 
+  // Header & Modal Actions
+  onOpenContainerModal: () => void;
+  onNewUpload: () => void;
+  onHardReset: () => void;
+  isPurging: boolean;
+  onOpenApiKeyModal: () => void;
+  hasCustomKey: boolean;
+
   // Export actions
   onPrintPdf: (docType: FormatDocumentType) => void;
   onDownloadDocx: (docType: FormatDocumentType) => void;
@@ -79,24 +67,8 @@ interface WorkspacePageProps {
 }
 
 export function WorkspacePage({
-  mode,
-  onModeChange,
-  uploadedFiles,
-  onFileSelect,
-  onDrop,
-  onRemoveFile,
-  onClearFiles,
-  selectedFileIndex,
-  onSelectFileIndex,
-  isParsing,
-  parseProgress,
-  apiError,
-  onExecuteParsing,
-  hasParsed,
-  onFlushAndNewShipment,
-  onHardReset,
-  isPurging,
   shipmentJson,
+  onUpdateShipment: _onUpdateShipment,
   activeDgFormat,
   activeBlFormat,
   dgFormats,
@@ -111,6 +83,12 @@ export function WorkspacePage({
   dgStats,
   blStats,
   onFieldChange,
+  onOpenContainerModal,
+  onNewUpload,
+  onHardReset,
+  isPurging,
+  onOpenApiKeyModal,
+  hasCustomKey,
   onPrintPdf,
   onDownloadDocx,
   onDownloadHtml,
@@ -118,48 +96,20 @@ export function WorkspacePage({
   onDownloadZip,
   isExportingZip
 }: WorkspacePageProps): React.JSX.Element {
-  // Panel resizing state
-  const [panelAWidth, setPanelAWidth] = useState<number>(280); // Left file panel
-  const isDraggingRef = useRef<boolean>(false);
+  // Primary view switcher state: 'extracted_data' | 'dg_manifest' | 'bl_manifest' | 'export_center'
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('dg_manifest');
 
-  // Tabbed Editor State: 'extracted_data' | 'dg_manifest' | 'bl_manifest'
-  const [activeEditorTab, setActiveEditorTab] = useState<'extracted_data' | 'dg_manifest' | 'bl_manifest'>('dg_manifest');
-  const [dataSubTab, setDataSubTab] = useState<'audit' | 'pallets' | 'raw_json'>('audit');
+  // Sub-tabs in Extracted Data view: 'audit' | 'pallets' | 'raw_json'
+  const [dataSubTab, setDataSubTab] = useState<'audit' | 'pallets' | 'raw_json'>('pallets');
 
-  // Search & Filters in Manifest Editor
+  // Search & Filter in Manifest Editors
   const [fieldSearch, setFieldSearch] = useState<string>('');
   const [fieldFilter, setFieldFilter] = useState<'ALL' | 'POPULATED' | 'PENDING'>('ALL');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [copiedJson, setCopiedJson] = useState(false);
 
-  // Bottom action bar document export target
+  // Bottom action bar export target toggle
   const [exportTargetDoc, setExportTargetDoc] = useState<FormatDocumentType>('DG');
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Handle panel resize drag
-  const handleMouseDownResizeA = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingRef.current = true;
-    const startX = e.clientX;
-    const startWidth = panelAWidth;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (isDraggingRef.current) {
-        const delta = moveEvent.clientX - startX;
-        setPanelAWidth(Math.max(200, Math.min(440, startWidth + delta)));
-      }
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = false;
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
 
   const toggleSection = (sectionName: string) => {
     setCollapsedSections((prev) => ({
@@ -174,9 +124,19 @@ export function WorkspacePage({
     setTimeout(() => setCopiedJson(false), 2000);
   };
 
-  // Grouped fields
-  const activeFields = activeEditorTab === 'dg_manifest' ? mappedDgFields : mappedBlFields;
-  const activeDocType = activeEditorTab === 'dg_manifest' ? 'DG' : 'BL';
+  // Check equipment completeness for Container UI status dot
+  const isEquipmentComplete = Boolean(
+    shipmentJson.containerNumber &&
+    shipmentJson.containerNumber.trim() !== '' &&
+    shipmentJson.sealNumber &&
+    shipmentJson.sealNumber.trim() !== '' &&
+    shipmentJson.tareWeightKg > 0
+  );
+
+  const calculatedVgm = (shipmentJson.grossWeightKg || 0) + (shipmentJson.tareWeightKg || 0);
+
+  // Filtered fields for active manifest
+  const activeFields = activeTab === 'dg_manifest' ? mappedDgFields : mappedBlFields;
 
   const filteredFields = useMemo(() => {
     return activeFields.filter((f) => {
@@ -200,7 +160,20 @@ export function WorkspacePage({
     return groupManifestFieldsBySection(filteredFields);
   }, [filteredFields]);
 
-  // Extracted Data Audit
+  // Live A4 HTML generation for iframe previews
+  const liveDgHtml = useMemo(() => {
+    return generateManifestHtml(shipmentJson, activeDgFormat, mappedDgFields, {
+      includePalletAnnex: true
+    });
+  }, [shipmentJson, activeDgFormat, mappedDgFields]);
+
+  const liveBlHtml = useMemo(() => {
+    return generateManifestHtml(shipmentJson, activeBlFormat, mappedBlFields, {
+      includePalletAnnex: true
+    });
+  }, [shipmentJson, activeBlFormat, mappedBlFields]);
+
+  // Field audit entries
   const auditEntries = useMemo(() => {
     return Object.entries(shipmentJson).map(([key, value]) => {
       const isArray = Array.isArray(value);
@@ -220,698 +193,956 @@ export function WorkspacePage({
   }, [shipmentJson]);
 
   const populatedFieldsCount = auditEntries.filter((e) => !e.isBlank && e.key !== 'sourceFiles').length;
-  const calculatedVgm = (shipmentJson.grossWeightKg || 0) + (shipmentJson.tareWeightKg || 0);
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100">
-      {/* Top Workspace Header (52px) */}
-      <header className="h-13 px-4 border-b border-slate-800/80 bg-slate-900/90 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center space-x-3 truncate">
-          <span className="text-xs font-semibold text-white tracking-wide truncate">
-            {shipmentJson.invoiceNumbers.length > 0
-              ? `Shipment ${shipmentJson.invoiceNumbers.join(', ')}`
-              : 'Workspace / Active Draft'}
-          </span>
-          <span
-            className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-              hasParsed
-                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/60'
-                : 'bg-slate-800 text-slate-400 border-slate-700'
-            }`}
-          >
-            {hasParsed ? 'Extracted & Live Synced' : 'Ready for Ingestion'}
-          </span>
-          {shipmentJson.containerNumber && (
-            <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60">
-              {shipmentJson.containerNumber}
+      {/* =========================================================================
+          UNIFIED WORKSPACE TOP CONTROL BAR (Sticky High-Contrast Header)
+          ========================================================================= */}
+      <header className="h-14 px-4 sm:px-6 border-b border-slate-800 bg-slate-900/95 backdrop-blur flex items-center justify-between shrink-0 z-30 shadow-md">
+        {/* Left: Brand & Shipment Reference */}
+        <div className="flex items-center space-x-3 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-700 flex items-center justify-center shadow-md shadow-cyan-950/60">
+            <Boxes className="w-4 h-4 text-white" />
+          </div>
+          <div className="hidden sm:block">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-white tracking-wide">EKDANT</span>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
+                v2.0
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono truncate block max-w-[150px]">
+              {shipmentJson.invoiceNumbers[0] ? `Inv: ${shipmentJson.invoiceNumbers[0]}` : 'Active Shipment'}
             </span>
-          )}
+          </div>
         </div>
 
-        <div className="flex items-center space-x-2 shrink-0">
+        {/* Center: Primary View Switcher Buttons */}
+        <div className="flex items-center p-1 bg-slate-950 border border-slate-800 rounded-xl space-x-1">
           <button
-            onClick={onFlushAndNewShipment}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-sm transition-colors"
-            title="Archive current shipment and start clean"
+            type="button"
+            onClick={() => setActiveTab('extracted_data')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
+              activeTab === 'extracted_data'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>New Shipment</span>
+            <TableIcon className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">1.</span>
+            <span>Extracted Data &amp; Pallets</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
+              {shipmentJson.pallets.length}p
+            </span>
           </button>
 
           <button
+            type="button"
+            onClick={() => setActiveTab('dg_manifest')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
+              activeTab === 'dg_manifest'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">2.</span>
+            <span>DG Manifest</span>
+            <span
+              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                dgStats.percentage === 100
+                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                  : 'bg-slate-800 text-cyan-300'
+              }`}
+            >
+              {dgStats.populated}/{dgStats.total}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('bl_manifest')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
+              activeTab === 'bl_manifest'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">3.</span>
+            <span>Bill of Lading</span>
+            <span
+              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                blStats.percentage === 100
+                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                  : 'bg-slate-800 text-cyan-300'
+              }`}
+            >
+              {blStats.populated}/{blStats.total}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('export_center')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
+              activeTab === 'export_center'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">4.</span>
+            <span>Export Center</span>
+          </button>
+        </div>
+
+        {/* Right: Prominent Container UI Icon Button & Header Utilities */}
+        <div className="flex items-center space-x-2 shrink-0">
+          {/* Prominent Container UI Drawer Trigger */}
+          <button
+            type="button"
+            onClick={onOpenContainerModal}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center space-x-2 shadow-sm ${
+              isEquipmentComplete
+                ? 'bg-emerald-950/40 border-emerald-600/50 text-emerald-300 hover:bg-emerald-950/60'
+                : 'bg-amber-950/40 border-amber-500/50 text-amber-300 hover:bg-amber-950/60 animate-pulse'
+            }`}
+            title="Open Container Load Bay, Equipment & SOLAS VGM Allocation"
+          >
+            <Boxes className="w-4 h-4 text-current" />
+            <span className="hidden xl:inline">Container Bay &amp; VGM</span>
+            <span className="flex items-center space-x-1">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isEquipmentComplete ? 'bg-emerald-400' : 'bg-amber-400'
+                }`}
+              />
+              <span className="text-[10px] font-mono font-bold">
+                {isEquipmentComplete
+                  ? `VGM: ${calculatedVgm.toLocaleString()} kg`
+                  : 'Equipment Pending'}
+              </span>
+            </span>
+          </button>
+
+          {/* New Upload Button */}
+          <button
+            type="button"
+            onClick={onNewUpload}
+            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors flex items-center space-x-1"
+            title="Upload new shipment batch"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">New Upload</span>
+          </button>
+
+          {/* API Key Modal Button */}
+          <button
+            type="button"
+            onClick={onOpenApiKeyModal}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-colors"
+            title={hasCustomKey ? 'Custom API Key active' : 'Configure Gemini API Key'}
+          >
+            <Key className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Reset Session */}
+          <button
+            type="button"
             onClick={onHardReset}
             disabled={isPurging}
-            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition-colors border border-slate-700"
-            title="Clear all workspace storage"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/30 text-slate-400 hover:text-rose-400 border border-slate-700 transition-colors"
+            title="Hard Reset Workspace Storage"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isPurging ? 'animate-spin' : ''}`} />
-            <span>Reset</span>
           </button>
         </div>
       </header>
 
-      {/* Main 3-Panel Resizable Operational Container */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* =========================================================================
-            PANEL A: File List, Mode Selector & Extraction Trigger
-            ========================================================================= */}
-        <section
-          style={{ width: `${panelAWidth}px` }}
-          className="h-full flex flex-col bg-slate-950/80 border-r border-slate-800/80 shrink-0 select-none overflow-hidden"
-        >
-          {/* Panel A Header */}
-          <div className="p-3 border-b border-slate-800/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-                Source Files ({uploadedFiles.length})
-              </span>
-              {uploadedFiles.length > 0 && (
-                <button
-                  onClick={onClearFiles}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 transition-colors"
-                >
-                  Clear All
-                </button>
-              )}
-            </div>
-
-            {/* Mode Selector Toggle */}
-            <div className="grid grid-cols-2 p-0.5 bg-slate-900 border border-slate-800 rounded-md">
-              <button
-                type="button"
-                onClick={() => onModeChange('SINGLE_INVOICE')}
-                className={`py-1 text-[10px] font-medium rounded transition-colors text-center ${
-                  mode === 'SINGLE_INVOICE'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Single Invoice
-              </button>
-              <button
-                type="button"
-                onClick={() => onModeChange('MULTI_INVOICE')}
-                className={`py-1 text-[10px] font-medium rounded transition-colors text-center ${
-                  mode === 'MULTI_INVOICE'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Multi-Invoice
-              </button>
-            </div>
-          </div>
-
-          {/* Compact Upload Dropzone */}
-          <div className="p-3 border-b border-slate-800/80">
-            <div
-              onDrop={onDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
-              className="border border-dashed border-slate-700 hover:border-cyan-500/60 rounded-lg p-2.5 text-center cursor-pointer bg-slate-900/40 hover:bg-slate-900 transition-colors group"
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.xlsx,.xls,.csv"
-                className="hidden"
-                onChange={onFileSelect}
-              />
-              <UploadCloud className="w-4 h-4 mx-auto text-slate-500 group-hover:text-cyan-400 transition-colors mb-1" />
-              <p className="text-[11px] text-slate-300 font-medium">Add source files</p>
-              <p className="text-[9px] text-slate-500">PDF, Excel, CSV</p>
-            </div>
-          </div>
-
-          {/* File Tile List (scrollable) */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {uploadedFiles.length === 0 ? (
-              <div className="py-6 text-center text-[11px] text-slate-500 px-3">
-                No files uploaded yet. Drag & drop or browse above.
+      {/* =========================================================================
+          WORKSPACE CONTENT AREA (Renders Active Tab)
+          ========================================================================= */}
+      <main className="flex-1 overflow-hidden relative flex flex-col">
+        {/* ---------------------------------------------------------------------
+            VIEW 1: Extracted Data & Pallets
+            --------------------------------------------------------------------- */}
+        {activeTab === 'extracted_data' && (
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 max-w-7xl w-full mx-auto">
+            {/* Shipment Overview Card */}
+            <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3 shadow-sm">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-center space-x-2">
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Extracted Shipment Canonical Truth
+                  </h3>
+                </div>
+                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
+                  {shipmentJson.uploadMode}
+                </span>
               </div>
-            ) : (
-              uploadedFiles.map((file, idx) => {
-                const isSelected = selectedFileIndex === idx || (selectedFileIndex === null && idx === 0);
-                const isPdf = file.name.toLowerCase().endsWith('.pdf');
-                const isSheet =
-                  file.name.toLowerCase().endsWith('.xlsx') ||
-                  file.name.toLowerCase().endsWith('.xls') ||
-                  file.name.toLowerCase().endsWith('.csv');
 
-                return (
-                  <div
-                    key={`${file.name}-${idx}`}
-                    onClick={() => onSelectFileIndex(idx)}
-                    className={`group flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors border text-left ${
-                      isSelected
-                        ? 'bg-blue-950/40 border-cyan-500/40 text-cyan-200'
-                        : 'bg-slate-900/40 border-slate-800/60 text-slate-300 hover:bg-slate-800/60'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2 truncate min-w-0 pr-1">
-                      {isPdf ? (
-                        <FileText className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                      ) : isSheet ? (
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      ) : (
-                        <File className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <p className="text-[11px] font-medium truncate leading-tight">{file.name}</p>
-                        <p className="text-[9px] font-mono text-slate-500">
-                          {(file.size / 1024).toFixed(0)} KB
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveFile(idx);
-                        if (selectedFileIndex === idx) {
-                          onSelectFileIndex(null);
-                        }
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition-opacity"
-                      title="Remove file"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Panel A Footer: Execution Button & Progress */}
-          <div className="p-3 border-t border-slate-800/80 bg-slate-950 space-y-2">
-            {apiError && (
-              <div className="p-2 rounded bg-rose-950/40 border border-rose-900/60 text-rose-300 text-[10px] leading-tight flex items-start space-x-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-400 mt-0.5" />
-                <span className="truncate">{apiError}</span>
-              </div>
-            )}
-
-            {isParsing && parseProgress && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px] font-mono text-cyan-400">
-                  <span className="truncate">{parseProgress.message || 'Processing...'}</span>
-                  <span>
-                    {parseProgress.processedFiles}/{parseProgress.totalFiles}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Shipper (Consignor)</span>
+                  <span className="font-semibold text-white truncate block">{shipmentJson.shipperName || '—'}</span>
+                  <span className="text-[10px] text-slate-500 font-mono block truncate">
+                    IEC: {shipmentJson.shipperIec || '—'}
                   </span>
                 </div>
-                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 transition-all duration-300"
-                    style={{
-                      width: `${
-                        parseProgress.totalFiles > 0
-                          ? Math.round((parseProgress.processedFiles / parseProgress.totalFiles) * 100)
-                          : 50
-                      }%`
-                    }}
-                  />
+
+                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Consignee</span>
+                  <span className="font-semibold text-white truncate block">{shipmentJson.consigneeName || '—'}</span>
+                  <span className="text-[10px] text-slate-500 font-mono block truncate">
+                    POD: {shipmentJson.portOfDischarge || '—'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Regulatory Hazmat</span>
+                  <span className="font-semibold text-cyan-300 block">
+                    {shipmentJson.unNumber ? `UN ${shipmentJson.unNumber} (Class ${shipmentJson.imoClass || '8'})` : 'Non-DG'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono block truncate">
+                    {shipmentJson.properShippingName || '—'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
+                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Totals &amp; VGM</span>
+                  <span className="font-semibold text-emerald-400 block font-mono">
+                    Gross: {shipmentJson.grossWeightKg.toLocaleString()} kg
+                  </span>
+                  <span className="text-[10px] text-cyan-300 font-mono block">
+                    VGM: {calculatedVgm.toLocaleString()} kg ({shipmentJson.containerType || '20GP'})
+                  </span>
                 </div>
               </div>
-            )}
-
-            <button
-              onClick={onExecuteParsing}
-              disabled={uploadedFiles.length === 0 || isParsing}
-              className={`w-full py-2 px-3 rounded-md text-xs font-semibold flex items-center justify-center space-x-2 transition-all shadow-sm ${
-                uploadedFiles.length === 0 || isParsing
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-900/30'
-              }`}
-            >
-              {isParsing ? (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                  <span>Harmonizing...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Extract & Harmonize</span>
-                </>
-              )}
-            </button>
-          </div>
-        </section>
-
-        {/* Resizer Handle (between Source Files Panel and Editor) */}
-        <div
-          onMouseDown={handleMouseDownResizeA}
-          className="w-1 hover:w-1.5 bg-slate-800 hover:bg-cyan-500/50 cursor-col-resize transition-all z-10 shrink-0"
-          title="Drag to resize source files panel"
-        />
-
-        {/* =========================================================================
-            OPERATIONAL MANIFEST & DATA EDITOR (Expanded Full Width)
-            ========================================================================= */}
-        <section className="flex-1 h-full flex flex-col bg-slate-950 overflow-hidden min-w-[340px]">
-          {/* Panel C Tab Bar */}
-          <div className="h-10 border-b border-slate-800/80 bg-slate-900/70 px-3 flex items-center justify-between shrink-0">
-            <div className="flex items-center space-x-1">
-              <button
-                type="button"
-                onClick={() => setActiveEditorTab('extracted_data')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors flex items-center space-x-2 border-b-2 ${
-                  activeEditorTab === 'extracted_data'
-                    ? 'border-cyan-400 text-cyan-300 bg-slate-800/60'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <TableIcon className="w-3.5 h-3.5" />
-                <span>Extracted Data</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400">
-                  {populatedFieldsCount}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveEditorTab('dg_manifest')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors flex items-center space-x-2 border-b-2 ${
-                  activeEditorTab === 'dg_manifest'
-                    ? 'border-cyan-400 text-cyan-300 bg-slate-800/60'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>DG Manifest</span>
-                <span
-                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                    dgStats.percentage === 100
-                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                      : 'bg-slate-800 text-cyan-300'
-                  }`}
-                >
-                  {dgStats.populated}/{dgStats.total}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveEditorTab('bl_manifest')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors flex items-center space-x-2 border-b-2 ${
-                  activeEditorTab === 'bl_manifest'
-                    ? 'border-cyan-400 text-cyan-300 bg-slate-800/60'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Bill of Lading</span>
-                <span
-                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                    blStats.percentage === 100
-                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                      : 'bg-slate-800 text-cyan-300'
-                  }`}
-                >
-                  {blStats.populated}/{blStats.total}
-                </span>
-              </button>
             </div>
 
-            {/* Quick Format Name Display */}
-            <div className="flex items-center space-x-2">
-              <span className="text-[10px] text-slate-400 hidden xl:inline">
-                {activeEditorTab === 'dg_manifest'
-                  ? `${activeDgFormat.formatName}`
-                  : activeEditorTab === 'bl_manifest'
-                  ? `${activeBlFormat.formatName}`
-                  : 'Universal Ground Truth'}
-              </span>
-            </div>
-          </div>
+            {/* Sub-Tabs: Pallet Annex | Field Audit | Raw JSON */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setDataSubTab('pallets')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center space-x-1.5 ${
+                      dataSubTab === 'pallets'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Boxes className="w-3.5 h-3.5" />
+                    <span>Granular Pallet Table ({shipmentJson.pallets.length})</span>
+                  </button>
 
-          {/* Panel C Content Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* =========================================================================
-                TAB 1: Extracted Data (Field Audit, Pallet Annex, Raw JSON)
-                ========================================================================= */}
-            {activeEditorTab === 'extracted_data' && (
-              <div className="space-y-3">
-                {/* Sub Tab Controls */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => setDataSubTab('audit')}
-                      className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                        dataSubTab === 'audit'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Field Audit ({populatedFieldsCount}/{auditEntries.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDataSubTab('pallets')}
-                      className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                        dataSubTab === 'pallets'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Pallet Annex ({shipmentJson.pallets.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDataSubTab('raw_json')}
-                      className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                        dataSubTab === 'raw_json'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      Raw JSON
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDataSubTab('audit')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center space-x-1.5 ${
+                      dataSubTab === 'audit'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <TableIcon className="w-3.5 h-3.5" />
+                    <span>Field Audit ({populatedFieldsCount}/{auditEntries.length})</span>
+                  </button>
 
-                  {dataSubTab === 'raw_json' && (
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={handleCopyJson}
-                        className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center space-x-1"
-                      >
-                        {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedJson ? 'Copied' : 'Copy JSON'}</span>
-                      </button>
-                      <button
-                        onClick={() => onDownloadJson(shipmentJson, 'extracted_shipment.json')}
-                        className="px-2.5 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white flex items-center space-x-1"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Download</span>
-                      </button>
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDataSubTab('raw_json')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      dataSubTab === 'raw_json'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Raw JSON Schema
+                  </button>
                 </div>
 
-                {/* Sub Tab: Audit Table */}
-                {dataSubTab === 'audit' && (
-                  <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/60">
+                {dataSubTab === 'raw_json' && (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleCopyJson}
+                      className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center space-x-1"
+                    >
+                      {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedJson ? 'Copied' : 'Copy JSON'}</span>
+                    </button>
+                    <button
+                      onClick={() => onDownloadJson(shipmentJson, 'shipment_truth.json')}
+                      className="px-2.5 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white flex items-center space-x-1"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Download</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-tab 1: Pallets Table */}
+              {dataSubTab === 'pallets' && (
+                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 shadow-sm">
+                  {shipmentJson.pallets.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-slate-500">
+                      No pallet records extracted yet. Open the Container UI drawer to add or configure pallets.
+                    </div>
+                  ) : (
                     <table className="w-full text-left text-xs border-collapse font-mono">
                       <thead>
                         <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
-                          <th className="px-3 py-2 w-1/3">Canonical Field</th>
-                          <th className="px-3 py-2">Extracted Value</th>
-                          <th className="px-3 py-2 w-24 text-right">Status</th>
+                          <th className="px-4 py-2.5">Pallet #</th>
+                          <th className="px-4 py-2.5">Model / Description</th>
+                          <th className="px-4 py-2.5 text-right">Box Count</th>
+                          <th className="px-4 py-2.5 text-right">Gross Wt (kg)</th>
+                          <th className="px-4 py-2.5 text-right">Net Wt (kg)</th>
+                          <th className="px-4 py-2.5">Source Provenance</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {auditEntries.map(({ key, displayVal, isBlank }) => (
-                          <tr
-                            key={key}
-                            className="border-b border-slate-800/40 hover:bg-slate-800/40 text-[11px]"
-                          >
-                            <td className="px-3 py-1.5 text-cyan-300 font-medium">{key}</td>
-                            <td className="px-3 py-1.5 text-slate-200 truncate max-w-md">
-                              {isBlank ? <span className="text-slate-600 italic">empty</span> : displayVal}
-                            </td>
-                            <td className="px-3 py-1.5 text-right">
-                              {isBlank ? (
-                                <span className="text-[10px] text-slate-500">pending</span>
-                              ) : (
-                                <span className="text-[10px] text-emerald-400">populated</span>
-                              )}
-                            </td>
+                      <tbody className="divide-y divide-slate-800/40">
+                        {shipmentJson.pallets.map((p, idx) => (
+                          <tr key={p.palletNumber || idx} className="hover:bg-slate-800/40 text-[11px]">
+                            <td className="px-4 py-2 text-cyan-300 font-bold">{p.palletNumber}</td>
+                            <td className="px-4 py-2 text-slate-200">{p.modelCode || '—'}</td>
+                            <td className="px-4 py-2 text-right text-slate-200">{p.boxCount}</td>
+                            <td className="px-4 py-2 text-right text-slate-200">{p.grossWeightKg.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right text-slate-200">{p.netWeightKg.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-slate-400 truncate max-w-xs">{p.sourceFile || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
+                  )}
+                </div>
+              )}
 
-                {/* Sub Tab: Pallets Table */}
-                {dataSubTab === 'pallets' && (
-                  <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/60">
-                    {shipmentJson.pallets.length === 0 ? (
-                      <div className="p-8 text-center text-xs text-slate-500">
-                        No pallet records extracted yet.
-                      </div>
-                    ) : (
-                      <table className="w-full text-left text-xs border-collapse font-mono">
-                        <thead>
-                          <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
-                            <th className="px-3 py-2">Pallet #</th>
-                            <th className="px-3 py-2">Model Code</th>
-                            <th className="px-3 py-2 text-right">Boxes</th>
-                            <th className="px-3 py-2 text-right">Gross (kg)</th>
-                            <th className="px-3 py-2 text-right">Net (kg)</th>
-                            <th className="px-3 py-2">Source File</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {shipmentJson.pallets.map((p, idx) => (
-                            <tr
-                              key={p.palletNumber || idx}
-                              className="border-b border-slate-800/40 hover:bg-slate-800/40 text-[11px]"
-                            >
-                              <td className="px-3 py-1.5 text-cyan-300 font-semibold">{p.palletNumber}</td>
-                              <td className="px-3 py-1.5 text-slate-200">{p.modelCode || '—'}</td>
-                              <td className="px-3 py-1.5 text-right text-slate-300">{p.boxCount}</td>
-                              <td className="px-3 py-1.5 text-right text-slate-300">{p.grossWeightKg}</td>
-                              <td className="px-3 py-1.5 text-right text-slate-300">{p.netWeightKg}</td>
-                              <td className="px-3 py-1.5 text-slate-400 truncate max-w-xs">{p.sourceFile || '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                )}
-
-                {/* Sub Tab: Raw JSON */}
-                {dataSubTab === 'raw_json' && (
-                  <pre className="p-3 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-cyan-300 overflow-x-auto max-h-[600px]">
-                    {JSON.stringify(shipmentJson, null, 2)}
-                  </pre>
-                )}
-              </div>
-            )}
-
-            {/* =========================================================================
-                TAB 2 & 3: Manifest Field Editors (DG Manifest & Bill of Lading)
-                ========================================================================= */}
-            {(activeEditorTab === 'dg_manifest' || activeEditorTab === 'bl_manifest') && (
-              <div className="space-y-4">
-                {/* Format Selector & Field Filter Bar */}
-                <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-lg flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-medium text-slate-300">Carrier Format:</span>
-                    <select
-                      value={activeDocType === 'DG' ? selectedDgFormatId : selectedBlFormatId}
-                      onChange={(e) => {
-                        if (activeDocType === 'DG') {
-                          onSelectDgFormat(e.target.value);
-                        } else {
-                          onSelectBlFormat(e.target.value);
-                        }
-                      }}
-                      className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-cyan-400"
-                    >
-                      {(activeDocType === 'DG' ? dgFormats : blFormats).map((fmt) => (
-                        <option key={fmt.formatId} value={fmt.formatId}>
-                          {fmt.formatName} ({fmt.fields.length} fields)
-                        </option>
+              {/* Sub-tab 2: Field Audit Table */}
+              {dataSubTab === 'audit' && (
+                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 shadow-sm">
+                  <table className="w-full text-left text-xs border-collapse font-mono">
+                    <thead>
+                      <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
+                        <th className="px-4 py-2.5 w-1/3">Canonical Field Key</th>
+                        <th className="px-4 py-2.5">Extracted Value</th>
+                        <th className="px-4 py-2.5 w-24 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/40">
+                      {auditEntries.map(({ key, displayVal, isBlank }) => (
+                        <tr key={key} className="hover:bg-slate-800/40 text-[11px]">
+                          <td className="px-4 py-2 text-cyan-300 font-medium">{key}</td>
+                          <td className="px-4 py-2 text-slate-200 truncate max-w-lg">
+                            {isBlank ? <span className="text-slate-600 italic">empty</span> : displayVal}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            {isBlank ? (
+                              <span className="text-[10px] text-slate-500">pending</span>
+                            ) : (
+                              <span className="text-[10px] text-emerald-400 font-semibold">populated</span>
+                            )}
+                          </td>
+                        </tr>
                       ))}
-                    </select>
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-                    <button
-                      onClick={() => onOpenFormatLibrary(activeDocType)}
-                      className="p-1 rounded text-cyan-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors"
-                      title="Upload custom carrier format template"
-                    >
-                      <FolderPlus className="w-4 h-4" />
-                    </button>
-                  </div>
+              {/* Sub-tab 3: Raw JSON */}
+              {dataSubTab === 'raw_json' && (
+                <pre className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-cyan-300 overflow-x-auto max-h-[600px]">
+                  {JSON.stringify(shipmentJson, null, 2)}
+                </pre>
+              )}
+            </div>
+          </div>
+        )}
 
-                  <div className="flex items-center space-x-2">
-                    {/* Search Field */}
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
-                      <input
-                        type="text"
-                        placeholder="Search fields or values..."
-                        value={fieldSearch}
-                        onChange={(e) => setFieldSearch(e.target.value)}
-                        className="bg-slate-950 border border-slate-700 text-xs text-white rounded-md pl-8 pr-2.5 py-1 w-44 focus:outline-none focus:border-cyan-400"
-                      />
-                    </div>
-
-                    {/* Filter Status */}
-                    <select
-                      value={fieldFilter}
-                      onChange={(e) => setFieldFilter(e.target.value as any)}
-                      className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2 py-1 focus:outline-none focus:border-cyan-400"
-                    >
-                      <option value="ALL">All Fields</option>
-                      <option value="POPULATED">Populated Only</option>
-                      <option value="PENDING">Pending Only</option>
-                    </select>
-                  </div>
+        {/* ---------------------------------------------------------------------
+            VIEW 2: DG Manifest (IMO Boxes 1–22) Split View
+            --------------------------------------------------------------------- */}
+        {activeTab === 'dg_manifest' && (
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left Column: Grouped Interactive Fields (45% Width) */}
+            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-slate-800 bg-slate-950 overflow-hidden">
+              {/* Field Filter & Format Bar */}
+              <div className="p-3 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-medium text-slate-300">Format:</span>
+                  <select
+                    value={selectedDgFormatId}
+                    onChange={(e) => onSelectDgFormat(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-cyan-400 max-w-[200px] truncate"
+                  >
+                    {dgFormats.map((fmt) => (
+                      <option key={fmt.formatId} value={fmt.formatId}>
+                        {fmt.formatName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => onOpenFormatLibrary('DG')}
+                    className="p-1 rounded text-cyan-400 hover:text-cyan-300 hover:bg-slate-800"
+                    title="Upload custom carrier format"
+                  >
+                    <FolderPlus className="w-4 h-4" />
+                  </button>
                 </div>
 
-                {/* Grouped Collapsible Sections */}
-                {Object.entries(groupedFields).length === 0 ? (
-                  <div className="p-8 text-center text-xs text-slate-500 border border-slate-800 rounded-lg">
-                    No fields match your search or filter.
+                <div className="flex items-center space-x-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
+                    <input
+                      type="text"
+                      placeholder="Search DG boxes..."
+                      value={fieldSearch}
+                      onChange={(e) => setFieldSearch(e.target.value)}
+                      className="bg-slate-950 border border-slate-700 text-xs text-white rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-cyan-400"
+                    />
                   </div>
-                ) : (
-                  Object.entries(groupedFields).map(([sectionName, fields]) => {
-                    const isCollapsed = !!collapsedSections[sectionName];
-                    const populatedCount = fields.filter((f) => f.value && f.value.trim() !== '').length;
 
-                    return (
-                      <div
-                        key={sectionName}
-                        className="border border-slate-800/90 rounded-lg overflow-hidden bg-slate-900/50"
-                      >
-                        {/* Section Header */}
-                        <button
-                          type="button"
-                          onClick={() => toggleSection(sectionName)}
-                          className="w-full px-3.5 py-2.5 bg-slate-900/90 hover:bg-slate-800/80 border-b border-slate-800 flex items-center justify-between text-left transition-colors"
-                        >
-                          <div className="flex items-center space-x-2">
-                            {isCollapsed ? (
-                              <ChevronRight className="w-4 h-4 text-slate-400" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-cyan-400" />
-                            )}
-                            <span className="text-xs font-semibold text-white tracking-wide">
-                              {sectionName}
-                            </span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
-                              {populatedCount}/{fields.length}
-                            </span>
-                          </div>
-                        </button>
-
-                        {/* Section Fields Grid (Expanded Full Width) */}
-                        {!isCollapsed && (
-                          <div className="p-3.5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 bg-slate-950/40">
-                            {fields.map((field) => {
-                              const isBlank = !field.value || field.value.trim() === '';
-                              const isLongText =
-                                field.fieldId.includes('address') ||
-                                field.fieldId.includes('marks') ||
-                                field.fieldId.includes('desc') ||
-                                field.value.length > 60 ||
-                                field.value.includes('\n');
-
-                              return (
-                                <div
-                                  key={field.fieldId}
-                                  className={`p-2.5 rounded-md border transition-all ${
-                                    isLongText ? 'col-span-1 md:col-span-2' : 'col-span-1'
-                                  } ${
-                                    isBlank
-                                      ? 'bg-slate-900/30 border-slate-800'
-                                      : 'bg-slate-900/80 border-slate-700/80'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between mb-1.5">
-                                    <div className="flex items-center space-x-1.5 truncate">
-                                      <span
-                                        className="text-xs font-medium text-slate-200 truncate"
-                                        title={field.labelInTemplate}
-                                      >
-                                        {field.labelInTemplate}
-                                      </span>
-                                    </div>
-
-                                    <span
-                                      className={`text-[9px] font-mono px-1 py-0.2 rounded ${
-                                        field.status === 'POPULATED'
-                                          ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40'
-                                          : 'text-slate-500 bg-slate-800'
-                                      }`}
-                                    >
-                                      {field.status}
-                                    </span>
-                                  </div>
-
-                                  {isLongText ? (
-                                    <textarea
-                                      rows={3}
-                                      value={field.value}
-                                      onChange={(e) => onFieldChange(field, activeDocType, e.target.value)}
-                                      placeholder={`Enter ${field.labelInTemplate}...`}
-                                      className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono resize-y"
-                                    />
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={field.value}
-                                      onChange={(e) => onFieldChange(field, activeDocType, e.target.value)}
-                                      placeholder={`Enter ${field.labelInTemplate}...`}
-                                      className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
-                                    />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
+                  <select
+                    value={fieldFilter}
+                    onChange={(e) => setFieldFilter(e.target.value as any)}
+                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2 py-1 focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="ALL">All ({dgStats.total})</option>
+                    <option value="POPULATED">Populated ({dgStats.populated})</option>
+                    <option value="PENDING">Pending ({dgStats.total - dgStats.populated})</option>
+                  </select>
+                </div>
               </div>
-            )}
+
+              {/* Collapsible Grouped Fields Grid */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+                {Object.entries(groupedFields).map(([sectionName, fields]) => {
+                  const isCollapsed = Boolean(collapsedSections[sectionName]);
+                  const populatedCount = fields.filter((f) => f.value && f.value.trim() !== '').length;
+
+                  return (
+                    <div
+                      key={sectionName}
+                      className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(sectionName)}
+                        className="w-full px-3.5 py-2.5 bg-slate-900 hover:bg-slate-850 border-b border-slate-800 flex items-center justify-between text-left transition-colors"
+                      >
+                        <div className="flex items-center space-x-2">
+                          {isCollapsed ? (
+                            <ChevronRight className="w-4 h-4 text-slate-400" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-cyan-400" />
+                          )}
+                          <span className="text-xs font-bold text-white tracking-wide">
+                            {sectionName}
+                          </span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
+                            {populatedCount}/{fields.length}
+                          </span>
+                        </div>
+                      </button>
+
+                      {!isCollapsed && (
+                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-950/30">
+                          {fields.map((field) => {
+                            const isBlank = !field.value || field.value.trim() === '';
+                            const isLongText =
+                              field.fieldId.includes('address') ||
+                              field.fieldId.includes('marks') ||
+                              field.fieldId.includes('desc') ||
+                              field.value.length > 50 ||
+                              field.value.includes('\n');
+
+                            return (
+                              <div
+                                key={field.fieldId}
+                                className={`p-2.5 rounded-lg border transition-all ${
+                                  isLongText ? 'col-span-1 sm:col-span-2' : 'col-span-1'
+                                } ${
+                                  isBlank
+                                    ? 'bg-slate-900/30 border-slate-800'
+                                    : 'bg-slate-900/80 border-slate-700/80'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span
+                                    className="text-[11px] font-medium text-slate-300 truncate"
+                                    title={field.labelInTemplate}
+                                  >
+                                    {field.labelInTemplate}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-mono px-1 py-0.2 rounded ${
+                                      field.status === 'POPULATED'
+                                        ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40'
+                                        : 'text-slate-500 bg-slate-800'
+                                    }`}
+                                  >
+                                    {field.status}
+                                  </span>
+                                </div>
+
+                                {isLongText ? (
+                                  <textarea
+                                    rows={3}
+                                    value={field.value}
+                                    onChange={(e) => onFieldChange(field, 'DG', e.target.value)}
+                                    placeholder={`Enter ${field.labelInTemplate}...`}
+                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono resize-y"
+                                  />
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={field.value}
+                                    onChange={(e) => onFieldChange(field, 'DG', e.target.value)}
+                                    placeholder={`Enter ${field.labelInTemplate}...`}
+                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right Column: Real-Time SOLAS 74 Multimodal DG A4 Document Preview (52% Width) */}
+            <div className="hidden lg:flex flex-1 h-full flex-col bg-slate-900 overflow-hidden">
+              {/* Document Preview Toolbar */}
+              <div className="h-11 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between shrink-0">
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs font-semibold text-white tracking-wide">
+                    Live SOLAS 74 / MARPOL DG Declaration Preview (A4)
+                  </span>
+                </div>
+
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    onClick={() => onPrintPdf('DG')}
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    title="Print PDF"
+                  >
+                    <Printer className="w-3 h-3 text-cyan-400" />
+                    <span>Print PDF</span>
+                  </button>
+                  <button
+                    onClick={() => onDownloadDocx('DG')}
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    title="Download Word Document"
+                  >
+                    <FileText className="w-3 h-3 text-blue-400" />
+                    <span>Word</span>
+                  </button>
+                  <button
+                    onClick={() => onDownloadHtml('DG')}
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    title="Download HTML"
+                  >
+                    <ExternalLink className="w-3 h-3 text-emerald-400" />
+                    <span>HTML</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Embedded Live A4 Document Frame */}
+              <div className="flex-1 p-3 bg-slate-900/90 overflow-auto flex justify-center">
+                <iframe
+                  srcDoc={liveDgHtml}
+                  title="SOLAS DG Live Preview"
+                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-2xl border border-slate-700"
+                />
+              </div>
+            </div>
           </div>
-        </section>
-      </div>
+        )}
+
+        {/* ---------------------------------------------------------------------
+            VIEW 3: Bill of Lading (BOL) Split View
+            --------------------------------------------------------------------- */}
+        {activeTab === 'bl_manifest' && (
+          <div className="flex-1 flex overflow-hidden">
+            {/* Left Column: Grouped Interactive Fields (45% Width) */}
+            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-slate-800 bg-slate-950 overflow-hidden">
+              {/* Field Filter & Format Bar */}
+              <div className="p-3 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-medium text-slate-300">Format:</span>
+                  <select
+                    value={selectedBlFormatId}
+                    onChange={(e) => onSelectBlFormat(e.target.value)}
+                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-cyan-400 max-w-[200px] truncate"
+                  >
+                    {blFormats.map((fmt) => (
+                      <option key={fmt.formatId} value={fmt.formatId}>
+                        {fmt.formatName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => onOpenFormatLibrary('BL')}
+                    className="p-1 rounded text-cyan-400 hover:text-cyan-300 hover:bg-slate-800"
+                    title="Upload custom carrier format"
+                  >
+                    <FolderPlus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
+                    <input
+                      type="text"
+                      placeholder="Search BOL fields..."
+                      value={fieldSearch}
+                      onChange={(e) => setFieldSearch(e.target.value)}
+                      className="bg-slate-950 border border-slate-700 text-xs text-white rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <select
+                    value={fieldFilter}
+                    onChange={(e) => setFieldFilter(e.target.value as any)}
+                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2 py-1 focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="ALL">All ({blStats.total})</option>
+                    <option value="POPULATED">Populated ({blStats.populated})</option>
+                    <option value="PENDING">Pending ({blStats.total - blStats.populated})</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Collapsible Grouped Fields Grid */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+                {Object.entries(groupedFields).map(([sectionName, fields]) => {
+                  const isCollapsed = Boolean(collapsedSections[sectionName]);
+                  const populatedCount = fields.filter((f) => f.value && f.value.trim() !== '').length;
+
+                  return (
+                    <div
+                      key={sectionName}
+                      className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(sectionName)}
+                        className="w-full px-3.5 py-2.5 bg-slate-900 hover:bg-slate-850 border-b border-slate-800 flex items-center justify-between text-left transition-colors"
+                      >
+                        <div className="flex items-center space-x-2">
+                          {isCollapsed ? (
+                            <ChevronRight className="w-4 h-4 text-slate-400" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-cyan-400" />
+                          )}
+                          <span className="text-xs font-bold text-white tracking-wide">
+                            {sectionName}
+                          </span>
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
+                            {populatedCount}/{fields.length}
+                          </span>
+                        </div>
+                      </button>
+
+                      {!isCollapsed && (
+                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-950/30">
+                          {fields.map((field) => {
+                            const isBlank = !field.value || field.value.trim() === '';
+                            const isLongText =
+                              field.fieldId.includes('address') ||
+                              field.fieldId.includes('marks') ||
+                              field.fieldId.includes('desc') ||
+                              field.value.length > 50 ||
+                              field.value.includes('\n');
+
+                            return (
+                              <div
+                                key={field.fieldId}
+                                className={`p-2.5 rounded-lg border transition-all ${
+                                  isLongText ? 'col-span-1 sm:col-span-2' : 'col-span-1'
+                                } ${
+                                  isBlank
+                                    ? 'bg-slate-900/30 border-slate-800'
+                                    : 'bg-slate-900/80 border-slate-700/80'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span
+                                    className="text-[11px] font-medium text-slate-300 truncate"
+                                    title={field.labelInTemplate}
+                                  >
+                                    {field.labelInTemplate}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-mono px-1 py-0.2 rounded ${
+                                      field.status === 'POPULATED'
+                                        ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40'
+                                        : 'text-slate-500 bg-slate-800'
+                                    }`}
+                                  >
+                                    {field.status}
+                                  </span>
+                                </div>
+
+                                {isLongText ? (
+                                  <textarea
+                                    rows={3}
+                                    value={field.value}
+                                    onChange={(e) => onFieldChange(field, 'BL', e.target.value)}
+                                    placeholder={`Enter ${field.labelInTemplate}...`}
+                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono resize-y"
+                                  />
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={field.value}
+                                    onChange={(e) => onFieldChange(field, 'BL', e.target.value)}
+                                    placeholder={`Enter ${field.labelInTemplate}...`}
+                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right Column: Real-Time Ocean Bill of Lading A4 Document Preview (52% Width) */}
+            <div className="hidden lg:flex flex-1 h-full flex-col bg-slate-900 overflow-hidden">
+              {/* Document Preview Toolbar */}
+              <div className="h-11 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between shrink-0">
+                <div className="flex items-center space-x-2">
+                  <FileSpreadsheet className="w-4 h-4 text-blue-400" />
+                  <span className="text-xs font-semibold text-white tracking-wide">
+                    Live Ocean Bill of Lading Draft Preview (A4)
+                  </span>
+                </div>
+
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    onClick={() => onPrintPdf('BL')}
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    title="Print PDF"
+                  >
+                    <Printer className="w-3 h-3 text-cyan-400" />
+                    <span>Print PDF</span>
+                  </button>
+                  <button
+                    onClick={() => onDownloadDocx('BL')}
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    title="Download Word Document"
+                  >
+                    <FileText className="w-3 h-3 text-blue-400" />
+                    <span>Word</span>
+                  </button>
+                  <button
+                    onClick={() => onDownloadHtml('BL')}
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    title="Download HTML"
+                  >
+                    <ExternalLink className="w-3 h-3 text-emerald-400" />
+                    <span>HTML</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Embedded Live A4 Document Frame */}
+              <div className="flex-1 p-3 bg-slate-900/90 overflow-auto flex justify-center">
+                <iframe
+                  srcDoc={liveBlHtml}
+                  title="BOL Live Preview"
+                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-2xl border border-slate-700"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------------------------------------------------------------
+            VIEW 4: Export Center (.ZIP / PDF / DOCX)
+            --------------------------------------------------------------------- */}
+        {activeTab === 'export_center' && (
+          <div className="flex-1 overflow-y-auto p-6 max-w-5xl w-full mx-auto space-y-6">
+            <div className="text-center space-y-1">
+              <h2 className="text-base font-bold text-white tracking-wide">
+                Document Export &amp; Carrier Issuance Center
+              </h2>
+              <p className="text-xs text-slate-400">
+                Verified multi-format downloads for customs submission and carrier filing
+              </p>
+            </div>
+
+            {/* Side-by-side DG & BOL Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* DG Card */}
+              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-4 shadow-sm">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-cyan-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-white">Dangerous Goods Manifest</h3>
+                      <p className="text-[10px] text-slate-400 font-mono">SOLAS 74 IMO Boxes 1–22</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                    {dgStats.populated}/{dgStats.total} Mapped
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => onPrintPdf('DG')}
+                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-center transition-all group"
+                  >
+                    <Printer className="w-4 h-4 text-cyan-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-white block">Print PDF</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Direct print dialog</span>
+                  </button>
+
+                  <button
+                    onClick={() => onDownloadDocx('DG')}
+                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-blue-500/50 text-center transition-all group"
+                  >
+                    <FileText className="w-4 h-4 text-blue-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-white block">Word .docx</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Editable document</span>
+                  </button>
+
+                  <button
+                    onClick={() => onDownloadHtml('DG')}
+                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-center transition-all group"
+                  >
+                    <ExternalLink className="w-4 h-4 text-emerald-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-white block">Maritime HTML</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Standalone file</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* BOL Card */}
+              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-4 shadow-sm">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-blue-950 border border-blue-800 flex items-center justify-center">
+                      <FileSpreadsheet className="w-4 h-4 text-blue-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-white">Bill of Lading Draft</h3>
+                      <p className="text-[10px] text-slate-400 font-mono">Standard Ocean B/L Format</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                    {blStats.populated}/{blStats.total} Mapped
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => onPrintPdf('BL')}
+                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-center transition-all group"
+                  >
+                    <Printer className="w-4 h-4 text-cyan-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-white block">Print PDF</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Direct print dialog</span>
+                  </button>
+
+                  <button
+                    onClick={() => onDownloadDocx('BL')}
+                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-blue-500/50 text-center transition-all group"
+                  >
+                    <FileText className="w-4 h-4 text-blue-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-white block">Word .docx</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Editable document</span>
+                  </button>
+
+                  <button
+                    onClick={() => onDownloadHtml('BL')}
+                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-center transition-all group"
+                  >
+                    <ExternalLink className="w-4 h-4 text-emerald-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-white block">Maritime HTML</span>
+                    <span className="text-[9px] text-slate-500 font-mono">Standalone file</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Complete Package (.ZIP) Card */}
+            <div className="p-6 bg-gradient-to-r from-blue-950/80 to-cyan-950/80 border border-cyan-500/50 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="space-y-1 text-center sm:text-left">
+                <div className="flex items-center justify-center sm:justify-start space-x-2">
+                  <Package className="w-5 h-5 text-cyan-400" />
+                  <h3 className="text-sm font-bold text-white">Complete Shipment Package (.zip)</h3>
+                </div>
+                <p className="text-xs text-slate-300 max-w-md">
+                  Downloads an all-inclusive archive containing both DG and BOL manifests in PDF, Word (.docx), Maritime HTML, JSON data, and Pallet Annex tables.
+                </p>
+              </div>
+
+              <button
+                onClick={onDownloadZip}
+                disabled={isExportingZip}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/60 flex items-center space-x-2 transition-all shrink-0"
+              >
+                <Package className={`w-4 h-4 ${isExportingZip ? 'animate-spin' : ''}`} />
+                <span>{isExportingZip ? 'Compiling ZIP...' : 'Download Complete Package (.zip)'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
 
       {/* =========================================================================
           PERSISTENT BOTTOM ACTION BAR
           ========================================================================= */}
-      <footer className="h-13 px-4 border-t border-slate-800/80 bg-slate-900/95 flex items-center justify-between shrink-0 z-20 shadow-lg">
+      <footer className="h-12 px-4 sm:px-6 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between shrink-0 z-30 shadow-lg">
         {/* Left summary readouts */}
         <div className="flex items-center space-x-3 text-xs font-mono truncate">
-          <div className="flex items-center space-x-1.5 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+          <div className="flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
             <span className="text-slate-400">DG:</span>
-            <span className="text-cyan-300 font-semibold">
-              {dgStats.populated}/{dgStats.total}
-            </span>
+            <span className="text-cyan-300 font-semibold">{dgStats.populated}/{dgStats.total}</span>
           </div>
 
-          <div className="flex items-center space-x-1.5 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+          <div className="flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
             <span className="text-slate-400">BL:</span>
-            <span className="text-cyan-300 font-semibold">
-              {blStats.populated}/{blStats.total}
-            </span>
+            <span className="text-cyan-300 font-semibold">{blStats.populated}/{blStats.total}</span>
           </div>
 
           {shipmentJson.grossWeightKg > 0 && (
-            <div className="hidden sm:flex items-center space-x-1.5 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+            <div className="hidden sm:flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
               <span className="text-slate-400">Gross:</span>
-              <span className="text-emerald-400">
-                {shipmentJson.grossWeightKg.toLocaleString()} kg
-              </span>
+              <span className="text-emerald-400">{shipmentJson.grossWeightKg.toLocaleString()} kg</span>
             </div>
           )}
 
           {calculatedVgm > 0 && (
-            <div className="hidden md:flex items-center space-x-1.5 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
+            <div className="hidden md:flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
               <span className="text-slate-400">VGM:</span>
-              <span className="text-emerald-400 font-semibold">
-                {calculatedVgm.toLocaleString()} kg
-              </span>
+              <span className="text-emerald-400 font-semibold">{calculatedVgm.toLocaleString()} kg</span>
             </div>
           )}
         </div>
 
         {/* Right Export Buttons */}
         <div className="flex items-center space-x-2 shrink-0">
-          {/* Target doc toggle for exports */}
           <div className="flex bg-slate-950 border border-slate-800 rounded p-0.5 mr-1">
             <button
               onClick={() => setExportTargetDoc('DG')}
@@ -933,39 +1164,39 @@ export function WorkspacePage({
 
           <button
             onClick={() => onPrintPdf(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-medium border border-slate-700 transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
             title={`Print-Ready PDF (${exportTargetDoc})`}
           >
             <Printer className="w-3.5 h-3.5 text-cyan-400" />
-            <span>PDF</span>
+            <span className="hidden sm:inline">PDF</span>
           </button>
 
           <button
             onClick={() => onDownloadDocx(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-medium border border-slate-700 transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
             title={`Editable Word Document (${exportTargetDoc})`}
           >
             <FileText className="w-3.5 h-3.5 text-blue-400" />
-            <span>Word</span>
+            <span className="hidden sm:inline">Word</span>
           </button>
 
           <button
             onClick={() => onDownloadHtml(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-medium border border-slate-700 transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
             title={`Maritime Submission HTML (${exportTargetDoc})`}
           >
             <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
-            <span>HTML</span>
+            <span className="hidden sm:inline">HTML</span>
           </button>
 
           <button
             onClick={onDownloadZip}
             disabled={isExportingZip}
-            className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center space-x-1.5 px-3 py-1 rounded bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-sm transition-all"
             title="Download Complete Shipment Package (.zip)"
           >
             <Package className={`w-3.5 h-3.5 ${isExportingZip ? 'animate-spin' : ''}`} />
-            <span>{isExportingZip ? 'Compiling ZIP...' : 'Package (.zip)'}</span>
+            <span>Package (.zip)</span>
           </button>
         </div>
       </footer>
