@@ -30,7 +30,6 @@ import type {
   FormatDocumentType
 } from '../types/index.ts';
 import type { ParseSessionProgress } from '../utils/documentParser.ts';
-import { DocumentPreviewPanel } from './DocumentPreviewPanel.tsx';
 import { groupManifestFieldsBySection } from '../utils/manifestMatcher.ts';
 
 interface WorkspacePageProps {
@@ -120,9 +119,8 @@ export function WorkspacePage({
   isExportingZip
 }: WorkspacePageProps): React.JSX.Element {
   // Panel resizing state
-  const [panelAWidth, setPanelAWidth] = useState<number>(250); // Left file panel
-  const [panelBWidth, setPanelBWidth] = useState<number>(400); // Center preview panel
-  const isDraggingRef = useRef<'panelA' | 'panelB' | null>(null);
+  const [panelAWidth, setPanelAWidth] = useState<number>(280); // Left file panel
+  const isDraggingRef = useRef<boolean>(false);
 
   // Tabbed Editor State: 'extracted_data' | 'dg_manifest' | 'bl_manifest'
   const [activeEditorTab, setActiveEditorTab] = useState<'extracted_data' | 'dg_manifest' | 'bl_manifest'>('dg_manifest');
@@ -139,53 +137,22 @@ export function WorkspacePage({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // File currently selected for preview
-  const selectedFile = useMemo(() => {
-    if (selectedFileIndex !== null && uploadedFiles[selectedFileIndex]) {
-      return uploadedFiles[selectedFileIndex];
-    }
-    return uploadedFiles[0] || null;
-  }, [selectedFileIndex, uploadedFiles]);
-
   // Handle panel resize drag
   const handleMouseDownResizeA = (e: React.MouseEvent) => {
     e.preventDefault();
-    isDraggingRef.current = 'panelA';
+    isDraggingRef.current = true;
     const startX = e.clientX;
     const startWidth = panelAWidth;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (isDraggingRef.current === 'panelA') {
+      if (isDraggingRef.current) {
         const delta = moveEvent.clientX - startX;
-        setPanelAWidth(Math.max(180, Math.min(380, startWidth + delta)));
+        setPanelAWidth(Math.max(200, Math.min(440, startWidth + delta)));
       }
     };
 
     const handleMouseUp = () => {
-      isDraggingRef.current = null;
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const handleMouseDownResizeB = (e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingRef.current = 'panelB';
-    const startX = e.clientX;
-    const startWidth = panelBWidth;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (isDraggingRef.current === 'panelB') {
-        const delta = moveEvent.clientX - startX;
-        setPanelBWidth(Math.max(260, Math.min(650, startWidth + delta)));
-      }
-    };
-
-    const handleMouseUp = () => {
-      isDraggingRef.current = null;
+      isDraggingRef.current = false;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -494,7 +461,7 @@ export function WorkspacePage({
           </div>
         </section>
 
-        {/* Resizer Handle A (between Panel A and Panel B) */}
+        {/* Resizer Handle (between Source Files Panel and Editor) */}
         <div
           onMouseDown={handleMouseDownResizeA}
           className="w-1 hover:w-1.5 bg-slate-800 hover:bg-cyan-500/50 cursor-col-resize transition-all z-10 shrink-0"
@@ -502,24 +469,7 @@ export function WorkspacePage({
         />
 
         {/* =========================================================================
-            PANEL B: Source Document Preview (PDF / Sheet / Text Canvas)
-            ========================================================================= */}
-        <section
-          style={{ width: `${panelBWidth}px` }}
-          className="h-full flex flex-col shrink-0 overflow-hidden bg-slate-900"
-        >
-          <DocumentPreviewPanel key={selectedFile?.name || 'none'} file={selectedFile} />
-        </section>
-
-        {/* Resizer Handle B (between Panel B and Panel C) */}
-        <div
-          onMouseDown={handleMouseDownResizeB}
-          className="w-1 hover:w-1.5 bg-slate-800 hover:bg-cyan-500/50 cursor-col-resize transition-all z-10 shrink-0"
-          title="Drag to resize document preview panel"
-        />
-
-        {/* =========================================================================
-            PANEL C: Tabbed Editor (Extracted Data | DG Manifest | Bill of Lading)
+            OPERATIONAL MANIFEST & DATA EDITOR (Expanded Full Width)
             ========================================================================= */}
         <section className="flex-1 h-full flex flex-col bg-slate-950 overflow-hidden min-w-[340px]">
           {/* Panel C Tab Bar */}
@@ -844,9 +794,9 @@ export function WorkspacePage({
                           </div>
                         </button>
 
-                        {/* Section Fields Grid */}
+                        {/* Section Fields Grid (Expanded Full Width) */}
                         {!isCollapsed && (
-                          <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-950/40">
+                          <div className="p-3.5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 bg-slate-950/40">
                             {fields.map((field) => {
                               const isBlank = !field.value || field.value.trim() === '';
                               const isLongText =
@@ -860,6 +810,8 @@ export function WorkspacePage({
                                 <div
                                   key={field.fieldId}
                                   className={`p-2.5 rounded-md border transition-all ${
+                                    isLongText ? 'col-span-1 md:col-span-2' : 'col-span-1'
+                                  } ${
                                     isBlank
                                       ? 'bg-slate-900/30 border-slate-800'
                                       : 'bg-slate-900/80 border-slate-700/80'
