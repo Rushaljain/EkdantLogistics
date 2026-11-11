@@ -45,14 +45,12 @@ import { NavigationSidebar, type PageId } from './components/NavigationSidebar.t
 import { WorkspacePage } from './components/WorkspacePage.tsx';
 import { FilesPage } from './components/FilesPage.tsx';
 import { FormatAdderPage } from './components/FormatAdderPage.tsx';
-import { ContainerBayModal } from './components/ContainerBayModal.tsx';
 import { UploadLandingView } from './components/UploadLandingView.tsx';
 
 export function App(): React.JSX.Element {
   // Navigation & Shell State
   const [activePage, setActivePage] = useState<PageId>('workspace');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
-  const [showContainerModal, setShowContainerModal] = useState<boolean>(false);
 
   // Ingestion & File State
   const [mode, setMode] = useState<UploadMode | ''>('');
@@ -523,7 +521,7 @@ export function App(): React.JSX.Element {
               onFieldChange={handleFieldChange}
               dgCustomOverrides={dgCustomOverrides}
               blCustomOverrides={blCustomOverrides}
-              onOpenContainerModal={() => setShowContainerModal(true)}
+              onOpenContainerModal={() => {}}
               onNewUpload={handleFlushAndNewShipment}
               onHardReset={handleHardReset}
               isPurging={isPurging}
@@ -588,14 +586,6 @@ export function App(): React.JSX.Element {
           />
         )}
       </div>
-
-      {/* Slide-over Container Bay & Equipment Modal */}
-      <ContainerBayModal
-        isOpen={showContainerModal}
-        onClose={() => setShowContainerModal(false)}
-        shipmentJson={shipmentJson}
-        onUpdateShipment={handleUpdateShipmentFromContainer}
-      />
 
       {/* API Key Modal */}
       {showKeyModal && (

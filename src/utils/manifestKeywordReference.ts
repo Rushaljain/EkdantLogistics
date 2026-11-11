@@ -239,11 +239,76 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
     }
   }
 
-  // 3. Deterministic Pallet Range Synthesis into shippingMarks
+  // 3. Guarantee shipment.pallets Hydration & Fallback Synthesis
+  if (!clean.pallets || clean.pallets.length === 0) {
+    const marksAndDesc = `${clean.shippingMarks || ''}\n${clean.productDescription || ''}`;
+    const synthesizedIds: string[] = [];
+
+    // Parse pallet ranges in shippingMarks/productDescription: e.g. "5644 - 5655", "P-01 TO P-22", "PLT-1 - 12"
+    const rangeMatch = marksAndDesc.match(/(?:PALLET(?:S|\s*NOS?\.?)?[:.\s]*)?([A-Z0-9_-]*\d+)\s*(?:-|TO|\.\.\.)\s*([A-Z0-9_-]*\d+)/i);
+    if (rangeMatch) {
+      const startStr = rangeMatch[1].trim();
+      const endStr = rangeMatch[2].trim();
+      const startDigitsMatch = startStr.match(/\d+$/);
+      const endDigitsMatch = endStr.match(/\d+$/);
+
+      if (startDigitsMatch && endDigitsMatch) {
+        const prefix = startStr.slice(0, startDigitsMatch.index);
+        const startNum = parseInt(startDigitsMatch[0], 10);
+        const endNum = parseInt(endDigitsMatch[0], 10);
+        const padLen = startDigitsMatch[0].length;
+
+        if (endNum >= startNum && endNum - startNum + 1 <= 100) {
+          for (let n = startNum; n <= endNum; n++) {
+            synthesizedIds.push(`${prefix}${n.toString().padStart(padLen, '0')}`);
+          }
+        }
+      }
+    }
+
+    // Fallback if no valid range parsed: check totalPallets or outerPackagingCount
+    const countFallback = clean.totalPallets || clean.outerPackagingCount || 0;
+    if (synthesizedIds.length === 0 && countFallback > 0 && countFallback <= 100) {
+      for (let i = 1; i <= countFallback; i++) {
+        synthesizedIds.push(`PLT-${i.toString().padStart(2, '0')}`);
+      }
+    }
+
+    if (synthesizedIds.length > 0) {
+      const palletCount = synthesizedIds.length;
+      const totalBoxes = clean.totalBoxes || clean.totalPackages || clean.innerPackageCount || 0;
+      const totalGross = clean.grossWeightKg || 0;
+      const totalNet = clean.netWeightKg || 0;
+      const baseBoxes = palletCount > 0 ? Math.floor(totalBoxes / palletCount) : 0;
+      const remainderBoxes = palletCount > 0 ? totalBoxes % palletCount : 0;
+      const baseGross = palletCount > 0 ? Number((totalGross / palletCount).toFixed(2)) : 0;
+      const baseNet = palletCount > 0 ? Number((totalNet / palletCount).toFixed(2)) : 0;
+
+      const model = clean.productDescription ? clean.productDescription.split('\n')[0].slice(0, 30).trim() : (clean.brandName || '');
+
+      clean.pallets = synthesizedIds.map((pId, idx) => ({
+        palletNumber: pId,
+        modelCode: model,
+        boxCount: baseBoxes + (idx < remainderBoxes ? 1 : 0),
+        grossWeightKg: baseGross,
+        netWeightKg: baseNet,
+        sourceFile: 'Synthesized from Shipment Manifest'
+      }));
+
+      if (!clean.totalPallets || clean.totalPallets === 0) {
+        clean.totalPallets = palletCount;
+      }
+      if (!clean.outerPackagingCount || clean.outerPackagingCount === 0) {
+        clean.outerPackagingCount = palletCount;
+      }
+    }
+  }
+
+  // 4. Deterministic Pallet Range Synthesis into shippingMarks
   if (clean.pallets && clean.pallets.length > 0) {
     const synthesizedRanges = synthesizePalletRanges(clean.pallets);
     if (synthesizedRanges.length > 0) {
-      let currentMarks = (clean.shippingMarks || '').trim();
+      const currentMarks = (clean.shippingMarks || '').trim();
       const missingRanges = synthesizedRanges.filter(range => {
         // If range contains "TO", check if full range or start/end is already in marks
         return !currentMarks.includes(range);
@@ -252,6 +317,23 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
       if (missingRanges.length > 0) {
         const palletBlock = `PALLET NOS: ${missingRanges.join(', ')}`;
         clean.shippingMarks = currentMarks ? `${currentMarks}\n${palletBlock}` : palletBlock;
+      }
+    }
+  }
+
+  // 5. Smart Equipment Constraint Auto-Selection (Container Type & Tare Weight)
+  const currentPalletCount = (clean.pallets && clean.pallets.length) || clean.totalPallets || 0;
+  const currentGrossWt = clean.grossWeightKg || 0;
+  if (!clean.containerType || clean.containerType === '20GP') {
+    if (currentPalletCount > 22 || currentGrossWt > 25000) {
+      clean.containerType = '40GP';
+      if (!clean.tareWeightKg || clean.tareWeightKg === 0 || clean.tareWeightKg === 2150) {
+        clean.tareWeightKg = 3750;
+      }
+    } else {
+      clean.containerType = '20GP';
+      if (!clean.tareWeightKg || clean.tareWeightKg === 0) {
+        clean.tareWeightKg = 2150;
       }
     }
   }
