@@ -215,12 +215,12 @@ export function UploadLandingView({
               {isParsing ? (
                 <>
                   <Sparkles className="w-4 h-4 animate-spin" />
-                  <span>Harmonizing Multi-File Batch...</span>
+                  <span>Processing Documents...</span>
                 </>
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-current" />
-                  <span>Extract &amp; Harmonize Manifests</span>
+                  <span>Process Documents</span>
                 </>
               )}
             </button>
