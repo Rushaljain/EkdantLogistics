@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Boxes,
   FileText,
@@ -106,6 +106,18 @@ export function WorkspacePage({
   const [dataSubTab, setDataSubTab] = useState<'audit' | 'pallets' | 'raw_json'>('pallets');
 
   const [copiedJson, setCopiedJson] = useState(false);
+
+  // Synchronize handler for container bay
+  const containerSyncRef = useRef<(() => void) | null>(null);
+  const [hasContainerSynced, setHasContainerSynced] = useState(false);
+
+  const handleContainerSync = () => {
+    if (containerSyncRef.current) {
+      containerSyncRef.current();
+      setHasContainerSynced(true);
+      setTimeout(() => setHasContainerSynced(false), 3000);
+    }
+  };
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(JSON.stringify(shipmentJson, null, 2));
@@ -614,6 +626,9 @@ export function WorkspacePage({
               shipmentJson={shipmentJson}
               onUpdateShipment={onUpdateShipment}
               onSwitchTab={(tab) => setActiveTab(tab)}
+              registerSyncHandler={(handler) => {
+                containerSyncRef.current = handler;
+              }}
             />
           </div>
         )}
@@ -785,40 +800,56 @@ export function WorkspacePage({
           )}
         </div>
 
-        {/* Right Export Buttons */}
+        {/* Right Actions: Apply & Sync when in container tab, otherwise Export Buttons */}
         <div className="flex items-center space-x-2 shrink-0">
-          <div className="relative">
-            <select
-              value=""
-              onChange={(e) => {
-                const val = e.target.value;
-                if (!val) return;
-                const targetDoc: FormatDocumentType = activeTab === 'bl_manifest' ? 'BL' : 'DG';
-                if (val === 'PDF') {
-                  onPrintPdf(targetDoc);
-                } else if (val === 'Word') {
-                  onDownloadDocx(targetDoc);
-                }
-              }}
-              className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
+          {activeTab === 'container_bay' ? (
+            <button
+              type="button"
+              onClick={handleContainerSync}
+              className={`flex items-center space-x-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all cursor-pointer ${
+                hasContainerSynced
+                  ? 'bg-state-success text-white'
+                  : 'bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text'
+              }`}
             >
-              <option value="" disabled>
-                Export Document ({activeTab === 'bl_manifest' ? 'BL' : 'DG'})
-              </option>
-              <option value="PDF">PDF Document</option>
-              <option value="Word">Word (.docx)</option>
-            </select>
-          </div>
+              <span>{hasContainerSynced ? '✓ Synced to Manifests!' : 'Apply & Sync to Manifests'}</span>
+            </button>
+          ) : (
+            <>
+              <div className="relative">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    const targetDoc: FormatDocumentType = activeTab === 'bl_manifest' ? 'BL' : 'DG';
+                    if (val === 'PDF') {
+                      onPrintPdf(targetDoc);
+                    } else if (val === 'Word') {
+                      onDownloadDocx(targetDoc);
+                    }
+                  }}
+                  className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
+                >
+                  <option value="" disabled>
+                    Export Document ({activeTab === 'bl_manifest' ? 'BL' : 'DG'})
+                  </option>
+                  <option value="PDF">PDF Document</option>
+                  <option value="Word">Word (.docx)</option>
+                </select>
+              </div>
 
-          <button
-            onClick={onDownloadZip}
-            disabled={isExportingZip}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all"
-            title="Download Complete Shipment Package (.zip)"
-          >
-            <Package className={`w-3.5 h-3.5 ${isExportingZip ? 'animate-spin' : ''}`} />
-            <span>Package (.zip)</span>
-          </button>
+              <button
+                onClick={onDownloadZip}
+                disabled={isExportingZip}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all"
+                title="Download Complete Shipment Package (.zip)"
+              >
+                <Package className={`w-3.5 h-3.5 ${isExportingZip ? 'animate-spin' : ''}`} />
+                <span>Package (.zip)</span>
+              </button>
+            </>
+          )}
         </div>
       </footer>
     </div>

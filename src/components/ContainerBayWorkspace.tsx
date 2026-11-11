@@ -1,16 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Boxes,
-  CheckCircle2,
   Plus,
   Trash2,
-  Sparkles,
-  Info,
   Scale,
   Edit2,
   X,
-  FileText,
-  ExternalLink,
   ChevronDown,
   Layers
 } from 'lucide-react';
@@ -33,12 +28,14 @@ interface ContainerBayWorkspaceProps {
   shipmentJson: ExtractedShipmentJSON;
   onUpdateShipment: (updated: ExtractedShipmentJSON) => void;
   onSwitchTab?: (tab: 'dg_manifest' | 'bl_manifest') => void;
+  registerSyncHandler?: (handler: () => void) => void;
 }
 
 export function ContainerBayWorkspace({
   shipmentJson,
   onUpdateShipment,
-  onSwitchTab
+  onSwitchTab: _onSwitchTab,
+  registerSyncHandler
 }: ContainerBayWorkspaceProps): React.JSX.Element {
   // Smart Equipment Constraint Auto-Selection on initialization
   const initialPallets = shipmentJson.pallets || [];
@@ -126,7 +123,7 @@ export function ContainerBayWorkspace({
     return map;
   });
 
-  const [hasSynced, setHasSynced] = useState<boolean>(false);
+  const [, setHasSynced] = useState<boolean>(false);
   const [showAddMenu, setShowAddMenu] = useState<boolean>(false);
 
   // Pallet Add / Edit modal state
@@ -405,74 +402,30 @@ export function ContainerBayWorkspace({
     setTimeout(() => setHasSynced(false), 3000);
   };
 
+  const syncRef = useRef(handleApplyAndSync);
+  useEffect(() => {
+    syncRef.current = handleApplyAndSync;
+  });
+
+  useEffect(() => {
+    if (registerSyncHandler) {
+      registerSyncHandler(() => syncRef.current());
+    }
+  }, [registerSyncHandler]);
+
   return (
     <div className="w-full max-w-7xl mx-auto space-y-5 pb-8">
-      {/* Top Header & Fast Navigation Ribbon */}
-      <div className="p-4 bg-surface border border-divider rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-3">
+      {/* Top Header */}
+      <div className="p-4 bg-surface border border-divider rounded-2xl shadow-sm flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 rounded-xl bg-brand-primary-soft border border-brand-primary/30 flex items-center justify-center">
             <Boxes className="w-5 h-5 text-brand-primary" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
-              <h2 className="text-sm font-bold text-content-primary uppercase tracking-wider">
-                Container Placement &amp; Equipment Allocation
-              </h2>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-primary-soft text-brand-primary border border-brand-primary/30 font-semibold">
-                {activeContainer.containerType} ({specs.maxPallets} Pallets Max)
-              </span>
-            </div>
-            <p className="text-xs text-content-secondary mt-0.5">
-              Live payload distribution, slot placement, and real-time SOLAS VGM synchronization
-            </p>
+            <h2 className="text-sm font-bold text-content-primary uppercase tracking-wider">
+              Container Placement &amp; Equipment Allocation
+            </h2>
           </div>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          {onSwitchTab && (
-            <div className="flex items-center space-x-1.5 mr-2 border-r border-divider pr-3">
-              <button
-                type="button"
-                onClick={() => onSwitchTab('dg_manifest')}
-                className="px-2.5 py-1.5 rounded-lg bg-surface-secondary hover:bg-surface text-content-secondary hover:text-content-primary text-xs font-medium border border-divider flex items-center space-x-1 transition-colors"
-                title="View DG Manifest Document"
-              >
-                <FileText className="w-3.5 h-3.5 text-brand-primary" />
-                <span>DG Manifest</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onSwitchTab('bl_manifest')}
-                className="px-2.5 py-1.5 rounded-lg bg-surface-secondary hover:bg-surface text-content-secondary hover:text-content-primary text-xs font-medium border border-divider flex items-center space-x-1 transition-colors"
-                title="View Bill of Lading Document"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
-                <span>Bill of Lading</span>
-              </button>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={handleApplyAndSync}
-            className={`px-4 py-2 rounded-xl text-xs font-bold shadow-sm flex items-center space-x-2 transition-all ${
-              hasSynced
-                ? 'bg-state-success text-white'
-                : 'bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text'
-            }`}
-          >
-            {hasSynced ? (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Synced to Manifests!</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>Apply &amp; Sync to Manifests</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
 
@@ -737,8 +690,8 @@ export function ContainerBayWorkspace({
                   onChange={(e) => handleContainerTypeChange(e.target.value as ContainerType)}
                   className="bg-input-bg border border-divider text-xs text-content-primary rounded-lg px-2.5 py-1 font-mono focus:outline-none focus:border-brand-primary font-medium cursor-pointer"
                 >
-                  <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
-                  <option value="40GP">40&apos; GP (Max 40 Pallets / 28,500 kg)</option>
+                  <option value="20GP">20&apos; (Max 22 Pallets / 25,000 kg)</option>
+                  <option value="40GP">40&apos; (Max 40 Pallets / 28,500 kg)</option>
                   <option value="40HC">40&apos; HC (Max 40 Pallets / 28,500 kg)</option>
                   <option value="45HC">45&apos; HC (Max 44 Pallets / 28,500 kg)</option>
                 </select>
@@ -972,11 +925,6 @@ export function ContainerBayWorkspace({
               <span>Net: {cargoNetWeight.toLocaleString()} kg</span>
               <span>Gross: {cargoGrossWeight.toLocaleString()} kg</span>
             </div>
-
-            <p className="text-[11px] text-content-secondary leading-relaxed">
-              <Info className="w-3.5 h-3.5 text-brand-primary inline mr-1" />
-              Equipment parameters immediately propagate to pending fields in DG Manifest (Boxes 2, 7, 10, 19, 19b, 19c) and Bill of Lading (Booking, Vessel/Voyage, Container, Seal, Tare, VGM, and Container Summary Table).
-            </p>
           </div>
         </div>
       </div>
@@ -1138,8 +1086,8 @@ export function ContainerBayWorkspace({
                   }}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary cursor-pointer"
                 >
-                  <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
-                  <option value="40GP">40&apos; GP (Max 40 Pallets / 28,500 kg)</option>
+                  <option value="20GP">20&apos; (Max 22 Pallets / 25,000 kg)</option>
+                  <option value="40GP">40&apos; (Max 40 Pallets / 28,500 kg)</option>
                   <option value="40HC">40&apos; HC (Max 40 Pallets / 28,500 kg)</option>
                   <option value="45HC">45&apos; HC (Max 44 Pallets / 28,500 kg)</option>
                 </select>
