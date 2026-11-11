@@ -259,7 +259,7 @@ export function ContainerBayWorkspace({
           <div>
             <div className="flex items-center space-x-2">
               <h2 className="text-sm font-bold text-content-primary uppercase tracking-wider">
-                Container Bay &amp; Equipment Allocation
+                Container Placement &amp; Equipment Allocation
               </h2>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-primary-soft text-brand-primary border border-brand-primary/30 font-semibold">
                 {containerType} ({specs.maxPallets} Pallets Max)

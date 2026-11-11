@@ -196,99 +196,32 @@ export function WorkspacePage({
           </div>
         </div>
 
-        {/* Center: First-Class Workspace View Tabs */}
-        <div className="hidden md:flex items-center space-x-1 bg-surface-secondary/80 p-1 rounded-xl border border-divider">
-          <button
-            type="button"
-            onClick={() => setActiveTab('dg_manifest')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-              activeTab === 'dg_manifest'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>DG Manifest</span>
-            <span
-              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                activeTab === 'dg_manifest'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-surface border border-divider text-content-secondary'
-              }`}
+        {/* Center: Primary Workspace View Selector Dropdown */}
+        <div className="flex items-center space-x-2">
+          <div className="relative flex items-center">
+            <div className="absolute left-3 pointer-events-none text-brand-primary flex items-center">
+              {activeTab === 'dg_manifest' && <FileText className="w-4 h-4" />}
+              {activeTab === 'bl_manifest' && <ExternalLink className="w-4 h-4" />}
+              {activeTab === 'container_bay' && <Boxes className="w-4 h-4" />}
+            </div>
+            <select
+              aria-label="Select workspace view"
+              value={activeTab === 'extracted_data' || activeTab === 'export_center' ? 'dg_manifest' : activeTab}
+              onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
+              className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-xl text-xs font-bold pl-9 pr-8 py-2 appearance-none cursor-pointer shadow-xs transition-colors"
             >
-              {dgStats.populated}/{dgStats.total}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('bl_manifest')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-              activeTab === 'bl_manifest'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            <span>Bill of Lading</span>
-            <span
-              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                activeTab === 'bl_manifest'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-surface border border-divider text-content-secondary'
-              }`}
-            >
-              {blStats.populated}/{blStats.total}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('container_bay')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-all ${
-              activeTab === 'container_bay'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <Boxes className="w-3.5 h-3.5" />
-            <span>Container Bay</span>
-            <span
-              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                activeTab === 'container_bay'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-surface border border-divider text-content-secondary'
-              }`}
-            >
-              {shipmentJson.pallets.length}p
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('extracted_data')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1 transition-all ${
-              activeTab === 'extracted_data'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <TableIcon className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">Extracted Data</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('export_center')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1 transition-all ${
-              activeTab === 'export_center'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">Export Center</span>
-          </button>
+              <option value="dg_manifest">
+                DG Manifest ({dgStats.populated}/{dgStats.total})
+              </option>
+              <option value="bl_manifest">
+                Bill of Lading ({blStats.populated}/{blStats.total})
+              </option>
+              <option value="container_bay">
+                Container Placement ({shipmentJson.pallets.length}p)
+              </option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 pointer-events-none" />
+          </div>
         </div>
 
         {/* Right: Header Utilities */}
@@ -555,44 +488,6 @@ export function WorkspacePage({
               </div>
 
               <div className="flex items-center space-x-2">
-                {/* View / Manifest & Container Bay Switcher Dropdown */}
-                <div className="relative">
-                  <select
-                    aria-label="Select view or manifest"
-                    value={activeTab}
-                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
-                    className="bg-surface-secondary border border-divider text-content-primary rounded-lg text-xs font-medium pl-3 pr-8 py-1.5 focus:outline-none focus:border-brand-primary appearance-none cursor-pointer shadow-sm hover:bg-surface transition-colors"
-                  >
-                    <option value="dg_manifest">
-                      DG Manifest ({dgStats.populated}/{dgStats.total})
-                    </option>
-                    <option value="bl_manifest">
-                      Bill of Lading ({blStats.populated}/{blStats.total})
-                    </option>
-                    <option value="container_bay">
-                      Container Bay ({shipmentJson.pallets.length}p)
-                    </option>
-                    <option value="extracted_data">
-                      Extracted Data
-                    </option>
-                    <option value="export_center">
-                      Export Center
-                    </option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-
-                {/* Quick Container Bay Switcher Button */}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('container_bay')}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider flex items-center space-x-1.5 transition-colors shadow-xs"
-                  title="Switch to Container Bay & Equipment Allocation"
-                >
-                  <Boxes className="w-3.5 h-3.5 text-brand-primary" />
-                  <span>Container Bay</span>
-                </button>
-
                 {/* Carrier Format Selector */}
                 <div className="flex items-center space-x-1.5">
                   <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
@@ -668,44 +563,6 @@ export function WorkspacePage({
               </div>
 
               <div className="flex items-center space-x-2">
-                {/* View / Manifest & Container Bay Switcher Dropdown */}
-                <div className="relative">
-                  <select
-                    aria-label="Select view or manifest"
-                    value={activeTab}
-                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
-                    className="bg-surface-secondary border border-divider text-content-primary rounded-lg text-xs font-medium pl-3 pr-8 py-1.5 focus:outline-none focus:border-brand-primary appearance-none cursor-pointer shadow-sm hover:bg-surface transition-colors"
-                  >
-                    <option value="dg_manifest">
-                      DG Manifest ({dgStats.populated}/{dgStats.total})
-                    </option>
-                    <option value="bl_manifest">
-                      Bill of Lading ({blStats.populated}/{blStats.total})
-                    </option>
-                    <option value="container_bay">
-                      Container Bay ({shipmentJson.pallets.length}p)
-                    </option>
-                    <option value="extracted_data">
-                      Extracted Data
-                    </option>
-                    <option value="export_center">
-                      Export Center
-                    </option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-
-                {/* Quick Container Bay Switcher Button */}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('container_bay')}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider flex items-center space-x-1.5 transition-colors shadow-xs"
-                  title="Switch to Container Bay & Equipment Allocation"
-                >
-                  <Boxes className="w-3.5 h-3.5 text-brand-primary" />
-                  <span>Container Bay</span>
-                </button>
-
                 {/* Carrier Format Selector */}
                 <div className="flex items-center space-x-1.5">
                   <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
