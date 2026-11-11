@@ -590,35 +590,35 @@ export function App(): React.JSX.Element {
 
       {/* API Key Modal */}
       {showKeyModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-divider">
               <div className="flex items-center space-x-2">
-                <Key className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-xs font-semibold text-white uppercase tracking-wider">
+                <Key className="w-4 h-4 text-brand-primary" />
+                <h3 className="text-xs font-semibold text-content-primary uppercase tracking-wider">
                   Gemini API Configuration
                 </h3>
               </div>
               <button
                 onClick={() => setShowKeyModal(false)}
-                className="text-slate-400 hover:text-white transition-colors"
+                className="text-content-secondary hover:text-content-primary transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <p className="text-xs text-content-secondary leading-relaxed">
               Enter your Google AI Studio API key. If left blank, the application uses the environment API key configured in Vercel.
             </p>
 
             <div className="space-y-1.5">
-              <label className="block text-[11px] font-mono text-slate-300">API Key</label>
+              <label className="block text-[11px] font-mono text-content-secondary">API Key</label>
               <input
                 type="password"
                 placeholder="AIzaSy... or AQ.Ab8..."
                 value={customApiKey}
                 onChange={(e) => setCustomApiKey(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 text-xs text-white rounded-md px-3 py-2 font-mono focus:outline-none focus:border-cyan-400"
+                className="w-full bg-input-bg border border-divider text-xs text-content-primary placeholder:text-content-muted rounded-md px-3 py-2 font-mono focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring"
               />
             </div>
 
@@ -630,26 +630,26 @@ export function App(): React.JSX.Element {
                     setCustomApiKey('');
                     localStorage.removeItem('ekdant_custom_gemini_key');
                   }}
-                  className="text-xs text-rose-400 hover:text-rose-300"
+                  className="text-xs text-state-error hover:text-state-error/80"
                 >
                   Clear Custom Key
                 </button>
               ) : (
-                <span className="text-[10px] text-slate-500 font-mono">Using env key</span>
+                <span className="text-[10px] text-content-muted font-mono">Using env key</span>
               )}
 
               <div className="flex items-center space-x-2">
                 <button
                   type="button"
                   onClick={() => setShowKeyModal(false)}
-                  className="px-3 py-1.5 rounded-md text-xs text-slate-400 hover:text-white"
+                  className="px-3 py-1.5 rounded-md text-xs text-content-secondary hover:text-content-primary"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveApiKey}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white shadow-sm"
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm"
                 >
                   Save Key
                 </button>

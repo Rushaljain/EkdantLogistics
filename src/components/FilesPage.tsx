@@ -63,12 +63,12 @@ export function FilesPage({
   }, [uploadedFiles, searchQuery, typeFilter]);
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-950 text-slate-100">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-app text-content-primary">
       {/* Top Header */}
-      <header className="h-14 px-6 border-b border-slate-800/80 bg-slate-900/90 flex items-center justify-between shrink-0">
+      <header className="h-14 px-6 border-b border-divider bg-surface flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-sm font-bold text-white tracking-wide">Document Repository</h1>
-          <p className="text-[11px] text-slate-400">
+          <h1 className="text-sm font-bold text-content-primary tracking-wide">Document Repository</h1>
+          <p className="text-[11px] text-content-secondary">
             Manage source commercial invoices, packing lists, and cargo spreadsheets ({uploadedFiles.length} files)
           </p>
         </div>
@@ -84,7 +84,7 @@ export function FilesPage({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-sm transition-colors"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-medium shadow-sm transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Upload Documents</span>
@@ -93,7 +93,7 @@ export function FilesPage({
           {uploadedFiles.length > 0 && (
             <button
               onClick={onClearFiles}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 text-xs border border-slate-700 transition-colors"
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-md bg-surface hover:bg-state-error-bg text-content-secondary hover:text-state-error text-xs border border-divider transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Clear All</span>
@@ -105,27 +105,27 @@ export function FilesPage({
       {/* Main Body */}
       <main className="p-6 space-y-4 max-w-6xl w-full mx-auto">
         {/* Search & Filter Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-900/60 border border-slate-800 rounded-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-surface border border-divider rounded-lg shadow-card">
           <div className="flex items-center space-x-2 flex-1 min-w-[240px]">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-content-muted absolute left-3 top-2.5" />
               <input
                 type="text"
                 placeholder="Search documents by name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 text-xs text-white rounded-md pl-9 pr-3 py-1.5 focus:outline-none focus:border-cyan-400"
+                className="w-full bg-input-bg border border-divider text-xs text-content-primary placeholder:text-content-muted rounded-md pl-9 pr-3 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring"
               />
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
-            <span className="text-xs text-slate-400">Filter:</span>
-            <div className="flex bg-slate-950 border border-slate-800 rounded p-0.5">
+            <span className="text-xs text-content-secondary">Filter:</span>
+            <div className="flex bg-surface-secondary border border-divider rounded p-0.5">
               <button
                 onClick={() => setTypeFilter('ALL')}
                 className={`px-2.5 py-1 text-xs rounded transition-colors ${
-                  typeFilter === 'ALL' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                  typeFilter === 'ALL' ? 'bg-brand-primary text-brand-primary-text' : 'text-content-secondary hover:text-content-primary'
                 }`}
               >
                 All Files ({uploadedFiles.length})
@@ -133,7 +133,7 @@ export function FilesPage({
               <button
                 onClick={() => setTypeFilter('PDF')}
                 className={`px-2.5 py-1 text-xs rounded transition-colors ${
-                  typeFilter === 'PDF' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                  typeFilter === 'PDF' ? 'bg-brand-primary text-brand-primary-text' : 'text-content-secondary hover:text-content-primary'
                 }`}
               >
                 PDF Invoices
@@ -141,7 +141,7 @@ export function FilesPage({
               <button
                 onClick={() => setTypeFilter('SPREADSHEET')}
                 className={`px-2.5 py-1 text-xs rounded transition-colors ${
-                  typeFilter === 'SPREADSHEET' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                  typeFilter === 'SPREADSHEET' ? 'bg-brand-primary text-brand-primary-text' : 'text-content-secondary hover:text-content-primary'
                 }`}
               >
                 Spreadsheets
@@ -156,25 +156,25 @@ export function FilesPage({
             onDrop={onDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-700 hover:border-cyan-500 rounded-xl p-12 text-center cursor-pointer bg-slate-900/30 hover:bg-slate-900/50 transition-all group"
+            className="border-2 border-dashed border-divider hover:border-brand-primary rounded-xl p-12 text-center cursor-pointer bg-surface hover:bg-brand-primary-soft transition-all group"
           >
-            <UploadCloud className="w-12 h-12 mx-auto text-slate-500 group-hover:text-cyan-400 transition-colors mb-3" />
-            <h3 className="text-sm font-semibold text-slate-200">No documents in repository</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+            <UploadCloud className="w-12 h-12 mx-auto text-content-muted group-hover:text-brand-primary transition-colors mb-3" />
+            <h3 className="text-sm font-semibold text-content-primary">No documents in repository</h3>
+            <p className="text-xs text-content-secondary mt-1 max-w-sm mx-auto">
               Drag and drop source PDFs, Excel workbooks, or CSV packing lists here to begin processing.
             </p>
             <button
               type="button"
-              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-md shadow-sm transition-colors"
+              className="mt-4 px-4 py-2 bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold rounded-md shadow-sm transition-colors"
             >
               Browse Local Files
             </button>
           </div>
         ) : (
-          <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/50 shadow-sm">
+          <div className="border border-divider rounded-lg overflow-hidden bg-surface shadow-card">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px] font-mono">
+                <tr className="bg-surface-secondary border-b border-divider text-content-secondary text-[11px] font-mono">
                   <th className="px-4 py-3">Document Name</th>
                   <th className="px-4 py-3 w-32">Type</th>
                   <th className="px-4 py-3 w-28 text-right">Size</th>
@@ -182,7 +182,7 @@ export function FilesPage({
                   <th className="px-4 py-3 w-44 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
+              <tbody className="divide-y divide-divider font-mono">
                 {filteredFiles.map(({ file, originalIndex }) => {
                   const isPdf = file.name.toLowerCase().endsWith('.pdf');
                   const isSheet =
@@ -193,28 +193,28 @@ export function FilesPage({
                   return (
                     <tr
                       key={`${file.name}-${originalIndex}`}
-                      className="hover:bg-slate-800/40 transition-colors"
+                      className="hover:bg-surface-secondary transition-colors"
                     >
                       <td className="px-4 py-2.5">
                         <div className="flex items-center space-x-2.5">
                           {isPdf ? (
-                            <FileText className="w-4 h-4 text-rose-400 shrink-0" />
+                            <FileText className="w-4 h-4 text-state-error shrink-0" />
                           ) : isSheet ? (
-                            <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <FileSpreadsheet className="w-4 h-4 text-state-success shrink-0" />
                           ) : (
-                            <File className="w-4 h-4 text-cyan-400 shrink-0" />
+                            <File className="w-4 h-4 text-state-info shrink-0" />
                           )}
-                          <span className="font-sans font-medium text-slate-200 truncate max-w-md">
+                          <span className="font-sans font-medium text-content-primary truncate max-w-md">
                             {file.name}
                           </span>
                         </div>
                       </td>
 
-                      <td className="px-4 py-2.5 text-slate-400 text-[11px]">
+                      <td className="px-4 py-2.5 text-content-secondary text-[11px]">
                         {isPdf ? 'PDF Invoice' : isSheet ? 'Excel Sheet' : 'Raw Document'}
                       </td>
 
-                      <td className="px-4 py-2.5 text-right text-slate-300 text-[11px]">
+                      <td className="px-4 py-2.5 text-right text-content-secondary text-[11px]">
                         {formatFileSize(file.size)}
                       </td>
 
@@ -222,8 +222,8 @@ export function FilesPage({
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-full border ${
                             hasParsed
-                              ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/60'
-                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                              ? 'bg-state-success-bg text-state-success border-state-success/30'
+                              : 'bg-surface-secondary text-content-muted border-divider'
                           }`}
                         >
                           {hasParsed ? 'Extracted' : 'Ready'}
@@ -234,7 +234,7 @@ export function FilesPage({
                         <div className="flex items-center justify-end space-x-2">
                           <button
                             onClick={() => onOpenInWorkspace(originalIndex)}
-                            className="px-2.5 py-1 rounded bg-blue-600/20 hover:bg-blue-600/30 text-cyan-300 text-[11px] font-sans font-medium border border-cyan-500/30 transition-colors flex items-center space-x-1"
+                            className="px-2.5 py-1 rounded bg-brand-primary-soft hover:bg-brand-primary-soft/80 text-brand-primary text-[11px] font-sans font-medium border border-brand-primary/20 transition-colors flex items-center space-x-1"
                             title="Inspect in 3-panel workspace"
                           >
                             <span>Open</span>
@@ -243,7 +243,7 @@ export function FilesPage({
 
                           <button
                             onClick={() => onRemoveFile(originalIndex)}
-                            className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                            className="p-1 text-content-muted hover:text-state-error transition-colors"
                             title="Remove file"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

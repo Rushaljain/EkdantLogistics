@@ -2,9 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* APPLICATION BACKGROUNDS */
+  --app-bg: #F5F7FB;
+  --surface: #FFFFFF;
+  --surface-secondary: #F8FAFC;
+  --input-bg: #FCFDFE;
+
+  /* SIDEBAR */
+  --sidebar-bg: #18233B;
+  --sidebar-hover: #263653;
+  --sidebar-active: #2E3D66;
+
+  /* TYPOGRAPHY */
+  --text-primary: #172033;
+  --text-secondary: #667085;
+  --text-muted: #98A2B3;
+  --text-on-dark: #FFFFFF;
+  --text-on-dark-muted: #C1CBE0;
+
+  /* BORDERS */
+  --border: #E3E8F0;
+
+  /* PRIMARY BRAND */
+  --primary: #4F46E5;
+  --primary-hover: #4338CA;
+  --primary-soft: #EEF2FF;
+  --primary-text: #FFFFFF;
+
+  /* SECONDARY ACCENT */
+  --accent: #0F766E;
+  --accent-soft: #F0FDFA;
+
+  /* SEMANTIC STATES */
+  --success: #15803D;
+  --success-bg: #ECFDF3;
+  --warning: #B45309;
+  --warning-bg: #FFFAEB;
+  --error: #B42318;
+  --error-bg: #FEF3F2;
+  --info: #2563EB;
+  --info-bg: #EFF6FF;
+
+  /* INTERACTION */
+  --focus-ring: #4F46E5;
+  --disabled-bg: #EEF0F4;
+  --disabled-text: #98A2B3;
+}
+
 @layer base {
   body {
-    @apply bg-zinc-50 text-zinc-900 antialiased font-sans min-h-screen selection:bg-zinc-900 selection:text-white;
+    background-color: var(--app-bg);
+    color: var(--text-primary);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
   }
   
@@ -17,10 +66,10 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #d4d4d8;
+    background: var(--border);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #71717a;
+    background: var(--text-muted);
   }
 }

@@ -68,12 +68,12 @@ export function FormatAdderPage({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-950 text-slate-100">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-app text-content-primary">
       {/* Top Header */}
-      <header className="h-14 px-6 border-b border-slate-800/80 bg-slate-900/90 flex items-center justify-between shrink-0">
+      <header className="h-14 px-6 border-b border-divider bg-surface flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-sm font-bold text-white tracking-wide">Format Adder & Template Library</h1>
-          <p className="text-[11px] text-slate-400">
+          <h1 className="text-sm font-bold text-content-primary tracking-wide">Format Adder & Template Library</h1>
+          <p className="text-[11px] text-content-secondary">
             Train, add, and manage carrier-specific DG and BL document format schemas ({formats.length} formats available)
           </p>
         </div>
@@ -82,10 +82,10 @@ export function FormatAdderPage({
       {/* Main Body */}
       <main className="p-6 space-y-6 max-w-6xl w-full mx-auto">
         {/* Upload Form Card */}
-        <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-xl space-y-4 shadow-sm">
-          <div className="flex items-center space-x-2 pb-2 border-b border-slate-800">
-            <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
-            <h2 className="text-xs font-semibold text-white uppercase tracking-wider">
+        <div className="p-5 bg-surface border border-divider rounded-xl space-y-4 shadow-sm">
+          <div className="flex items-center space-x-2 pb-2 border-b border-divider">
+            <SlidersHorizontal className="w-4 h-4 text-brand-primary" />
+            <h2 className="text-xs font-semibold text-content-primary uppercase tracking-wider">
               Train New Carrier Format Template
             </h2>
           </div>
@@ -94,7 +94,7 @@ export function FormatAdderPage({
             {/* Left Inputs */}
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-medium text-content-secondary mb-1">
                   Format / Carrier Name
                 </label>
                 <input
@@ -102,12 +102,12 @@ export function FormatAdderPage({
                   placeholder="e.g. Maersk Dangerous Goods Declaration 2026"
                   value={formatUploadName}
                   onChange={(e) => onFormatUploadNameChange(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 text-xs text-white rounded-md px-3 py-2 focus:outline-none focus:border-cyan-400 font-sans"
+                  className="w-full bg-input-bg border border-divider text-xs text-content-primary rounded-md px-3 py-2 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring font-sans"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-medium text-content-secondary mb-1">
                   Target Document Type
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -116,8 +116,8 @@ export function FormatAdderPage({
                     onClick={() => onFormatUploadDocTypeChange('DG')}
                     className={`py-2 px-3 text-xs font-medium rounded-md border transition-all text-center ${
                       formatUploadDocType === 'DG'
-                        ? 'bg-blue-600/20 border-cyan-500 text-cyan-300 font-semibold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                        ? 'bg-brand-primary-soft border-brand-primary text-brand-primary font-semibold'
+                        : 'bg-surface-secondary border-divider text-content-secondary hover:text-content-primary'
                     }`}
                   >
                     Dangerous Goods (DG)
@@ -127,8 +127,8 @@ export function FormatAdderPage({
                     onClick={() => onFormatUploadDocTypeChange('BL')}
                     className={`py-2 px-3 text-xs font-medium rounded-md border transition-all text-center ${
                       formatUploadDocType === 'BL'
-                        ? 'bg-blue-600/20 border-cyan-500 text-cyan-300 font-semibold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                        ? 'bg-brand-primary-soft border-brand-primary text-brand-primary font-semibold'
+                        : 'bg-surface-secondary border-divider text-content-secondary hover:text-content-primary'
                     }`}
                   >
                     Bill of Lading (BL)
@@ -139,7 +139,7 @@ export function FormatAdderPage({
 
             {/* Right Dropzone */}
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-content-secondary mb-1">
                 Sample Template File (.pdf, .docx, .xlsx, .xls)
               </label>
               <input
@@ -155,20 +155,20 @@ export function FormatAdderPage({
               />
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-cyan-500/70 rounded-lg p-5 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-950/70 transition-colors group"
+                className="border-2 border-dashed border-divider hover:border-brand-primary rounded-lg p-5 text-center cursor-pointer bg-surface-secondary hover:bg-brand-primary-soft transition-colors group"
               >
-                <UploadCloud className="w-8 h-8 mx-auto text-slate-500 group-hover:text-cyan-400 transition-colors mb-2" />
+                <UploadCloud className="w-8 h-8 mx-auto text-content-muted group-hover:text-brand-primary transition-colors mb-2" />
                 {formatUploadFile ? (
                   <div>
-                    <p className="text-xs font-semibold text-cyan-300">{formatUploadFile.name}</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">
+                    <p className="text-xs font-semibold text-brand-primary">{formatUploadFile.name}</p>
+                    <p className="text-[10px] text-content-muted mt-0.5">
                       {(formatUploadFile.size / 1024).toFixed(1)} KB — click to change
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-xs text-slate-300 font-medium">Click or drop carrier template file</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">PDF blank form, Word table, or Excel layout</p>
+                    <p className="text-xs text-content-primary font-medium">Click or drop carrier template file</p>
+                    <p className="text-[10px] text-content-muted mt-0.5">PDF blank form, Word table, or Excel layout</p>
                   </div>
                 )}
               </div>
@@ -177,15 +177,15 @@ export function FormatAdderPage({
 
           {/* Error & Progress Feedback */}
           {formatUploadError && (
-            <div className="p-3 rounded-md bg-rose-950/40 border border-rose-900/60 text-rose-300 text-xs flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <div className="p-3 rounded-md bg-state-error-bg border border-state-error/40 text-state-error text-xs flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-state-error shrink-0" />
               <span>{formatUploadError}</span>
             </div>
           )}
 
           {isUploadingFormat && formatUploadProgress && (
-            <div className="space-y-1.5 p-3 rounded-md bg-slate-950 border border-slate-800">
-              <div className="flex justify-between text-xs font-mono text-cyan-400">
+            <div className="space-y-1.5 p-3 rounded-md bg-surface-secondary border border-divider">
+              <div className="flex justify-between text-xs font-mono text-brand-primary">
                 <span>{formatUploadProgress.message || 'Extracting schema...'}</span>
                 <span className="capitalize">{formatUploadProgress.stage}</span>
               </div>
@@ -198,8 +198,8 @@ export function FormatAdderPage({
               disabled={!formatUploadFile || isUploadingFormat}
               className={`px-4 py-2 rounded-md text-xs font-semibold flex items-center space-x-2 shadow-sm transition-all ${
                 !formatUploadFile || isUploadingFormat
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-900/30'
+                  ? 'bg-action-disabled text-action-disabled-text cursor-not-allowed'
+                  : 'bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text'
               }`}
             >
               {isUploadingFormat ? (
@@ -220,15 +220,15 @@ export function FormatAdderPage({
         {/* Format Library Table */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-white uppercase tracking-wider">
+            <h2 className="text-xs font-semibold text-content-primary uppercase tracking-wider">
               Available Carrier Format Schemas ({formats.length})
             </h2>
           </div>
 
-          <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/50 shadow-sm">
+          <div className="border border-divider rounded-lg overflow-hidden bg-surface shadow-sm">
             <table className="w-full text-left text-xs border-collapse font-sans">
               <thead>
-                <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px] font-mono">
+                <tr className="bg-surface-secondary border-b border-divider text-content-secondary text-[11px] font-mono">
                   <th className="px-4 py-3">Format Name</th>
                   <th className="px-4 py-3 w-32">Document Type</th>
                   <th className="px-4 py-3 w-32 text-right">Fields Count</th>
@@ -236,7 +236,7 @@ export function FormatAdderPage({
                   <th className="px-4 py-3 w-44 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
+              <tbody className="divide-y divide-divider font-mono">
                 {formats.map((fmt) => {
                   const isDgActive = fmt.documentType === 'DG' && selectedDgFormatId === fmt.formatId;
                   const isBlActive = fmt.documentType === 'BL' && selectedBlFormatId === fmt.formatId;
@@ -245,19 +245,19 @@ export function FormatAdderPage({
                     fmt.formatId === 'standard_imo_dg_v1' || fmt.formatId === 'standard_ocean_bl_v1';
 
                   return (
-                    <tr key={fmt.formatId} className="hover:bg-slate-800/40 transition-colors">
+                    <tr key={fmt.formatId} className="hover:bg-surface-secondary transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center space-x-2">
                           {fmt.documentType === 'DG' ? (
-                            <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
+                            <FileText className="w-4 h-4 text-brand-primary shrink-0" />
                           ) : (
-                            <FileSpreadsheet className="w-4 h-4 text-blue-400 shrink-0" />
+                            <FileSpreadsheet className="w-4 h-4 text-brand-accent shrink-0" />
                           )}
                           <div>
-                            <span className="font-medium text-slate-200 block font-sans">
+                            <span className="font-medium text-content-primary block font-sans">
                               {fmt.formatName}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono">{fmt.formatId}</span>
+                            <span className="text-[10px] text-content-muted font-mono">{fmt.formatId}</span>
                           </div>
                         </div>
                       </td>
@@ -266,26 +266,26 @@ export function FormatAdderPage({
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded font-mono ${
                             fmt.documentType === 'DG'
-                              ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
-                              : 'bg-blue-950 text-blue-300 border border-blue-800/60'
+                              ? 'bg-brand-primary-soft text-brand-primary border border-brand-primary/30'
+                              : 'bg-brand-accent-soft text-brand-accent border border-brand-accent/30'
                           }`}
                         >
                           {fmt.documentType === 'DG' ? 'DG Manifest' : 'Bill of Lading'}
                         </span>
                       </td>
 
-                      <td className="px-4 py-3 text-right text-slate-300 font-semibold">
+                      <td className="px-4 py-3 text-right text-content-secondary font-semibold">
                         {fmt.fields.length} fields
                       </td>
 
                       <td className="px-4 py-3 text-center">
                         {isActive ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 inline-flex items-center space-x-1">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-state-success-bg text-state-success border border-state-success/30 inline-flex items-center space-x-1">
                             <CheckCircle2 className="w-3 h-3" />
                             <span>Active in {fmt.documentType}</span>
                           </span>
                         ) : (
-                          <span className="text-[10px] text-slate-500">Available</span>
+                          <span className="text-[10px] text-content-muted">Available</span>
                         )}
                       </td>
 
@@ -300,7 +300,7 @@ export function FormatAdderPage({
                                   onSelectBlFormat(fmt.formatId);
                                 }
                               }}
-                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-sans border border-slate-700 transition-colors"
+                              className="px-2 py-1 rounded bg-surface hover:bg-brand-primary-soft text-content-primary text-[10px] font-sans border border-divider transition-colors"
                             >
                               Set Active
                             </button>
@@ -308,7 +308,7 @@ export function FormatAdderPage({
 
                           <button
                             onClick={() => setInspectSchema(fmt)}
-                            className="p-1 rounded text-slate-400 hover:text-cyan-300 hover:bg-slate-800 transition-colors"
+                            className="p-1 rounded text-content-secondary hover:text-brand-primary hover:bg-surface-secondary transition-colors"
                             title="Inspect Schema JSON"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -317,7 +317,7 @@ export function FormatAdderPage({
                           {!isBuiltIn && (
                             <button
                               onClick={() => onDeleteFormat(fmt.formatId)}
-                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/20 transition-colors"
+                              className="p-1 rounded text-content-muted hover:text-state-error hover:bg-state-error-bg transition-colors"
                               title="Delete custom format"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -336,14 +336,14 @@ export function FormatAdderPage({
 
       {/* Schema Inspector Modal */}
       {inspectSchema && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-4 border-b border-divider flex items-center justify-between bg-surface-secondary">
               <div className="truncate pr-2">
-                <h3 className="text-xs font-semibold text-white truncate">
+                <h3 className="text-xs font-semibold text-content-primary truncate">
                   Schema: {inspectSchema.formatName}
                 </h3>
-                <p className="text-[10px] font-mono text-slate-400">
+                <p className="text-[10px] font-mono text-content-secondary">
                   {inspectSchema.fields.length} canonical fields registered
                 </p>
               </div>
@@ -351,22 +351,22 @@ export function FormatAdderPage({
               <div className="flex items-center space-x-2 shrink-0">
                 <button
                   onClick={handleCopySchema}
-                  className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center space-x-1"
+                  className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                 >
-                  {copiedSchema ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {copiedSchema ? <Check className="w-3 h-3 text-state-success" /> : <Copy className="w-3 h-3" />}
                   <span>{copiedSchema ? 'Copied' : 'Copy'}</span>
                 </button>
                 <button
                   onClick={() => setInspectSchema(null)}
-                  className="p-1 text-slate-400 hover:text-white"
+                  className="p-1 text-content-muted hover:text-content-primary"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto p-4 bg-slate-950">
-              <pre className="text-xs font-mono text-cyan-300">
+            <div className="flex-1 overflow-auto p-4 bg-input-bg">
+              <pre className="text-xs font-mono text-brand-primary">
                 {JSON.stringify(inspectSchema, null, 2)}
               </pre>
             </div>

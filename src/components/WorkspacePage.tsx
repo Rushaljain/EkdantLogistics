@@ -195,44 +195,44 @@ export function WorkspacePage({
   const populatedFieldsCount = auditEntries.filter((e) => !e.isBlank && e.key !== 'sourceFiles').length;
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-app text-content-primary">
       {/* =========================================================================
           UNIFIED WORKSPACE TOP CONTROL BAR (Sticky High-Contrast Header)
           ========================================================================= */}
-      <header className="h-14 px-4 sm:px-6 border-b border-slate-800 bg-slate-900/95 backdrop-blur flex items-center justify-between shrink-0 z-30 shadow-md">
+      <header className="h-14 px-4 sm:px-6 border-b border-divider bg-surface backdrop-blur flex items-center justify-between shrink-0 z-30 shadow-sm">
         {/* Left: Brand & Shipment Reference */}
         <div className="flex items-center space-x-3 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-700 flex items-center justify-center shadow-md shadow-cyan-950/60">
+          <div className="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center shadow-sm">
             <Boxes className="w-4 h-4 text-white" />
           </div>
           <div className="hidden sm:block">
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-white tracking-wide">EKDANT</span>
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
+              <span className="text-xs font-bold text-content-primary tracking-wide">EKDANT</span>
+              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-brand-primary-soft text-brand-primary border border-brand-primary/30">
                 v2.0
               </span>
             </div>
-            <span className="text-[10px] text-slate-400 font-mono truncate block max-w-[150px]">
+            <span className="text-[10px] text-content-secondary font-mono truncate block max-w-[150px]">
               {shipmentJson.invoiceNumbers[0] ? `Inv: ${shipmentJson.invoiceNumbers[0]}` : 'Active Shipment'}
             </span>
           </div>
         </div>
 
         {/* Center: Primary View Switcher Buttons */}
-        <div className="flex items-center p-1 bg-slate-950 border border-slate-800 rounded-xl space-x-1">
+        <div className="flex items-center p-1 bg-surface-secondary border border-divider rounded-xl space-x-1">
           <button
             type="button"
             onClick={() => setActiveTab('extracted_data')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
               activeTab === 'extracted_data'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
+                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
             }`}
           >
             <TableIcon className="w-3.5 h-3.5" />
             <span className="hidden md:inline">1.</span>
             <span>Extracted Data &amp; Pallets</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300">
+            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${activeTab === 'extracted_data' ? 'bg-white/20 text-white' : 'bg-surface border border-divider text-content-secondary'}`}>
               {shipmentJson.pallets.length}p
             </span>
           </button>
@@ -242,8 +242,8 @@ export function WorkspacePage({
             onClick={() => setActiveTab('dg_manifest')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
               activeTab === 'dg_manifest'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
+                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
@@ -252,8 +252,10 @@ export function WorkspacePage({
             <span
               className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
                 dgStats.percentage === 100
-                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                  : 'bg-slate-800 text-cyan-300'
+                  ? 'bg-state-success-bg text-state-success border border-state-success/40'
+                  : activeTab === 'dg_manifest'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-surface border border-divider text-brand-primary'
               }`}
             >
               {dgStats.populated}/{dgStats.total}
@@ -265,8 +267,8 @@ export function WorkspacePage({
             onClick={() => setActiveTab('bl_manifest')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
               activeTab === 'bl_manifest'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
+                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
             }`}
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -275,8 +277,10 @@ export function WorkspacePage({
             <span
               className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
                 blStats.percentage === 100
-                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                  : 'bg-slate-800 text-cyan-300'
+                  ? 'bg-state-success-bg text-state-success border border-state-success/40'
+                  : activeTab === 'bl_manifest'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-surface border border-divider text-brand-primary'
               }`}
             >
               {blStats.populated}/{blStats.total}
@@ -288,8 +292,8 @@ export function WorkspacePage({
             onClick={() => setActiveTab('export_center')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
               activeTab === 'export_center'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
+                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
             }`}
           >
             <Package className="w-3.5 h-3.5" />
@@ -306,8 +310,8 @@ export function WorkspacePage({
             onClick={onOpenContainerModal}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center space-x-2 shadow-sm ${
               isEquipmentComplete
-                ? 'bg-emerald-950/40 border-emerald-600/50 text-emerald-300 hover:bg-emerald-950/60'
-                : 'bg-amber-950/40 border-amber-500/50 text-amber-300 hover:bg-amber-950/60 animate-pulse'
+                ? 'bg-state-success-bg border-state-success/40 text-state-success hover:bg-state-success-bg/80'
+                : 'bg-state-warning-bg border-state-warning/40 text-state-warning hover:bg-state-warning-bg/80'
             }`}
             title="Open Container Load Bay, Equipment & SOLAS VGM Allocation"
           >
@@ -316,7 +320,7 @@ export function WorkspacePage({
             <span className="flex items-center space-x-1">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isEquipmentComplete ? 'bg-emerald-400' : 'bg-amber-400'
+                  isEquipmentComplete ? 'bg-state-success' : 'bg-state-warning'
                 }`}
               />
               <span className="text-[10px] font-mono font-bold">
@@ -331,10 +335,10 @@ export function WorkspacePage({
           <button
             type="button"
             onClick={onNewUpload}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors flex items-center space-x-1"
+            className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-medium border border-divider transition-colors flex items-center space-x-1"
             title="Upload new shipment batch"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5 text-brand-primary" />
             <span className="hidden lg:inline">New Upload</span>
           </button>
 
@@ -342,7 +346,7 @@ export function WorkspacePage({
           <button
             type="button"
             onClick={onOpenApiKeyModal}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 transition-colors"
+            className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
             title={hasCustomKey ? 'Custom API Key active' : 'Configure Gemini API Key'}
           >
             <Key className="w-3.5 h-3.5" />
@@ -353,7 +357,7 @@ export function WorkspacePage({
             type="button"
             onClick={onHardReset}
             disabled={isPurging}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/30 text-slate-400 hover:text-rose-400 border border-slate-700 transition-colors"
+            className="p-1.5 rounded-lg bg-surface hover:bg-state-error-bg text-content-secondary hover:text-state-error border border-divider transition-colors"
             title="Hard Reset Workspace Storage"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isPurging ? 'animate-spin' : ''}`} />
@@ -371,52 +375,52 @@ export function WorkspacePage({
         {activeTab === 'extracted_data' && (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 max-w-7xl w-full mx-auto">
             {/* Shipment Overview Card */}
-            <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3 shadow-sm">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="p-4 bg-surface border border-divider rounded-xl space-y-3 shadow-sm">
+              <div className="flex items-center justify-between pb-2 border-b border-divider">
                 <div className="flex items-center space-x-2">
-                  <Sparkles className="w-4 h-4 text-cyan-400" />
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                  <Sparkles className="w-4 h-4 text-brand-primary" />
+                  <h3 className="text-xs font-bold text-content-primary uppercase tracking-wider">
                     Extracted Shipment Canonical Truth
                   </h3>
                 </div>
-                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
+                <span className="text-[10px] font-mono text-brand-primary bg-brand-primary-soft px-2 py-0.5 rounded border border-brand-primary/30">
                   {shipmentJson.uploadMode}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
-                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Shipper (Consignor)</span>
-                  <span className="font-semibold text-white truncate block">{shipmentJson.shipperName || '—'}</span>
-                  <span className="text-[10px] text-slate-500 font-mono block truncate">
+                <div className="p-2.5 bg-surface-secondary rounded border border-divider">
+                  <span className="text-[10px] font-mono text-content-secondary block mb-0.5">Shipper (Consignor)</span>
+                  <span className="font-semibold text-content-primary truncate block">{shipmentJson.shipperName || '—'}</span>
+                  <span className="text-[10px] text-content-muted font-mono block truncate">
                     IEC: {shipmentJson.shipperIec || '—'}
                   </span>
                 </div>
 
-                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
-                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Consignee</span>
-                  <span className="font-semibold text-white truncate block">{shipmentJson.consigneeName || '—'}</span>
-                  <span className="text-[10px] text-slate-500 font-mono block truncate">
+                <div className="p-2.5 bg-surface-secondary rounded border border-divider">
+                  <span className="text-[10px] font-mono text-content-secondary block mb-0.5">Consignee</span>
+                  <span className="font-semibold text-content-primary truncate block">{shipmentJson.consigneeName || '—'}</span>
+                  <span className="text-[10px] text-content-muted font-mono block truncate">
                     POD: {shipmentJson.portOfDischarge || '—'}
                   </span>
                 </div>
 
-                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
-                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Regulatory Hazmat</span>
-                  <span className="font-semibold text-cyan-300 block">
+                <div className="p-2.5 bg-surface-secondary rounded border border-divider">
+                  <span className="text-[10px] font-mono text-content-secondary block mb-0.5">Regulatory Hazmat</span>
+                  <span className="font-semibold text-brand-primary block">
                     {shipmentJson.unNumber ? `UN ${shipmentJson.unNumber} (Class ${shipmentJson.imoClass || '8'})` : 'Non-DG'}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono block truncate">
+                  <span className="text-[10px] text-content-secondary font-mono block truncate">
                     {shipmentJson.properShippingName || '—'}
                   </span>
                 </div>
 
-                <div className="p-2.5 bg-slate-950 rounded border border-slate-800">
-                  <span className="text-[10px] font-mono text-slate-400 block mb-0.5">Totals &amp; VGM</span>
-                  <span className="font-semibold text-emerald-400 block font-mono">
+                <div className="p-2.5 bg-surface-secondary rounded border border-divider">
+                  <span className="text-[10px] font-mono text-content-secondary block mb-0.5">Totals &amp; VGM</span>
+                  <span className="font-semibold text-state-success block font-mono">
                     Gross: {shipmentJson.grossWeightKg.toLocaleString()} kg
                   </span>
-                  <span className="text-[10px] text-cyan-300 font-mono block">
+                  <span className="text-[10px] text-brand-primary font-mono block">
                     VGM: {calculatedVgm.toLocaleString()} kg ({shipmentJson.containerType || '20GP'})
                   </span>
                 </div>
@@ -425,15 +429,15 @@ export function WorkspacePage({
 
             {/* Sub-Tabs: Pallet Annex | Field Audit | Raw JSON */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-divider">
                 <div className="flex items-center space-x-2">
                   <button
                     type="button"
                     onClick={() => setDataSubTab('pallets')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center space-x-1.5 ${
                       dataSubTab === 'pallets'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                        ? 'bg-brand-primary text-brand-primary-text'
+                        : 'bg-surface text-content-secondary hover:text-content-primary border border-divider'
                     }`}
                   >
                     <Boxes className="w-3.5 h-3.5" />
@@ -445,8 +449,8 @@ export function WorkspacePage({
                     onClick={() => setDataSubTab('audit')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center space-x-1.5 ${
                       dataSubTab === 'audit'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                        ? 'bg-brand-primary text-brand-primary-text'
+                        : 'bg-surface text-content-secondary hover:text-content-primary border border-divider'
                     }`}
                   >
                     <TableIcon className="w-3.5 h-3.5" />
@@ -458,8 +462,8 @@ export function WorkspacePage({
                     onClick={() => setDataSubTab('raw_json')}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                       dataSubTab === 'raw_json'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                        ? 'bg-brand-primary text-brand-primary-text'
+                        : 'bg-surface text-content-secondary hover:text-content-primary border border-divider'
                     }`}
                   >
                     Raw JSON Schema
@@ -470,14 +474,14 @@ export function WorkspacePage({
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={handleCopyJson}
-                      className="px-2.5 py-1 text-xs rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center space-x-1"
+                      className="px-2.5 py-1 text-xs rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                     >
-                      {copiedJson ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      {copiedJson ? <Check className="w-3 h-3 text-state-success" /> : <Copy className="w-3 h-3" />}
                       <span>{copiedJson ? 'Copied' : 'Copy JSON'}</span>
                     </button>
                     <button
                       onClick={() => onDownloadJson(shipmentJson, 'shipment_truth.json')}
-                      className="px-2.5 py-1 text-xs rounded bg-blue-600 hover:bg-blue-500 text-white flex items-center space-x-1"
+                      className="px-2.5 py-1 text-xs rounded bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text flex items-center space-x-1"
                     >
                       <Download className="w-3 h-3" />
                       <span>Download</span>
@@ -488,15 +492,15 @@ export function WorkspacePage({
 
               {/* Sub-tab 1: Pallets Table */}
               {dataSubTab === 'pallets' && (
-                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 shadow-sm">
+                <div className="border border-divider rounded-xl overflow-hidden bg-surface shadow-sm">
                   {shipmentJson.pallets.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-500">
+                    <div className="p-8 text-center text-xs text-content-secondary">
                       No pallet records extracted yet. Open the Container UI drawer to add or configure pallets.
                     </div>
                   ) : (
                     <table className="w-full text-left text-xs border-collapse font-mono">
                       <thead>
-                        <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
+                        <tr className="bg-surface-secondary border-b border-divider text-content-secondary text-[11px]">
                           <th className="px-4 py-2.5">Pallet #</th>
                           <th className="px-4 py-2.5">Model / Description</th>
                           <th className="px-4 py-2.5 text-right">Box Count</th>
@@ -505,15 +509,15 @@ export function WorkspacePage({
                           <th className="px-4 py-2.5">Source Provenance</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/40">
+                      <tbody className="divide-y divide-divider">
                         {shipmentJson.pallets.map((p, idx) => (
-                          <tr key={p.palletNumber || idx} className="hover:bg-slate-800/40 text-[11px]">
-                            <td className="px-4 py-2 text-cyan-300 font-bold">{p.palletNumber}</td>
-                            <td className="px-4 py-2 text-slate-200">{p.modelCode || '—'}</td>
-                            <td className="px-4 py-2 text-right text-slate-200">{p.boxCount}</td>
-                            <td className="px-4 py-2 text-right text-slate-200">{p.grossWeightKg.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right text-slate-200">{p.netWeightKg.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-slate-400 truncate max-w-xs">{p.sourceFile || '—'}</td>
+                          <tr key={p.palletNumber || idx} className="hover:bg-surface-secondary text-[11px]">
+                            <td className="px-4 py-2 text-brand-primary font-bold">{p.palletNumber}</td>
+                            <td className="px-4 py-2 text-content-primary">{p.modelCode || '—'}</td>
+                            <td className="px-4 py-2 text-right text-content-primary">{p.boxCount}</td>
+                            <td className="px-4 py-2 text-right text-content-primary">{p.grossWeightKg.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right text-content-primary">{p.netWeightKg.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-content-muted truncate max-w-xs">{p.sourceFile || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -524,27 +528,27 @@ export function WorkspacePage({
 
               {/* Sub-tab 2: Field Audit Table */}
               {dataSubTab === 'audit' && (
-                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 shadow-sm">
+                <div className="border border-divider rounded-xl overflow-hidden bg-surface shadow-sm">
                   <table className="w-full text-left text-xs border-collapse font-mono">
                     <thead>
-                      <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 text-[11px]">
+                      <tr className="bg-surface-secondary border-b border-divider text-content-secondary text-[11px]">
                         <th className="px-4 py-2.5 w-1/3">Canonical Field Key</th>
                         <th className="px-4 py-2.5">Extracted Value</th>
                         <th className="px-4 py-2.5 w-24 text-right">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/40">
+                    <tbody className="divide-y divide-divider">
                       {auditEntries.map(({ key, displayVal, isBlank }) => (
-                        <tr key={key} className="hover:bg-slate-800/40 text-[11px]">
-                          <td className="px-4 py-2 text-cyan-300 font-medium">{key}</td>
-                          <td className="px-4 py-2 text-slate-200 truncate max-w-lg">
-                            {isBlank ? <span className="text-slate-600 italic">empty</span> : displayVal}
+                        <tr key={key} className="hover:bg-surface-secondary text-[11px]">
+                          <td className="px-4 py-2 text-brand-primary font-medium">{key}</td>
+                          <td className="px-4 py-2 text-content-primary truncate max-w-lg">
+                            {isBlank ? <span className="text-content-muted italic">empty</span> : displayVal}
                           </td>
                           <td className="px-4 py-2 text-right">
                             {isBlank ? (
-                              <span className="text-[10px] text-slate-500">pending</span>
+                              <span className="text-[10px] text-content-muted">pending</span>
                             ) : (
-                              <span className="text-[10px] text-emerald-400 font-semibold">populated</span>
+                              <span className="text-[10px] text-state-success font-semibold">populated</span>
                             )}
                           </td>
                         </tr>
@@ -556,7 +560,7 @@ export function WorkspacePage({
 
               {/* Sub-tab 3: Raw JSON */}
               {dataSubTab === 'raw_json' && (
-                <pre className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-xs font-mono text-cyan-300 overflow-x-auto max-h-[600px]">
+                <pre className="p-4 bg-input-bg border border-divider rounded-xl text-xs font-mono text-brand-primary overflow-x-auto max-h-[600px]">
                   {JSON.stringify(shipmentJson, null, 2)}
                 </pre>
               )}
@@ -570,15 +574,15 @@ export function WorkspacePage({
         {activeTab === 'dg_manifest' && (
           <div className="flex-1 flex overflow-hidden">
             {/* Left Column: Grouped Interactive Fields (45% Width) */}
-            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-slate-800 bg-slate-950 overflow-hidden">
+            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-divider bg-app overflow-hidden">
               {/* Field Filter & Format Bar */}
-              <div className="p-3 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="p-3 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs font-medium text-slate-300">Format:</span>
+                  <span className="text-xs font-medium text-content-secondary">Format:</span>
                   <select
                     value={selectedDgFormatId}
                     onChange={(e) => onSelectDgFormat(e.target.value)}
-                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-cyan-400 max-w-[200px] truncate"
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-brand-primary max-w-[200px] truncate"
                   >
                     {dgFormats.map((fmt) => (
                       <option key={fmt.formatId} value={fmt.formatId}>
@@ -588,7 +592,7 @@ export function WorkspacePage({
                   </select>
                   <button
                     onClick={() => onOpenFormatLibrary('DG')}
-                    className="p-1 rounded text-cyan-400 hover:text-cyan-300 hover:bg-slate-800"
+                    className="p-1 rounded text-brand-primary hover:bg-brand-primary-soft transition-colors"
                     title="Upload custom carrier format"
                   >
                     <FolderPlus className="w-4 h-4" />
@@ -597,20 +601,20 @@ export function WorkspacePage({
 
                 <div className="flex items-center space-x-2">
                   <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
+                    <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-2" />
                     <input
                       type="text"
                       placeholder="Search DG boxes..."
                       value={fieldSearch}
                       onChange={(e) => setFieldSearch(e.target.value)}
-                      className="bg-slate-950 border border-slate-700 text-xs text-white rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-cyan-400"
+                      className="bg-input-bg border border-divider text-xs text-content-primary rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-brand-primary"
                     />
                   </div>
 
                   <select
                     value={fieldFilter}
                     onChange={(e) => setFieldFilter(e.target.value as any)}
-                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2 py-1 focus:outline-none focus:border-cyan-400"
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2 py-1 focus:outline-none focus:border-brand-primary"
                   >
                     <option value="ALL">All ({dgStats.total})</option>
                     <option value="POPULATED">Populated ({dgStats.populated})</option>
@@ -628,30 +632,30 @@ export function WorkspacePage({
                   return (
                     <div
                       key={sectionName}
-                      className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40"
+                      className="border border-divider rounded-xl overflow-hidden bg-surface"
                     >
                       <button
                         type="button"
                         onClick={() => toggleSection(sectionName)}
-                        className="w-full px-3.5 py-2.5 bg-slate-900 hover:bg-slate-850 border-b border-slate-800 flex items-center justify-between text-left transition-colors"
+                        className="w-full px-3.5 py-2.5 bg-surface-secondary hover:bg-slate-850 border-b border-divider flex items-center justify-between text-left transition-colors"
                       >
                         <div className="flex items-center space-x-2">
                           {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4 text-slate-400" />
+                            <ChevronRight className="w-4 h-4 text-content-muted" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-cyan-400" />
+                            <ChevronDown className="w-4 h-4 text-brand-primary" />
                           )}
-                          <span className="text-xs font-bold text-white tracking-wide">
+                          <span className="text-xs font-bold text-content-primary tracking-wide">
                             {sectionName}
                           </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface border border-divider text-content-secondary">
                             {populatedCount}/{fields.length}
                           </span>
                         </div>
                       </button>
 
                       {!isCollapsed && (
-                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-950/30">
+                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-surface-secondary/40">
                           {fields.map((field) => {
                             const isBlank = !field.value || field.value.trim() === '';
                             const isLongText =
@@ -668,13 +672,13 @@ export function WorkspacePage({
                                   isLongText ? 'col-span-1 sm:col-span-2' : 'col-span-1'
                                 } ${
                                   isBlank
-                                    ? 'bg-slate-900/30 border-slate-800'
-                                    : 'bg-slate-900/80 border-slate-700/80'
+                                    ? 'bg-surface border-divider'
+                                    : 'bg-surface border-brand-primary/30 shadow-xs'
                                 }`}
                               >
                                 <div className="flex items-center justify-between mb-1">
                                   <span
-                                    className="text-[11px] font-medium text-slate-300 truncate"
+                                    className="text-[11px] font-medium text-content-primary truncate"
                                     title={field.labelInTemplate}
                                   >
                                     {field.labelInTemplate}
@@ -682,8 +686,8 @@ export function WorkspacePage({
                                   <span
                                     className={`text-[9px] font-mono px-1 py-0.2 rounded ${
                                       field.status === 'POPULATED'
-                                        ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40'
-                                        : 'text-slate-500 bg-slate-800'
+                                        ? 'text-state-success bg-state-success-bg border border-state-success/40'
+                                        : 'text-content-muted bg-surface-secondary'
                                     }`}
                                   >
                                     {field.status}
@@ -696,7 +700,7 @@ export function WorkspacePage({
                                     value={field.value}
                                     onChange={(e) => onFieldChange(field, 'DG', e.target.value)}
                                     placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono resize-y"
+                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono resize-y"
                                   />
                                 ) : (
                                   <input
@@ -704,7 +708,7 @@ export function WorkspacePage({
                                     value={field.value}
                                     onChange={(e) => onFieldChange(field, 'DG', e.target.value)}
                                     placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono"
                                   />
                                 )}
                               </div>
@@ -719,12 +723,12 @@ export function WorkspacePage({
             </div>
 
             {/* Right Column: Real-Time SOLAS 74 Multimodal DG A4 Document Preview (52% Width) */}
-            <div className="hidden lg:flex flex-1 h-full flex-col bg-slate-900 overflow-hidden">
+            <div className="hidden lg:flex flex-1 h-full flex-col bg-surface-secondary overflow-hidden">
               {/* Document Preview Toolbar */}
-              <div className="h-11 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between shrink-0">
+              <div className="h-11 px-4 border-b border-divider bg-surface flex items-center justify-between shrink-0">
                 <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs font-semibold text-white tracking-wide">
+                  <FileText className="w-4 h-4 text-brand-primary" />
+                  <span className="text-xs font-semibold text-content-primary tracking-wide">
                     Live SOLAS 74 / MARPOL DG Declaration Preview (A4)
                   </span>
                 </div>
@@ -732,37 +736,37 @@ export function WorkspacePage({
                 <div className="flex items-center space-x-1.5">
                   <button
                     onClick={() => onPrintPdf('DG')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                     title="Print PDF"
                   >
-                    <Printer className="w-3 h-3 text-cyan-400" />
+                    <Printer className="w-3 h-3 text-brand-primary" />
                     <span>Print PDF</span>
                   </button>
                   <button
                     onClick={() => onDownloadDocx('DG')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                     title="Download Word Document"
                   >
-                    <FileText className="w-3 h-3 text-blue-400" />
+                    <FileText className="w-3 h-3 text-brand-primary" />
                     <span>Word</span>
                   </button>
                   <button
                     onClick={() => onDownloadHtml('DG')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                     title="Download HTML"
                   >
-                    <ExternalLink className="w-3 h-3 text-emerald-400" />
+                    <ExternalLink className="w-3 h-3 text-brand-accent" />
                     <span>HTML</span>
                   </button>
                 </div>
               </div>
 
               {/* Embedded Live A4 Document Frame */}
-              <div className="flex-1 p-3 bg-slate-900/90 overflow-auto flex justify-center">
+              <div className="flex-1 p-3 bg-surface-secondary overflow-auto flex justify-center">
                 <iframe
                   srcDoc={liveDgHtml}
                   title="SOLAS DG Live Preview"
-                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-2xl border border-slate-700"
+                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-lg border border-divider"
                 />
               </div>
             </div>
@@ -775,15 +779,15 @@ export function WorkspacePage({
         {activeTab === 'bl_manifest' && (
           <div className="flex-1 flex overflow-hidden">
             {/* Left Column: Grouped Interactive Fields (45% Width) */}
-            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-slate-800 bg-slate-950 overflow-hidden">
+            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-divider bg-app overflow-hidden">
               {/* Field Filter & Format Bar */}
-              <div className="p-3 bg-slate-900/90 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="p-3 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs font-medium text-slate-300">Format:</span>
+                  <span className="text-xs font-medium text-content-secondary">Format:</span>
                   <select
                     value={selectedBlFormatId}
                     onChange={(e) => onSelectBlFormat(e.target.value)}
-                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-cyan-400 max-w-[200px] truncate"
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-brand-primary max-w-[200px] truncate"
                   >
                     {blFormats.map((fmt) => (
                       <option key={fmt.formatId} value={fmt.formatId}>
@@ -793,7 +797,7 @@ export function WorkspacePage({
                   </select>
                   <button
                     onClick={() => onOpenFormatLibrary('BL')}
-                    className="p-1 rounded text-cyan-400 hover:text-cyan-300 hover:bg-slate-800"
+                    className="p-1 rounded text-brand-primary hover:bg-brand-primary-soft transition-colors"
                     title="Upload custom carrier format"
                   >
                     <FolderPlus className="w-4 h-4" />
@@ -802,20 +806,20 @@ export function WorkspacePage({
 
                 <div className="flex items-center space-x-2">
                   <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
+                    <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-2" />
                     <input
                       type="text"
                       placeholder="Search BOL fields..."
                       value={fieldSearch}
                       onChange={(e) => setFieldSearch(e.target.value)}
-                      className="bg-slate-950 border border-slate-700 text-xs text-white rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-cyan-400"
+                      className="bg-input-bg border border-divider text-xs text-content-primary rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-brand-primary"
                     />
                   </div>
 
                   <select
                     value={fieldFilter}
                     onChange={(e) => setFieldFilter(e.target.value as any)}
-                    className="bg-slate-950 border border-slate-700 text-white text-xs rounded-md px-2 py-1 focus:outline-none focus:border-cyan-400"
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2 py-1 focus:outline-none focus:border-brand-primary"
                   >
                     <option value="ALL">All ({blStats.total})</option>
                     <option value="POPULATED">Populated ({blStats.populated})</option>
@@ -833,30 +837,30 @@ export function WorkspacePage({
                   return (
                     <div
                       key={sectionName}
-                      className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40"
+                      className="border border-divider rounded-xl overflow-hidden bg-surface"
                     >
                       <button
                         type="button"
                         onClick={() => toggleSection(sectionName)}
-                        className="w-full px-3.5 py-2.5 bg-slate-900 hover:bg-slate-850 border-b border-slate-800 flex items-center justify-between text-left transition-colors"
+                        className="w-full px-3.5 py-2.5 bg-surface-secondary hover:bg-brand-primary-soft/50 border-b border-divider flex items-center justify-between text-left transition-colors"
                       >
                         <div className="flex items-center space-x-2">
                           {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4 text-slate-400" />
+                            <ChevronRight className="w-4 h-4 text-content-muted" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 text-cyan-400" />
+                            <ChevronDown className="w-4 h-4 text-brand-primary" />
                           )}
-                          <span className="text-xs font-bold text-white tracking-wide">
+                          <span className="text-xs font-bold text-content-primary tracking-wide">
                             {sectionName}
                           </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface border border-divider text-content-secondary">
                             {populatedCount}/{fields.length}
                           </span>
                         </div>
                       </button>
 
                       {!isCollapsed && (
-                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-950/30">
+                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-surface-secondary/40">
                           {fields.map((field) => {
                             const isBlank = !field.value || field.value.trim() === '';
                             const isLongText =
@@ -873,13 +877,13 @@ export function WorkspacePage({
                                   isLongText ? 'col-span-1 sm:col-span-2' : 'col-span-1'
                                 } ${
                                   isBlank
-                                    ? 'bg-slate-900/30 border-slate-800'
-                                    : 'bg-slate-900/80 border-slate-700/80'
+                                    ? 'bg-surface border-divider'
+                                    : 'bg-surface border-brand-primary/30 shadow-xs'
                                 }`}
                               >
                                 <div className="flex items-center justify-between mb-1">
                                   <span
-                                    className="text-[11px] font-medium text-slate-300 truncate"
+                                    className="text-[11px] font-medium text-content-primary truncate"
                                     title={field.labelInTemplate}
                                   >
                                     {field.labelInTemplate}
@@ -887,8 +891,8 @@ export function WorkspacePage({
                                   <span
                                     className={`text-[9px] font-mono px-1 py-0.2 rounded ${
                                       field.status === 'POPULATED'
-                                        ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-800/40'
-                                        : 'text-slate-500 bg-slate-800'
+                                        ? 'text-state-success bg-state-success-bg border border-state-success/40'
+                                        : 'text-content-muted bg-surface-secondary'
                                     }`}
                                   >
                                     {field.status}
@@ -901,7 +905,7 @@ export function WorkspacePage({
                                     value={field.value}
                                     onChange={(e) => onFieldChange(field, 'BL', e.target.value)}
                                     placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono resize-y"
+                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono resize-y"
                                   />
                                 ) : (
                                   <input
@@ -909,7 +913,7 @@ export function WorkspacePage({
                                     value={field.value}
                                     onChange={(e) => onFieldChange(field, 'BL', e.target.value)}
                                     placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-slate-950 border border-slate-700/80 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono"
                                   />
                                 )}
                               </div>
@@ -924,12 +928,12 @@ export function WorkspacePage({
             </div>
 
             {/* Right Column: Real-Time Ocean Bill of Lading A4 Document Preview (52% Width) */}
-            <div className="hidden lg:flex flex-1 h-full flex-col bg-slate-900 overflow-hidden">
+            <div className="hidden lg:flex flex-1 h-full flex-col bg-surface-secondary overflow-hidden">
               {/* Document Preview Toolbar */}
-              <div className="h-11 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between shrink-0">
+              <div className="h-11 px-4 border-b border-divider bg-surface flex items-center justify-between shrink-0">
                 <div className="flex items-center space-x-2">
-                  <FileSpreadsheet className="w-4 h-4 text-blue-400" />
-                  <span className="text-xs font-semibold text-white tracking-wide">
+                  <FileSpreadsheet className="w-4 h-4 text-brand-primary" />
+                  <span className="text-xs font-semibold text-content-primary tracking-wide">
                     Live Ocean Bill of Lading Draft Preview (A4)
                   </span>
                 </div>
@@ -937,37 +941,37 @@ export function WorkspacePage({
                 <div className="flex items-center space-x-1.5">
                   <button
                     onClick={() => onPrintPdf('BL')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                     title="Print PDF"
                   >
-                    <Printer className="w-3 h-3 text-cyan-400" />
+                    <Printer className="w-3 h-3 text-brand-primary" />
                     <span>Print PDF</span>
                   </button>
                   <button
                     onClick={() => onDownloadDocx('BL')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                     title="Download Word Document"
                   >
-                    <FileText className="w-3 h-3 text-blue-400" />
+                    <FileText className="w-3 h-3 text-brand-primary" />
                     <span>Word</span>
                   </button>
                   <button
                     onClick={() => onDownloadHtml('BL')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center space-x-1"
+                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
                     title="Download HTML"
                   >
-                    <ExternalLink className="w-3 h-3 text-emerald-400" />
+                    <ExternalLink className="w-3 h-3 text-brand-accent" />
                     <span>HTML</span>
                   </button>
                 </div>
               </div>
 
               {/* Embedded Live A4 Document Frame */}
-              <div className="flex-1 p-3 bg-slate-900/90 overflow-auto flex justify-center">
+              <div className="flex-1 p-3 bg-surface-secondary overflow-auto flex justify-center">
                 <iframe
                   srcDoc={liveBlHtml}
                   title="BOL Live Preview"
-                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-2xl border border-slate-700"
+                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-lg border border-divider"
                 />
               </div>
             </div>
@@ -980,10 +984,10 @@ export function WorkspacePage({
         {activeTab === 'export_center' && (
           <div className="flex-1 overflow-y-auto p-6 max-w-5xl w-full mx-auto space-y-6">
             <div className="text-center space-y-1">
-              <h2 className="text-base font-bold text-white tracking-wide">
+              <h2 className="text-base font-bold text-content-primary tracking-wide">
                 Document Export &amp; Carrier Issuance Center
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-content-secondary">
                 Verified multi-format downloads for customs submission and carrier filing
               </p>
             </div>
@@ -991,18 +995,18 @@ export function WorkspacePage({
             {/* Side-by-side DG & BOL Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* DG Card */}
-              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-4 shadow-sm">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="p-5 bg-surface border border-divider rounded-2xl space-y-4 shadow-sm">
+                <div className="flex items-center justify-between pb-3 border-b border-divider">
                   <div className="flex items-center space-x-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center">
-                      <FileText className="w-4 h-4 text-cyan-400" />
+                    <div className="w-8 h-8 rounded-lg bg-brand-primary-soft border border-brand-primary/30 flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-brand-primary" />
                     </div>
                     <div>
-                      <h3 className="text-xs font-bold text-white">Dangerous Goods Manifest</h3>
-                      <p className="text-[10px] text-slate-400 font-mono">SOLAS 74 IMO Boxes 1–22</p>
+                      <h3 className="text-xs font-bold text-content-primary">Dangerous Goods Manifest</h3>
+                      <p className="text-[10px] text-content-secondary font-mono">SOLAS 74 IMO Boxes 1–22</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-state-success-bg text-state-success border border-state-success/40">
                     {dgStats.populated}/{dgStats.total} Mapped
                   </span>
                 </div>
@@ -1010,46 +1014,46 @@ export function WorkspacePage({
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => onPrintPdf('DG')}
-                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-center transition-all group"
+                    className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
-                    <Printer className="w-4 h-4 text-cyan-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-semibold text-white block">Print PDF</span>
-                    <span className="text-[9px] text-slate-500 font-mono">Direct print dialog</span>
+                    <Printer className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-content-primary block">Print PDF</span>
+                    <span className="text-[9px] text-content-muted font-mono">Direct print dialog</span>
                   </button>
 
                   <button
                     onClick={() => onDownloadDocx('DG')}
-                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-blue-500/50 text-center transition-all group"
+                    className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
-                    <FileText className="w-4 h-4 text-blue-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-semibold text-white block">Word .docx</span>
-                    <span className="text-[9px] text-slate-500 font-mono">Editable document</span>
+                    <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-content-primary block">Word .docx</span>
+                    <span className="text-[9px] text-content-muted font-mono">Editable document</span>
                   </button>
 
                   <button
                     onClick={() => onDownloadHtml('DG')}
-                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-center transition-all group"
+                    className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
-                    <ExternalLink className="w-4 h-4 text-emerald-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-semibold text-white block">Maritime HTML</span>
-                    <span className="text-[9px] text-slate-500 font-mono">Standalone file</span>
+                    <ExternalLink className="w-4 h-4 text-brand-accent mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-content-primary block">Maritime HTML</span>
+                    <span className="text-[9px] text-content-muted font-mono">Standalone file</span>
                   </button>
                 </div>
               </div>
 
               {/* BOL Card */}
-              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-4 shadow-sm">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="p-5 bg-surface border border-divider rounded-2xl space-y-4 shadow-sm">
+                <div className="flex items-center justify-between pb-3 border-b border-divider">
                   <div className="flex items-center space-x-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-blue-950 border border-blue-800 flex items-center justify-center">
-                      <FileSpreadsheet className="w-4 h-4 text-blue-400" />
+                    <div className="w-8 h-8 rounded-lg bg-brand-primary-soft border border-brand-primary/30 flex items-center justify-center">
+                      <FileSpreadsheet className="w-4 h-4 text-brand-primary" />
                     </div>
                     <div>
-                      <h3 className="text-xs font-bold text-white">Bill of Lading Draft</h3>
-                      <p className="text-[10px] text-slate-400 font-mono">Standard Ocean B/L Format</p>
+                      <h3 className="text-xs font-bold text-content-primary">Bill of Lading Draft</h3>
+                      <p className="text-[10px] text-content-secondary font-mono">Standard Ocean B/L Format</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-state-success-bg text-state-success border border-state-success/40">
                     {blStats.populated}/{blStats.total} Mapped
                   </span>
                 </div>
@@ -1057,42 +1061,42 @@ export function WorkspacePage({
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => onPrintPdf('BL')}
-                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-center transition-all group"
+                    className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
-                    <Printer className="w-4 h-4 text-cyan-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-semibold text-white block">Print PDF</span>
-                    <span className="text-[9px] text-slate-500 font-mono">Direct print dialog</span>
+                    <Printer className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-content-primary block">Print PDF</span>
+                    <span className="text-[9px] text-content-muted font-mono">Direct print dialog</span>
                   </button>
 
                   <button
                     onClick={() => onDownloadDocx('BL')}
-                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-blue-500/50 text-center transition-all group"
+                    className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
-                    <FileText className="w-4 h-4 text-blue-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-semibold text-white block">Word .docx</span>
-                    <span className="text-[9px] text-slate-500 font-mono">Editable document</span>
+                    <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-content-primary block">Word .docx</span>
+                    <span className="text-[9px] text-content-muted font-mono">Editable document</span>
                   </button>
 
                   <button
                     onClick={() => onDownloadHtml('BL')}
-                    className="p-2.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-center transition-all group"
+                    className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
-                    <ExternalLink className="w-4 h-4 text-emerald-400 mx-auto mb-1 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-semibold text-white block">Maritime HTML</span>
-                    <span className="text-[9px] text-slate-500 font-mono">Standalone file</span>
+                    <ExternalLink className="w-4 h-4 text-brand-accent mx-auto mb-1 group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-semibold text-content-primary block">Maritime HTML</span>
+                    <span className="text-[9px] text-content-muted font-mono">Standalone file</span>
                   </button>
                 </div>
               </div>
             </div>
 
             {/* Complete Package (.ZIP) Card */}
-            <div className="p-6 bg-gradient-to-r from-blue-950/80 to-cyan-950/80 border border-cyan-500/50 rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="p-6 bg-surface border border-brand-primary/40 rounded-2xl shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="space-y-1 text-center sm:text-left">
                 <div className="flex items-center justify-center sm:justify-start space-x-2">
-                  <Package className="w-5 h-5 text-cyan-400" />
-                  <h3 className="text-sm font-bold text-white">Complete Shipment Package (.zip)</h3>
+                  <Package className="w-5 h-5 text-brand-primary" />
+                  <h3 className="text-sm font-bold text-content-primary">Complete Shipment Package (.zip)</h3>
                 </div>
-                <p className="text-xs text-slate-300 max-w-md">
+                <p className="text-xs text-content-secondary max-w-md">
                   Downloads an all-inclusive archive containing both DG and BOL manifests in PDF, Word (.docx), Maritime HTML, JSON data, and Pallet Annex tables.
                 </p>
               </div>
@@ -1100,7 +1104,7 @@ export function WorkspacePage({
               <button
                 onClick={onDownloadZip}
                 disabled={isExportingZip}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/60 flex items-center space-x-2 transition-all shrink-0"
+                className="px-6 py-3 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text font-bold text-xs shadow-md flex items-center space-x-2 transition-all shrink-0"
               >
                 <Package className={`w-4 h-4 ${isExportingZip ? 'animate-spin' : ''}`} />
                 <span>{isExportingZip ? 'Compiling ZIP...' : 'Download Complete Package (.zip)'}</span>
@@ -1113,49 +1117,49 @@ export function WorkspacePage({
       {/* =========================================================================
           PERSISTENT BOTTOM ACTION BAR
           ========================================================================= */}
-      <footer className="h-12 px-4 sm:px-6 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between shrink-0 z-30 shadow-lg">
+      <footer className="h-12 px-4 sm:px-6 border-t border-divider bg-surface flex items-center justify-between shrink-0 z-30 shadow-sm">
         {/* Left summary readouts */}
         <div className="flex items-center space-x-3 text-xs font-mono truncate">
-          <div className="flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-            <span className="text-slate-400">DG:</span>
-            <span className="text-cyan-300 font-semibold">{dgStats.populated}/{dgStats.total}</span>
+          <div className="flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
+            <span className="text-content-secondary">DG:</span>
+            <span className="text-brand-primary font-semibold">{dgStats.populated}/{dgStats.total}</span>
           </div>
 
-          <div className="flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-            <span className="text-slate-400">BL:</span>
-            <span className="text-cyan-300 font-semibold">{blStats.populated}/{blStats.total}</span>
+          <div className="flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
+            <span className="text-content-secondary">BL:</span>
+            <span className="text-brand-primary font-semibold">{blStats.populated}/{blStats.total}</span>
           </div>
 
           {shipmentJson.grossWeightKg > 0 && (
-            <div className="hidden sm:flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-              <span className="text-slate-400">Gross:</span>
-              <span className="text-emerald-400">{shipmentJson.grossWeightKg.toLocaleString()} kg</span>
+            <div className="hidden sm:flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
+              <span className="text-content-secondary">Gross:</span>
+              <span className="text-state-success font-semibold">{shipmentJson.grossWeightKg.toLocaleString()} kg</span>
             </div>
           )}
 
           {calculatedVgm > 0 && (
-            <div className="hidden md:flex items-center space-x-1.5 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-              <span className="text-slate-400">VGM:</span>
-              <span className="text-emerald-400 font-semibold">{calculatedVgm.toLocaleString()} kg</span>
+            <div className="hidden md:flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
+              <span className="text-content-secondary">VGM:</span>
+              <span className="text-state-success font-semibold">{calculatedVgm.toLocaleString()} kg</span>
             </div>
           )}
         </div>
 
         {/* Right Export Buttons */}
         <div className="flex items-center space-x-2 shrink-0">
-          <div className="flex bg-slate-950 border border-slate-800 rounded p-0.5 mr-1">
+          <div className="flex bg-surface-secondary border border-divider rounded p-0.5 mr-1">
             <button
               onClick={() => setExportTargetDoc('DG')}
-              className={`px-2 py-0.5 text-[10px] font-semibold rounded ${
-                exportTargetDoc === 'DG' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                exportTargetDoc === 'DG' ? 'bg-brand-primary text-brand-primary-text' : 'text-content-secondary hover:text-content-primary'
               }`}
             >
               DG
             </button>
             <button
               onClick={() => setExportTargetDoc('BL')}
-              className={`px-2 py-0.5 text-[10px] font-semibold rounded ${
-                exportTargetDoc === 'BL' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                exportTargetDoc === 'BL' ? 'bg-brand-primary text-brand-primary-text' : 'text-content-secondary hover:text-content-primary'
               }`}
             >
               BL
@@ -1164,35 +1168,35 @@ export function WorkspacePage({
 
           <button
             onClick={() => onPrintPdf(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider transition-colors"
             title={`Print-Ready PDF (${exportTargetDoc})`}
           >
-            <Printer className="w-3.5 h-3.5 text-cyan-400" />
+            <Printer className="w-3.5 h-3.5 text-brand-primary" />
             <span className="hidden sm:inline">PDF</span>
           </button>
 
           <button
             onClick={() => onDownloadDocx(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider transition-colors"
             title={`Editable Word Document (${exportTargetDoc})`}
           >
-            <FileText className="w-3.5 h-3.5 text-blue-400" />
+            <FileText className="w-3.5 h-3.5 text-brand-primary" />
             <span className="hidden sm:inline">Word</span>
           </button>
 
           <button
             onClick={() => onDownloadHtml(exportTargetDoc)}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider transition-colors"
             title={`Maritime Submission HTML (${exportTargetDoc})`}
           >
-            <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+            <ExternalLink className="w-3.5 h-3.5 text-brand-accent" />
             <span className="hidden sm:inline">HTML</span>
           </button>
 
           <button
             onClick={onDownloadZip}
             disabled={isExportingZip}
-            className="flex items-center space-x-1.5 px-3 py-1 rounded bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center space-x-1.5 px-3 py-1 rounded bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all"
             title="Download Complete Shipment Package (.zip)"
           >
             <Package className={`w-3.5 h-3.5 ${isExportingZip ? 'animate-spin' : ''}`} />

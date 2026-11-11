@@ -225,24 +225,24 @@ export function ContainerBayModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+      <div className="bg-surface border border-divider rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
         {/* Modal Top Bar */}
-        <div className="h-14 px-5 border-b border-slate-800 flex items-center justify-between bg-slate-950 shrink-0">
+        <div className="h-14 px-5 border-b border-divider flex items-center justify-between bg-surface shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/20 border border-blue-500/40 flex items-center justify-center">
-              <Boxes className="w-4 h-4 text-cyan-400" />
+            <div className="w-8 h-8 rounded-lg bg-brand-primary-soft border border-brand-primary/30 flex items-center justify-center">
+              <Boxes className="w-4 h-4 text-brand-primary" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-sm font-bold text-white tracking-wide">
+                <h2 className="text-sm font-bold text-content-primary tracking-wide">
                   Container Bay & Equipment Allocation
                 </h2>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-primary-soft text-brand-primary border border-brand-primary/30">
                   {containerType} ({specs.maxPallets} Pallets Max)
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400">
+              <p className="text-[10px] text-content-secondary">
                 Allocate cargo pallets, configure container hardware, and calculate SOLAS VGM in real time
               </p>
             </div>
@@ -250,24 +250,24 @@ export function ContainerBayModal({
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Main Body (2 Columns) */}
-        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+        <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-divider">
           {/* =========================================================================
               LEFT COLUMN: Pallet Allocation List (5 Cols)
               ========================================================================= */}
-          <div className="lg:col-span-5 p-4 flex flex-col space-y-3 bg-slate-950/60 overflow-y-auto">
+          <div className="lg:col-span-5 p-4 flex flex-col space-y-3 bg-surface-secondary/40 overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                <h3 className="text-xs font-bold text-content-primary uppercase tracking-wider">
                   Extracted Pallets ({pallets.length})
                 </h3>
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-content-secondary">
                   {allocatedPalletsList.length} of {pallets.length} allocated to this container bay
                 </p>
               </div>
@@ -276,21 +276,21 @@ export function ContainerBayModal({
                 <button
                   type="button"
                   onClick={handleSelectAllPallets}
-                  className="px-2 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                  className="px-2 py-0.5 text-[10px] rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider"
                 >
                   All
                 </button>
                 <button
                   type="button"
                   onClick={handleDeselectAllPallets}
-                  className="px-2 py-0.5 text-[10px] rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+                  className="px-2 py-0.5 text-[10px] rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider"
                 >
                   None
                 </button>
                 <button
                   type="button"
                   onClick={handleOpenNewPallet}
-                  className="px-2 py-0.5 text-[10px] rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium flex items-center space-x-1"
+                  className="px-2 py-0.5 text-[10px] rounded bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text font-medium flex items-center space-x-1"
                 >
                   <Plus className="w-3 h-3" />
                   <span>Add</span>
@@ -301,7 +301,7 @@ export function ContainerBayModal({
             {/* Pallets Card Grid */}
             <div className="space-y-2 flex-1 overflow-y-auto pr-1">
               {pallets.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-500 border border-slate-800 rounded-lg">
+                <div className="p-8 text-center text-xs text-content-secondary border border-divider rounded-lg">
                   No pallets extracted. Click &quot;+ Add&quot; above to create one.
                 </div>
               ) : (
@@ -314,8 +314,8 @@ export function ContainerBayModal({
                       onClick={() => togglePalletAllocation(p.palletNumber)}
                       className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
                         isAllocated
-                          ? 'bg-blue-950/40 border-cyan-500/50 text-slate-100 shadow-sm'
-                          : 'bg-slate-900/40 border-slate-800 text-slate-400 opacity-70 hover:opacity-100'
+                          ? 'bg-brand-primary-soft border-brand-primary/40 text-content-primary shadow-xs'
+                          : 'bg-surface border-divider text-content-secondary hover:border-brand-primary/30'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -324,13 +324,13 @@ export function ContainerBayModal({
                             type="checkbox"
                             checked={isAllocated}
                             onChange={() => togglePalletAllocation(p.palletNumber)}
-                            className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0"
+                            className="rounded border-divider bg-input-bg text-brand-primary focus:ring-0"
                           />
-                          <span className="text-xs font-mono font-bold text-cyan-300">
+                          <span className="text-xs font-mono font-bold text-brand-primary">
                             {p.palletNumber}
                           </span>
                           {p.modelCode && (
-                            <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
+                            <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-surface-secondary border border-divider text-content-primary">
                               {p.modelCode}
                             </span>
                           )}
@@ -343,7 +343,7 @@ export function ContainerBayModal({
                               e.stopPropagation();
                               handleOpenEditPallet(idx);
                             }}
-                            className="p-1 text-slate-500 hover:text-cyan-300 transition-colors"
+                            className="p-1 text-content-muted hover:text-brand-primary transition-colors"
                             title="Edit Pallet"
                           >
                             <Edit2 className="w-3 h-3" />
@@ -354,7 +354,7 @@ export function ContainerBayModal({
                               e.stopPropagation();
                               handleDeletePallet(idx);
                             }}
-                            className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                            className="p-1 text-content-muted hover:text-state-error transition-colors"
                             title="Delete Pallet"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -362,15 +362,15 @@ export function ContainerBayModal({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-1 text-[10px] font-mono mt-1 text-slate-400">
+                      <div className="grid grid-cols-3 gap-1 text-[10px] font-mono mt-1 text-content-secondary">
                         <div>
-                          Boxes: <span className="text-white font-semibold">{p.boxCount}</span>
+                          Boxes: <span className="text-content-primary font-semibold">{p.boxCount}</span>
                         </div>
                         <div>
-                          Gross: <span className="text-white font-semibold">{p.grossWeightKg} kg</span>
+                          Gross: <span className="text-content-primary font-semibold">{p.grossWeightKg} kg</span>
                         </div>
                         <div>
-                          Net: <span className="text-white font-semibold">{p.netWeightKg} kg</span>
+                          Net: <span className="text-content-primary font-semibold">{p.netWeightKg} kg</span>
                         </div>
                       </div>
                     </div>
@@ -383,25 +383,25 @@ export function ContainerBayModal({
           {/* =========================================================================
               RIGHT COLUMN: Visual Container Bay, Equipment Inputs & VGM (7 Cols)
               ========================================================================= */}
-          <div className="lg:col-span-7 p-5 flex flex-col space-y-4 bg-slate-900/70 overflow-y-auto">
+          <div className="lg:col-span-7 p-5 flex flex-col space-y-4 bg-surface overflow-y-auto">
             {/* Visual Container Floorplan Load Grid */}
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+            <div className="p-4 bg-surface-secondary border border-divider rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  <span className="text-xs font-bold text-content-primary uppercase tracking-wider">
                     Container Bay Load Grid
                   </span>
-                  <span className="text-[10px] font-mono text-cyan-400">
+                  <span className="text-[10px] font-mono text-brand-primary">
                     ({allocatedPalletsList.length}/{specs.maxPallets} Pallets)
                   </span>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <label className="text-[10px] text-slate-400">Equipment Type:</label>
+                  <label className="text-[10px] text-content-secondary">Equipment Type:</label>
                   <select
                     value={containerType}
                     onChange={(e) => handleContainerTypeChange(e.target.value as ContainerType)}
-                    className="bg-slate-900 border border-slate-700 text-xs text-white rounded px-2 py-1 font-mono focus:outline-none focus:border-cyan-400"
+                    className="bg-input-bg border border-divider text-xs text-content-primary rounded px-2 py-1 font-mono focus:outline-none focus:border-brand-primary"
                   >
                     <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
                     <option value="40GP">40&apos; GP (Max 24 Pallets / 26,500 kg)</option>
@@ -412,8 +412,8 @@ export function ContainerBayModal({
               </div>
 
               {/* Graphic 2-row container floorplan */}
-              <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-lg">
-                <div className="text-[9px] font-mono text-slate-500 mb-2 flex justify-between">
+              <div className="p-3 bg-surface border border-divider rounded-lg">
+                <div className="text-[9px] font-mono text-content-muted mb-2 flex justify-between">
                   <span>DOOR END &rarr;</span>
                   <span>INSIDE CONTAINER BAY ({containerType})</span>
                   <span>&larr; NOSE / FRONT</span>
@@ -429,8 +429,8 @@ export function ContainerBayModal({
                           key={`top-${slotIdx}`}
                           className={`h-11 rounded border flex flex-col items-center justify-center p-0.5 text-center transition-all ${
                             pallet
-                              ? 'bg-blue-600/30 border-cyan-400/60 text-cyan-200'
-                              : 'bg-slate-950/60 border-dashed border-slate-800 text-slate-700'
+                              ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary'
+                              : 'bg-surface-secondary border-dashed border-divider text-content-muted'
                           }`}
                         >
                           {pallet ? (
@@ -438,12 +438,12 @@ export function ContainerBayModal({
                               <span className="text-[9px] font-mono font-bold truncate max-w-full">
                                 {pallet.palletNumber}
                               </span>
-                              <span className="text-[8px] font-mono text-slate-400">
+                              <span className="text-[8px] font-mono text-content-secondary">
                                 {pallet.grossWeightKg}k
                               </span>
                             </>
                           ) : (
-                            <span className="text-[8px] font-mono text-slate-700">Slot {slotIdx + 1}</span>
+                            <span className="text-[8px] font-mono text-content-muted">Slot {slotIdx + 1}</span>
                           )}
                         </div>
                       );
@@ -459,8 +459,8 @@ export function ContainerBayModal({
                           key={`bot-${slotIdx}`}
                           className={`h-11 rounded border flex flex-col items-center justify-center p-0.5 text-center transition-all ${
                             pallet
-                              ? 'bg-blue-600/30 border-cyan-400/60 text-cyan-200'
-                              : 'bg-slate-950/60 border-dashed border-slate-800 text-slate-700'
+                              ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary'
+                              : 'bg-surface-secondary border-dashed border-divider text-content-muted'
                           }`}
                         >
                           {pallet ? (
@@ -468,12 +468,12 @@ export function ContainerBayModal({
                               <span className="text-[9px] font-mono font-bold truncate max-w-full">
                                 {pallet.palletNumber}
                               </span>
-                              <span className="text-[8px] font-mono text-slate-400">
+                              <span className="text-[8px] font-mono text-content-secondary">
                                 {pallet.grossWeightKg}k
                               </span>
                             </>
                           ) : (
-                            <span className="text-[8px] font-mono text-slate-700">Slot {actualIdx + 1}</span>
+                            <span className="text-[8px] font-mono text-content-muted">Slot {actualIdx + 1}</span>
                           )}
                         </div>
                       );
@@ -482,33 +482,33 @@ export function ContainerBayModal({
                 </div>
 
                 {/* Utilization Bars */}
-                <div className="grid grid-cols-2 gap-4 mt-3 pt-2 border-t border-slate-800 text-[10px] font-mono">
+                <div className="grid grid-cols-2 gap-4 mt-3 pt-2 border-t border-divider text-[10px] font-mono">
                   <div>
-                    <div className="flex justify-between text-slate-400 mb-1">
+                    <div className="flex justify-between text-content-secondary mb-1">
                       <span>Pallet Capacity</span>
-                      <span className="text-white font-semibold">
+                      <span className="text-content-primary font-semibold">
                         {allocatedPalletsList.length} / {specs.maxPallets} ({palletUtilPct}%)
                       </span>
                     </div>
-                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-surface-secondary rounded-full overflow-hidden border border-divider">
                       <div
-                        className="h-full bg-cyan-400 transition-all duration-300"
+                        className="h-full bg-brand-primary transition-all duration-300"
                         style={{ width: `${palletUtilPct}%` }}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <div className="flex justify-between text-slate-400 mb-1">
+                    <div className="flex justify-between text-content-secondary mb-1">
                       <span>Payload Weight</span>
-                      <span className={isOverweight ? 'text-rose-400 font-bold' : 'text-white font-semibold'}>
+                      <span className={isOverweight ? 'text-state-error font-bold' : 'text-content-primary font-semibold'}>
                         {cargoGrossWeight.toLocaleString()} / {specs.maxPayloadKg.toLocaleString()} kg ({weightUtilPct}%)
                       </span>
                     </div>
-                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-surface-secondary rounded-full overflow-hidden border border-divider">
                       <div
                         className={`h-full transition-all duration-300 ${
-                          isOverweight ? 'bg-rose-500' : 'bg-emerald-400'
+                          isOverweight ? 'bg-state-error' : 'bg-state-success'
                         }`}
                         style={{ width: `${weightUtilPct}%` }}
                       />
@@ -519,17 +519,17 @@ export function ContainerBayModal({
             </div>
 
             {/* Equipment Inputs (Auto-syncing to DG & BOL) */}
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+            <div className="p-4 bg-surface-secondary border border-divider rounded-xl space-y-3">
               <div className="flex items-center space-x-2">
-                <Scale className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                <Scale className="w-4 h-4 text-brand-primary" />
+                <h3 className="text-xs font-bold text-content-primary uppercase tracking-wider">
                   Equipment & Haulier Specifications
                 </h3>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
                     Container Number
                   </label>
                   <input
@@ -537,12 +537,12 @@ export function ContainerBayModal({
                     placeholder="e.g. MSKU1234567"
                     value={containerNumber}
                     onChange={(e) => setContainerNumber(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono uppercase focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
                     Seal Number
                   </label>
                   <input
@@ -550,24 +550,24 @@ export function ContainerBayModal({
                     placeholder="e.g. SL987654"
                     value={sealNumber}
                     onChange={(e) => setSealNumber(e.target.value.toUpperCase())}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono uppercase focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
                     Container Tare Weight (kg)
                   </label>
                   <input
                     type="number"
                     value={tareWeightKg || ''}
                     onChange={(e) => setTareWeightKg(Number(e.target.value) || 0)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
                     Carrier Booking Reference
                   </label>
                   <input
@@ -575,12 +575,12 @@ export function ContainerBayModal({
                     placeholder="e.g. BKG-99201"
                     value={bookingNumber}
                     onChange={(e) => setBookingNumber(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
                     Carrier / Shipping Line
                   </label>
                   <input
@@ -588,13 +588,13 @@ export function ContainerBayModal({
                     placeholder="e.g. Mediterranean Shipping Co."
                     value={carrierName}
                     onChange={(e) => setCarrierName(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary focus:outline-none focus:border-brand-primary"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    <label className="block text-[11px] font-medium text-content-secondary mb-1">
                       Vessel Name
                     </label>
                     <input
@@ -602,11 +602,11 @@ export function ContainerBayModal({
                       placeholder="e.g. MSC LAUREN"
                       value={vesselName}
                       onChange={(e) => setVesselName(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400"
+                      className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary focus:outline-none focus:border-brand-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                    <label className="block text-[11px] font-medium text-content-secondary mb-1">
                       Voyage Number
                     </label>
                     <input
@@ -614,7 +614,7 @@ export function ContainerBayModal({
                       placeholder="e.g. 2401W"
                       value={voyageNumber}
                       onChange={(e) => setVoyageNumber(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400"
+                      className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                     />
                   </div>
                 </div>
@@ -622,29 +622,29 @@ export function ContainerBayModal({
             </div>
 
             {/* Live VGM Calculator Banner */}
-            <div className="p-4 bg-gradient-to-r from-blue-950/70 to-cyan-950/70 border border-cyan-500/40 rounded-xl space-y-2">
+            <div className="p-4 bg-brand-primary-soft border border-brand-primary/30 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <Sparkles className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  <Sparkles className="w-4 h-4 text-brand-primary" />
+                  <span className="text-xs font-bold text-content-primary uppercase tracking-wider">
                     SOLAS Verified Gross Mass (VGM — Box 19c)
                   </span>
                 </div>
-                <span className="text-base font-mono font-extrabold text-cyan-300">
+                <span className="text-base font-mono font-extrabold text-brand-primary">
                   {vgmWeightKg.toLocaleString()} kg
                 </span>
               </div>
 
-              <div className="p-2.5 bg-slate-950/80 rounded border border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-between">
+              <div className="p-2.5 bg-surface rounded border border-divider text-[11px] font-mono text-content-primary flex items-center justify-between">
                 <span>Cargo Gross: {cargoGrossWeight.toLocaleString()} kg</span>
-                <span>+</span>
+                <span className="text-content-muted">+</span>
                 <span>Container Tare: {Number(tareWeightKg).toLocaleString()} kg</span>
-                <span>=</span>
-                <span className="text-emerald-400 font-bold">VGM: {vgmWeightKg.toLocaleString()} kg</span>
+                <span className="text-content-muted">=</span>
+                <span className="text-state-success font-bold">VGM: {vgmWeightKg.toLocaleString()} kg</span>
               </div>
 
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                <Info className="w-3 h-3 text-cyan-400 inline mr-1" />
+              <p className="text-[10px] text-content-secondary leading-relaxed">
+                <Info className="w-3 h-3 text-brand-primary inline mr-1" />
                 Filling these equipment specifications automatically populates 7 pending fields across DG (Boxes 2, 7, 10, 19, 19b, 19c) and BOL (Booking, Vessel/Voyage, Container, Seal, Tare, VGM, and the 5-column Container Summary Table).
               </p>
             </div>
@@ -652,27 +652,27 @@ export function ContainerBayModal({
         </div>
 
         {/* Modal Footer Controls */}
-        <div className="h-14 px-5 border-t border-slate-800 flex items-center justify-between bg-slate-950 shrink-0">
-          <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
+        <div className="h-14 px-5 border-t border-divider flex items-center justify-between bg-surface shrink-0">
+          <div className="flex items-center space-x-2 text-xs font-mono text-content-secondary">
             <span>Allocated: {allocatedPalletsList.length} pallets</span>
             <span>&bull;</span>
             <span>Total: {totalAllocatedBoxes} boxes</span>
             <span>&bull;</span>
-            <span className="text-cyan-300">VGM: {vgmWeightKg.toLocaleString()} kg</span>
+            <span className="text-brand-primary font-bold">VGM: {vgmWeightKg.toLocaleString()} kg</span>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-md text-xs text-slate-400 hover:text-white"
+              className="px-3 py-1.5 rounded-md text-xs text-content-secondary hover:text-content-primary"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleApplyAndSync}
-              className="px-4 py-1.5 rounded-md text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-sm flex items-center space-x-1.5"
+              className="px-4 py-1.5 rounded-md text-xs font-semibold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm flex items-center space-x-1.5"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>Apply &amp; Sync to Manifests</span>
@@ -683,16 +683,16 @@ export function ContainerBayModal({
 
       {/* Edit / Add Pallet Inner Dialog */}
       {showPalletForm && (
-        <div className="fixed inset-0 z-60 bg-black/75 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-4 space-y-3 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+        <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-xl max-w-md w-full p-4 space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-divider">
+              <h4 className="text-xs font-bold text-content-primary uppercase tracking-wider">
                 {editingPalletIndex !== null ? 'Edit Pallet' : 'Add New Pallet'}
               </h4>
               <button
                 type="button"
                 onClick={() => setShowPalletForm(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-content-muted hover:text-content-primary"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -700,7 +700,7 @@ export function ContainerBayModal({
 
             <div className="space-y-2.5 text-xs">
               <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                <label className="block text-[11px] font-medium text-content-secondary mb-1">
                   Pallet ID / Number
                 </label>
                 <input
@@ -708,12 +708,12 @@ export function ContainerBayModal({
                   placeholder="e.g. P-01"
                   value={palletForm.palletNumber}
                   onChange={(e) => setPalletForm((prev) => ({ ...prev, palletNumber: e.target.value }))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400"
+                  className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                <label className="block text-[11px] font-medium text-content-secondary mb-1">
                   Model / Description
                 </label>
                 <input
@@ -721,55 +721,55 @@ export function ContainerBayModal({
                   placeholder="e.g. Model Code"
                   value={palletForm.modelCode}
                   onChange={(e) => setPalletForm((prev) => ({ ...prev, modelCode: e.target.value }))}
-                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-cyan-400"
+                  className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-content-primary focus:outline-none focus:border-brand-primary"
                 />
               </div>
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">Boxes</label>
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">Boxes</label>
                   <input
                     type="number"
                     value={palletForm.boxCount || ''}
                     onChange={(e) => setPalletForm((prev) => ({ ...prev, boxCount: Number(e.target.value) || 0 }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2 py-1.5 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">Gross (kg)</label>
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">Gross (kg)</label>
                   <input
                     type="number"
                     value={palletForm.grossWeightKg || ''}
                     onChange={(e) => setPalletForm((prev) => ({ ...prev, grossWeightKg: Number(e.target.value) || 0 }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2 py-1.5 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-slate-300 mb-1">Net (kg)</label>
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">Net (kg)</label>
                   <input
                     type="number"
                     value={palletForm.netWeightKg || ''}
                     onChange={(e) => setPalletForm((prev) => ({ ...prev, netWeightKg: Number(e.target.value) || 0 }))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-white font-mono focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-input-bg border border-divider rounded px-2 py-1.5 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+            <div className="flex justify-end space-x-2 pt-2 border-t border-divider">
               <button
                 type="button"
                 onClick={() => setShowPalletForm(false)}
-                className="px-3 py-1.5 rounded text-xs text-slate-400 hover:text-white"
+                className="px-3 py-1.5 rounded text-xs text-content-secondary hover:text-content-primary"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSavePalletForm}
-                className="px-3.5 py-1.5 rounded text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white"
+                className="px-3.5 py-1.5 rounded text-xs font-semibold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text"
               >
                 Save Pallet
               </button>
