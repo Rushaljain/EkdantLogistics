@@ -474,22 +474,19 @@ export function WorkspacePage({
             {/* Top Document Action Bar */}
             <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
               <div className="flex items-center space-x-3">
-                {/* Populated Badge */}
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-primary-soft text-brand-primary border border-brand-primary/30 flex items-center space-x-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-brand-primary" />
-                  <span>{dgStats.populated} / {dgStats.total} Boxes Populated</span>
-                </span>
-
                 {/* Pending Stage-2 Fields Jump Button / All Complete Badge */}
                 {pendingStage2DgKeys.length > 0 ? (
                   <button
                     type="button"
                     onClick={handleJumpToNextPending}
-                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-1.5 transition-all opacity-100 cursor-pointer"
+                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-2 transition-all opacity-100 cursor-pointer text-left"
                     title="Click to cycle focus to next pending Stage-2 field"
                   >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>⚡ {pendingStage2DgKeys.length} Pending Stage-2 Fields — Click to Jump</span>
+                    <Zap className="w-3.5 h-3.5 shrink-0" />
+                    <div className="flex flex-col leading-tight">
+                      <span>Fields Pending {dgStats.total - dgStats.populated}/{dgStats.total}</span>
+                      <span className="text-[9px] font-normal opacity-90">Click to jump to missing item</span>
+                    </div>
                   </button>
                 ) : (
                   <span className="text-xs font-bold px-3 py-1 rounded-md bg-state-success hover:bg-state-success text-white shadow-sm flex items-center space-x-1.5 transition-all opacity-100">
@@ -549,22 +546,19 @@ export function WorkspacePage({
             {/* Top Document Action Bar */}
             <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
               <div className="flex items-center space-x-3">
-                {/* Populated Badge */}
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-primary-soft text-brand-primary border border-brand-primary/30 flex items-center space-x-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-brand-primary" />
-                  <span>{blStats.populated} / {blStats.total} Fields Populated</span>
-                </span>
-
                 {/* Pending Stage-2 Fields Jump Button / All Complete Badge */}
                 {pendingStage2BlKeys.length > 0 ? (
                   <button
                     type="button"
                     onClick={handleJumpToNextPending}
-                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-1.5 transition-all opacity-100 cursor-pointer"
+                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-2 transition-all opacity-100 cursor-pointer text-left"
                     title="Click to cycle focus to next pending Stage-2 field"
                   >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>⚡ {pendingStage2BlKeys.length} Pending Stage-2 Fields — Click to Jump</span>
+                    <Zap className="w-3.5 h-3.5 shrink-0" />
+                    <div className="flex flex-col leading-tight">
+                      <span>Fields Pending {blStats.total - blStats.populated}/{blStats.total}</span>
+                      <span className="text-[9px] font-normal opacity-90">Click to jump to missing item</span>
+                    </div>
                   </button>
                 ) : (
                   <span className="text-xs font-bold px-3 py-1 rounded-md bg-state-success hover:bg-state-success text-white shadow-sm flex items-center space-x-1.5 transition-all opacity-100">

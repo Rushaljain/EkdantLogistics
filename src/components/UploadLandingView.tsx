@@ -38,10 +38,41 @@ export function UploadLandingView({
   onRemoveFile,
   onClearFiles,
   isParsing,
+  parseProgress,
   apiError,
   onExecuteParsing
 }: UploadLandingViewProps): React.JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [fakePercent, setFakePercent] = React.useState<number>(1);
+
+  React.useEffect(() => {
+    if (!isParsing) {
+      setFakePercent(1);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setFakePercent((prev) => {
+        if (prev < 30) return prev + Math.floor(Math.random() * 4 + 2);
+        if (prev < 70) return prev + Math.floor(Math.random() * 3 + 1);
+        if (prev < 90) return prev + 1;
+        if (prev < 98) return prev + (Math.random() > 0.6 ? 1 : 0);
+        return 98;
+      });
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [isParsing]);
+
+  // If backend progress provides totalFiles > 0, we can also factor it
+  const displayPercent = React.useMemo(() => {
+    if (!isParsing) return 0;
+    if (parseProgress && parseProgress.totalFiles > 0) {
+      const fileFraction = (parseProgress.processedFiles / parseProgress.totalFiles) * 90;
+      return Math.max(fakePercent, Math.min(98, Math.round(fileFraction)));
+    }
+    return fakePercent;
+  }, [isParsing, parseProgress, fakePercent]);
 
   const isModeSelected = Boolean(mode);
 
@@ -191,6 +222,9 @@ export function UploadLandingView({
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Processing Documents...</span>
+                  <span className="font-mono text-[11px] font-bold bg-white/20 px-1.5 py-0.5 rounded ml-1">
+                    {displayPercent}%
+                  </span>
                 </>
               ) : (
                 <>

@@ -222,12 +222,18 @@ export function App(): React.JSX.Element {
       setShipmentJson(result.shipmentJson);
       setFilterResults(result.filterResults);
       setLogs(result.logs);
-      setHasParsed(true);
-
+      
       const derivedDg = deriveDGManifestFromJSON(result.shipmentJson);
       setDgManifest(derivedDg);
       const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, result.shipmentJson);
       setBlManifest(derivedBl);
+
+      // Trigger smooth skeleton fade-in transition
+      setIsTransitioningToWorkspace(true);
+      setHasParsed(true);
+      setTimeout(() => {
+        setIsTransitioningToWorkspace(false);
+      }, 700);
     } catch (err: any) {
       console.error('Document parsing halted due to error:', err);
       setApiError(err?.message || 'An unexpected error occurred during extraction.');
@@ -480,6 +486,7 @@ export function App(): React.JSX.Element {
 
   // Condition to determine if shipment data is loaded
   const isShipmentLoaded = hasParsed || shipmentJson.invoiceNumbers.length > 0;
+  const [isTransitioningToWorkspace, setIsTransitioningToWorkspace] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-cyan-500 selection:text-white overflow-hidden">
@@ -501,39 +508,62 @@ export function App(): React.JSX.Element {
       {/* Primary Page Canvas (All 3 pages keep state alive) */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {activePage === 'workspace' && (
-          isShipmentLoaded ? (
-            <WorkspacePage
-              shipmentJson={shipmentJson}
-              onUpdateShipment={handleUpdateShipmentFromContainer}
-              activeDgFormat={activeDgFormat}
-              activeBlFormat={activeBlFormat}
-              dgFormats={dgFormats}
-              blFormats={blFormats}
-              selectedDgFormatId={selectedDgFormatId}
-              selectedBlFormatId={selectedBlFormatId}
-              onSelectDgFormat={setSelectedDgFormatId}
-              onSelectBlFormat={setSelectedBlFormatId}
-              onOpenFormatLibrary={handleOpenFormatLibrary}
-              mappedDgFields={mappedDgFields}
-              mappedBlFields={mappedBlFields}
-              dgStats={dgStats}
-              blStats={blStats}
-              onFieldChange={handleFieldChange}
-              dgCustomOverrides={dgCustomOverrides}
-              blCustomOverrides={blCustomOverrides}
-              onOpenContainerModal={() => {}}
-              onNewUpload={handleFlushAndNewShipment}
-              onHardReset={handleHardReset}
-              isPurging={isPurging}
-              onOpenApiKeyModal={() => setShowKeyModal(true)}
-              hasCustomKey={Boolean(customApiKey.trim())}
-              onPrintPdf={handlePrintPdf}
-              onDownloadDocx={handleDownloadDocx}
-              onDownloadHtml={handleDownloadHtml}
-              onDownloadJson={handleDownloadJson}
-              onDownloadZip={handleDownloadZip}
-              isExportingZip={isExportingZip}
-            />
+          isTransitioningToWorkspace ? (
+            <div className="flex-1 flex flex-col p-6 bg-app animate-fade-in overflow-hidden space-y-5">
+              {/* Header Skeleton */}
+              <div className="h-14 bg-surface border border-divider rounded-xl p-3 flex items-center justify-between animate-pulse">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-lg bg-surface-secondary border border-divider" />
+                  <div className="space-y-1.5">
+                    <div className="h-3 w-20 bg-surface-secondary rounded" />
+                    <div className="h-2 w-32 bg-surface-secondary rounded" />
+                  </div>
+                </div>
+                <div className="h-7 w-40 bg-surface-secondary rounded-lg" />
+                <div className="h-7 w-24 bg-surface-secondary rounded-lg" />
+              </div>
+              {/* Main Canvas Skeleton */}
+              <div className="flex-1 bg-surface border border-divider rounded-2xl p-8 flex flex-col items-center justify-center space-y-4 animate-pulse">
+                <div className="h-6 w-96 bg-surface-secondary rounded" />
+                <div className="h-4 w-64 bg-surface-secondary rounded" />
+                <div className="w-full max-w-2xl h-80 bg-surface-secondary/60 rounded-xl border border-divider border-dashed mt-4" />
+              </div>
+            </div>
+          ) : isShipmentLoaded ? (
+            <div className="flex-1 flex flex-col h-full overflow-hidden animate-fade-in transition-opacity duration-300">
+              <WorkspacePage
+                shipmentJson={shipmentJson}
+                onUpdateShipment={handleUpdateShipmentFromContainer}
+                activeDgFormat={activeDgFormat}
+                activeBlFormat={activeBlFormat}
+                dgFormats={dgFormats}
+                blFormats={blFormats}
+                selectedDgFormatId={selectedDgFormatId}
+                selectedBlFormatId={selectedBlFormatId}
+                onSelectDgFormat={setSelectedDgFormatId}
+                onSelectBlFormat={setSelectedBlFormatId}
+                onOpenFormatLibrary={handleOpenFormatLibrary}
+                mappedDgFields={mappedDgFields}
+                mappedBlFields={mappedBlFields}
+                dgStats={dgStats}
+                blStats={blStats}
+                onFieldChange={handleFieldChange}
+                dgCustomOverrides={dgCustomOverrides}
+                blCustomOverrides={blCustomOverrides}
+                onOpenContainerModal={() => {}}
+                onNewUpload={handleFlushAndNewShipment}
+                onHardReset={handleHardReset}
+                isPurging={isPurging}
+                onOpenApiKeyModal={() => setShowKeyModal(true)}
+                hasCustomKey={Boolean(customApiKey.trim())}
+                onPrintPdf={handlePrintPdf}
+                onDownloadDocx={handleDownloadDocx}
+                onDownloadHtml={handleDownloadHtml}
+                onDownloadJson={handleDownloadJson}
+                onDownloadZip={handleDownloadZip}
+                isExportingZip={isExportingZip}
+              />
+            </div>
           ) : (
             <UploadLandingView
               mode={mode}
