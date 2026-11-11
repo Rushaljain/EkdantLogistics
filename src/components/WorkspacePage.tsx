@@ -14,8 +14,6 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
-  FolderPlus,
-  Key,
   CheckCircle2,
   Zap
 } from 'lucide-react';
@@ -79,7 +77,7 @@ export function WorkspacePage({
   selectedBlFormatId,
   onSelectDgFormat,
   onSelectBlFormat,
-  onOpenFormatLibrary,
+  onOpenFormatLibrary: _onOpenFormatLibrary,
   mappedDgFields,
   mappedBlFields,
   dgStats,
@@ -91,8 +89,8 @@ export function WorkspacePage({
   onNewUpload,
   onHardReset,
   isPurging,
-  onOpenApiKeyModal,
-  hasCustomKey,
+  onOpenApiKeyModal: _onOpenApiKeyModal,
+  hasCustomKey: _hasCustomKey,
   onPrintPdf,
   onDownloadDocx,
   onDownloadHtml,
@@ -239,16 +237,6 @@ export function WorkspacePage({
           >
             <Plus className="w-3.5 h-3.5 text-brand-primary" />
             <span className="hidden lg:inline">New Upload</span>
-          </button>
-
-          {/* API Key Modal Button */}
-          <button
-            type="button"
-            onClick={onOpenApiKeyModal}
-            className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
-            title={hasCustomKey ? 'Custom API Key active' : 'Configure Gemini API Key'}
-          >
-            <Key className="w-3.5 h-3.5" />
           </button>
 
           {/* Reset Session */}
@@ -501,66 +489,23 @@ export function WorkspacePage({
               </div>
 
               <div className="flex items-center space-x-2">
-                {/* Carrier Format Selector */}
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
-                  <select
-                    value={selectedDgFormatId}
-                    onChange={(e) => onSelectDgFormat(e.target.value)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
-                  >
-                    {dgFormats.map((fmt) => (
-                      <option key={fmt.formatId} value={fmt.formatId}>
-                        {fmt.formatName}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => onOpenFormatLibrary('DG')}
-                    className="p-1.5 rounded-lg text-brand-primary hover:bg-brand-primary-soft border border-divider transition-colors"
-                    title="Upload custom carrier format"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Quick Container UI Drawer Trigger */}
-                <button
-                  type="button"
-                  onClick={onOpenContainerModal}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider flex items-center space-x-1.5 transition-colors shadow-xs"
-                  title="Open Container Bay & Equipment Manager"
-                >
-                  <Boxes className="w-3.5 h-3.5 text-brand-primary" />
-                  <span>Container UI</span>
-                </button>
-
-                {/* Document Quick Exports */}
-                <div className="flex items-center space-x-1 border-l border-divider pl-2">
-                  <button
-                    onClick={() => onPrintPdf('DG')}
-                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
-                    title="Print / Save PDF (Box 1-22 & Pallet Annex)"
-                  >
-                    <Printer className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => onDownloadDocx('DG')}
-                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
-                    title="Download OpenXML Word (.docx)"
-                  >
-                    <FileText className="w-4 h-4 text-brand-primary" />
-                  </button>
-                  <button
-                    onClick={() => onDownloadHtml('DG')}
-                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
-                    title="Download Standalone Maritime HTML"
-                  >
-                    <ExternalLink className="w-4 h-4 text-brand-accent" />
-                  </button>
+                  {/* Carrier Format Selector */}
+                  <div className="flex items-center space-x-1.5">
+                    <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
+                    <select
+                      value={selectedDgFormatId}
+                      onChange={(e) => onSelectDgFormat(e.target.value)}
+                      className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
+                    >
+                      {dgFormats.map((fmt) => (
+                        <option key={fmt.formatId} value={fmt.formatId}>
+                          {fmt.formatName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
-            </div>
 
             {/* Full-Width Centered A4 Carrier Document Canvas */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center">
@@ -633,49 +578,6 @@ export function WorkspacePage({
                       </option>
                     ))}
                   </select>
-                  <button
-                    onClick={() => onOpenFormatLibrary('BL')}
-                    className="p-1.5 rounded-lg text-brand-primary hover:bg-brand-primary-soft border border-divider transition-colors"
-                    title="Upload custom carrier format"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Quick Container UI Drawer Trigger */}
-                <button
-                  type="button"
-                  onClick={onOpenContainerModal}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider flex items-center space-x-1.5 transition-colors shadow-xs"
-                  title="Open Container Bay & Equipment Manager"
-                >
-                  <Boxes className="w-3.5 h-3.5 text-brand-primary" />
-                  <span>Container UI</span>
-                </button>
-
-                {/* Document Quick Exports */}
-                <div className="flex items-center space-x-1 border-l border-divider pl-2">
-                  <button
-                    onClick={() => onPrintPdf('BL')}
-                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
-                    title="Print / Save PDF (Ocean BOL Draft & Pallet Annex)"
-                  >
-                    <Printer className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => onDownloadDocx('BL')}
-                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
-                    title="Download OpenXML Word (.docx)"
-                  >
-                    <FileText className="w-4 h-4 text-brand-primary" />
-                  </button>
-                  <button
-                    onClick={() => onDownloadHtml('BL')}
-                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
-                    title="Download Standalone Maritime HTML"
-                  >
-                    <ExternalLink className="w-4 h-4 text-brand-accent" />
-                  </button>
                 </div>
               </div>
             </div>
