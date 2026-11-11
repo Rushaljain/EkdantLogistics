@@ -721,43 +721,6 @@ export function WorkspacePage({
 
             {/* Right Column: Real-Time SOLAS 74 Multimodal DG A4 Document Preview (52% Width) */}
             <div className="hidden lg:flex flex-1 h-full flex-col bg-surface-secondary overflow-hidden">
-              {/* Document Preview Toolbar */}
-              <div className="h-11 px-4 border-b border-divider bg-surface flex items-center justify-between shrink-0">
-                <div className="flex items-center space-x-2">
-                  <FileText className="w-4 h-4 text-brand-primary" />
-                  <span className="text-xs font-semibold text-content-primary tracking-wide">
-                    Live SOLAS 74 / MARPOL DG Declaration Preview (A4)
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-1.5">
-                  <button
-                    onClick={() => onPrintPdf('DG')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
-                    title="Print PDF"
-                  >
-                    <Printer className="w-3 h-3 text-brand-primary" />
-                    <span>Print PDF</span>
-                  </button>
-                  <button
-                    onClick={() => onDownloadDocx('DG')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
-                    title="Download Word Document"
-                  >
-                    <FileText className="w-3 h-3 text-brand-primary" />
-                    <span>Word</span>
-                  </button>
-                  <button
-                    onClick={() => onDownloadHtml('DG')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
-                    title="Download HTML"
-                  >
-                    <ExternalLink className="w-3 h-3 text-brand-accent" />
-                    <span>HTML</span>
-                  </button>
-                </div>
-              </div>
-
               {/* Embedded Live A4 Document Frame */}
               <div className="flex-1 p-3 bg-surface-secondary overflow-auto flex justify-center">
                 <iframe
@@ -926,43 +889,6 @@ export function WorkspacePage({
 
             {/* Right Column: Real-Time Ocean Bill of Lading A4 Document Preview (52% Width) */}
             <div className="hidden lg:flex flex-1 h-full flex-col bg-surface-secondary overflow-hidden">
-              {/* Document Preview Toolbar */}
-              <div className="h-11 px-4 border-b border-divider bg-surface flex items-center justify-between shrink-0">
-                <div className="flex items-center space-x-2">
-                  <FileSpreadsheet className="w-4 h-4 text-brand-primary" />
-                  <span className="text-xs font-semibold text-content-primary tracking-wide">
-                    Live Ocean Bill of Lading Draft Preview (A4)
-                  </span>
-                </div>
-
-                <div className="flex items-center space-x-1.5">
-                  <button
-                    onClick={() => onPrintPdf('BL')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
-                    title="Print PDF"
-                  >
-                    <Printer className="w-3 h-3 text-brand-primary" />
-                    <span>Print PDF</span>
-                  </button>
-                  <button
-                    onClick={() => onDownloadDocx('BL')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
-                    title="Download Word Document"
-                  >
-                    <FileText className="w-3 h-3 text-brand-primary" />
-                    <span>Word</span>
-                  </button>
-                  <button
-                    onClick={() => onDownloadHtml('BL')}
-                    className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider flex items-center space-x-1"
-                    title="Download HTML"
-                  >
-                    <ExternalLink className="w-3 h-3 text-brand-accent" />
-                    <span>HTML</span>
-                  </button>
-                </div>
-              </div>
-
               {/* Embedded Live A4 Document Frame */}
               <div className="flex-1 p-3 bg-surface-secondary overflow-auto flex justify-center">
                 <iframe
