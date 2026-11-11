@@ -10,7 +10,9 @@ import {
   Edit2,
   X,
   FileText,
-  ExternalLink
+  ExternalLink,
+  ChevronDown,
+  Layers
 } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
@@ -18,6 +20,14 @@ import type {
   ContainerType
 } from '../types/index.ts';
 import { CONTAINER_SPECS } from '../types/index.ts';
+
+export interface ContainerItem {
+  id: string;
+  containerNumber: string;
+  sealNumber: string;
+  containerType: ContainerType;
+  tareWeightKg: number;
+}
 
 interface ContainerBayWorkspaceProps {
   shipmentJson: ExtractedShipmentJSON;
@@ -45,25 +55,77 @@ export function ContainerBayWorkspace({
   const defaultTare = CONTAINER_SPECS[initialType]?.tareWeightKg || 2150;
   const initialTare = shipmentJson.tareWeightKg > 0 ? shipmentJson.tareWeightKg : defaultTare;
 
-  // Equipment input states
-  const [containerNumber, setContainerNumber] = useState<string>(shipmentJson.containerNumber || '');
-  const [sealNumber, setSealNumber] = useState<string>(shipmentJson.sealNumber || '');
-  const [containerType, setContainerType] = useState<ContainerType>(initialType);
-  const [tareWeightKg, setTareWeightKg] = useState<number>(initialTare);
+  // Multi-Container Initialization
+  const initialContainers: ContainerItem[] = useMemo(() => {
+    const rawConts = shipmentJson.containerNumber
+      ? shipmentJson.containerNumber.split(/[,/]/).map((s) => s.trim()).filter(Boolean)
+      : [];
+    const rawSeals = shipmentJson.sealNumber
+      ? shipmentJson.sealNumber.split(/[,/]/).map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    if (rawConts.length > 1) {
+      return rawConts.map((cNum, idx) => ({
+        id: `container-${idx + 1}`,
+        containerNumber: cNum,
+        sealNumber: rawSeals[idx] || (idx === 0 ? shipmentJson.sealNumber || '' : ''),
+        containerType: initialType,
+        tareWeightKg: idx === 0 ? initialTare : (CONTAINER_SPECS[initialType]?.tareWeightKg || 2150)
+      }));
+    }
+
+    return [
+      {
+        id: 'container-1',
+        containerNumber: shipmentJson.containerNumber || '',
+        sealNumber: shipmentJson.sealNumber || '',
+        containerType: initialType,
+        tareWeightKg: initialTare
+      }
+    ];
+  }, []);
+
+  const [containers, setContainers] = useState<ContainerItem[]>(() => initialContainers);
+  const [activeContainerId, setActiveContainerId] = useState<string>(() => initialContainers[0]?.id || 'container-1');
+
+  // Active Container and its specs
+  const activeContainer = containers.find((c) => c.id === activeContainerId) || containers[0] || {
+    id: 'container-1',
+    containerNumber: '',
+    sealNumber: '',
+    containerType: '20GP' as ContainerType,
+    tareWeightKg: 2150
+  };
+  const specs = CONTAINER_SPECS[activeContainer.containerType] || CONTAINER_SPECS['20GP'];
+
+  // Update active container fields
+  const updateActiveContainer = (partial: Partial<ContainerItem>) => {
+    setContainers((prev) =>
+      prev.map((c) => (c.id === activeContainer.id ? { ...c, ...partial } : c))
+    );
+  };
+
+  // General shipment transport states
   const [carrierName, setCarrierName] = useState<string>(shipmentJson.carrierName || '');
   const [vesselName, setVesselName] = useState<string>(shipmentJson.vesselName || '');
   const [voyageNumber, setVoyageNumber] = useState<string>(shipmentJson.voyageNumber || '');
   const [bookingNumber, setBookingNumber] = useState<string>(shipmentJson.bookingNumber || '');
 
-  // Pallet allocation state: 100% default auto-allocation
+  // Pallet allocation state: maps palletNumber -> containerId (or undefined if unallocated)
   const [pallets, setPallets] = useState<ExtractedPallet[]>(() => [...initialPallets]);
-  const [allocatedPalletNumbers, setAllocatedPalletNumbers] = useState<Set<string>>(() => {
-    return new Set(initialPallets.map((p) => p.palletNumber));
+  const [palletAllocationMap, setPalletAllocationMap] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    const defaultContId = initialContainers[0]?.id || 'container-1';
+    initialPallets.forEach((p) => {
+      map[p.palletNumber] = defaultContId;
+    });
+    return map;
   });
 
   const [hasSynced, setHasSynced] = useState<boolean>(false);
+  const [showAddMenu, setShowAddMenu] = useState<boolean>(false);
 
-  // Edit / Add pallet modal state
+  // Pallet Add / Edit modal state
   const [editingPalletIndex, setEditingPalletIndex] = useState<number | null>(null);
   const [palletForm, setPalletForm] = useState<{
     palletNumber: string;
@@ -80,44 +142,80 @@ export function ContainerBayWorkspace({
   });
   const [showPalletForm, setShowPalletForm] = useState<boolean>(false);
 
-  // Container specs
-  const specs = CONTAINER_SPECS[containerType] || CONTAINER_SPECS['20GP'];
+  // Container Add modal state
+  const [showContainerForm, setShowContainerForm] = useState<boolean>(false);
+  const [containerForm, setContainerForm] = useState<{
+    containerNumber: string;
+    sealNumber: string;
+    containerType: ContainerType;
+    tareWeightKg: number;
+  }>({
+    containerNumber: '',
+    sealNumber: '',
+    containerType: '20GP',
+    tareWeightKg: 2150
+  });
 
-  // Handle container type change
+  // Handle container type change for active container
   const handleContainerTypeChange = (newType: ContainerType) => {
-    setContainerType(newType);
     const newDefaultTare = CONTAINER_SPECS[newType]?.tareWeightKg || 2150;
-    setTareWeightKg(newDefaultTare);
+    updateActiveContainer({
+      containerType: newType,
+      tareWeightKg: newDefaultTare
+    });
   };
 
-  // Toggle allocation of a pallet
+  // Toggle allocation of a pallet to the active container
   const togglePalletAllocation = (palletNumber: string) => {
-    setAllocatedPalletNumbers((prev) => {
-      const next = new Set(prev);
-      if (next.has(palletNumber)) {
-        next.delete(palletNumber);
+    setPalletAllocationMap((prev) => {
+      const next = { ...prev };
+      if (next[palletNumber] === activeContainer.id) {
+        delete next[palletNumber];
       } else {
-        if (next.size >= specs.maxPallets) {
+        const currentCount = pallets.filter((p) => next[p.palletNumber] === activeContainer.id).length;
+        if (currentCount >= specs.maxPallets) {
           return next;
         }
-        next.add(palletNumber);
+        next[palletNumber] = activeContainer.id;
       }
       return next;
     });
   };
 
   const handleSelectAllPallets = () => {
-    setAllocatedPalletNumbers(new Set(pallets.map((p) => p.palletNumber)));
+    setPalletAllocationMap((prev) => {
+      const next = { ...prev };
+      let count = 0;
+      for (const p of pallets) {
+        if (count < specs.maxPallets) {
+          next[p.palletNumber] = activeContainer.id;
+          count++;
+        }
+      }
+      return next;
+    });
   };
 
   const handleDeselectAllPallets = () => {
-    setAllocatedPalletNumbers(new Set());
+    setPalletAllocationMap((prev) => {
+      const next = { ...prev };
+      for (const p of pallets) {
+        if (next[p.palletNumber] === activeContainer.id) {
+          delete next[p.palletNumber];
+        }
+      }
+      return next;
+    });
   };
 
-  // Metrics for allocated pallets
+  // Metrics for pallets allocated to the active container
   const allocatedPalletsList = useMemo(() => {
-    return pallets.filter((p) => allocatedPalletNumbers.has(p.palletNumber));
-  }, [pallets, allocatedPalletNumbers]);
+    return pallets.filter((p) => palletAllocationMap[p.palletNumber] === activeContainer.id);
+  }, [pallets, palletAllocationMap, activeContainer.id]);
+
+  const allAllocatedPallets = useMemo(() => {
+    return pallets.filter((p) => Boolean(palletAllocationMap[p.palletNumber]));
+  }, [pallets, palletAllocationMap]);
 
   const totalAllocatedBoxes = useMemo(() => {
     return allocatedPalletsList.reduce((sum, p) => sum + (p.boxCount || 0), 0);
@@ -131,10 +229,10 @@ export function ContainerBayWorkspace({
     return allocatedPalletsList.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
   }, [allocatedPalletsList]);
 
-  // Live VGM Calculation
-  const vgmWeightKg = cargoGrossWeight + (Number(tareWeightKg) || 0);
+  // Live VGM Calculation for active container
+  const vgmWeightKg = cargoGrossWeight + (Number(activeContainer.tareWeightKg) || 0);
 
-  // Utilization
+  // Utilization for active container
   const weightUtilPct = Math.min(Math.round((cargoGrossWeight / specs.maxPayloadKg) * 100), 100);
   const palletUtilPct = Math.min(Math.round((allocatedPalletsList.length / specs.maxPallets) * 100), 100);
   const isOverweight = cargoGrossWeight > specs.maxPayloadKg;
@@ -193,7 +291,10 @@ export function ContainerBayWorkspace({
         sourceFile: 'Container Bay Workspace'
       };
       setPallets((prev) => [...prev, newPallet]);
-      setAllocatedPalletNumbers((prev) => new Set(prev).add(newPallet.palletNumber));
+      setPalletAllocationMap((prev) => ({
+        ...prev,
+        [newPallet.palletNumber]: activeContainer.id
+      }));
     }
 
     setShowPalletForm(false);
@@ -203,17 +304,64 @@ export function ContainerBayWorkspace({
     const target = pallets[index];
     if (!target) return;
     setPallets((prev) => prev.filter((_, i) => i !== index));
-    setAllocatedPalletNumbers((prev) => {
-      const next = new Set(prev);
-      next.delete(target.palletNumber);
+    setPalletAllocationMap((prev) => {
+      const next = { ...prev };
+      delete next[target.palletNumber];
+      return next;
+    });
+  };
+
+  // Container Creation and Deletion
+  const handleOpenNewContainer = () => {
+    setContainerForm({
+      containerNumber: '',
+      sealNumber: '',
+      containerType: '20GP',
+      tareWeightKg: 2150
+    });
+    setShowContainerForm(true);
+  };
+
+  const handleSaveContainerForm = () => {
+    const newId = `container-${Date.now()}`;
+    const newCont: ContainerItem = {
+      id: newId,
+      containerNumber: containerForm.containerNumber.trim(),
+      sealNumber: containerForm.sealNumber.trim(),
+      containerType: containerForm.containerType,
+      tareWeightKg: Number(containerForm.tareWeightKg) || 2150
+    };
+    setContainers((prev) => [...prev, newCont]);
+    setActiveContainerId(newId);
+    setShowContainerForm(false);
+  };
+
+  const handleDeleteContainer = (idToDelete: string) => {
+    if (containers.length <= 1) return;
+    setContainers((prev) => prev.filter((c) => c.id !== idToDelete));
+    if (activeContainerId === idToDelete) {
+      const remaining = containers.filter((c) => c.id !== idToDelete);
+      setActiveContainerId(remaining[0]?.id || 'container-1');
+    }
+    setPalletAllocationMap((prev) => {
+      const next = { ...prev };
+      for (const [pNum, contId] of Object.entries(next)) {
+        if (contId === idToDelete) {
+          delete next[pNum];
+        }
+      }
       return next;
     });
   };
 
   // Save & Synchronize Equipment back to ExtractedShipmentJSON
   const handleApplyAndSync = () => {
-    // Generate updated pallet range in shippingMarks
-    const palletNumbers = allocatedPalletsList.map((p) => p.palletNumber).filter(Boolean);
+    const contNums = containers.map((c) => c.containerNumber.trim()).filter(Boolean);
+    const sealNums = containers.map((c) => c.sealNumber.trim()).filter(Boolean);
+    const primaryContNum = contNums.length > 0 ? contNums.join(', ') : activeContainer.containerNumber.trim();
+    const primarySealNum = sealNums.length > 0 ? sealNums.join(', ') : activeContainer.sealNumber.trim();
+
+    const palletNumbers = allAllocatedPallets.map((p) => p.palletNumber).filter(Boolean);
     const rangeStr =
       palletNumbers.length > 0
         ? `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`
@@ -224,21 +372,26 @@ export function ContainerBayWorkspace({
       updatedMarks = `${updatedMarks}\nPALLET NOS: ${rangeStr}`.trim();
     }
 
+    const totalAllGross = allAllocatedPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
+    const totalAllNet = allAllocatedPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
+    const totalAllBoxes = allAllocatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
+    const totalAllTare = containers.reduce((sum, c) => sum + (Number(c.tareWeightKg) || 0), 0);
+
     const updated: ExtractedShipmentJSON = {
       ...shipmentJson,
-      containerNumber: containerNumber.trim(),
-      sealNumber: sealNumber.trim(),
-      containerType,
-      tareWeightKg: Number(tareWeightKg) || 0,
+      containerNumber: primaryContNum,
+      sealNumber: primarySealNum,
+      containerType: activeContainer.containerType,
+      tareWeightKg: totalAllTare > 0 ? totalAllTare : Number(activeContainer.tareWeightKg) || 0,
       carrierName: carrierName.trim(),
       vesselName: vesselName.trim(),
       voyageNumber: voyageNumber.trim(),
       bookingNumber: bookingNumber.trim(),
-      totalPallets: allocatedPalletsList.length > 0 ? allocatedPalletsList.length : shipmentJson.totalPallets,
-      totalBoxes: totalAllocatedBoxes > 0 ? totalAllocatedBoxes : shipmentJson.totalBoxes,
-      totalPackages: totalAllocatedBoxes > 0 ? totalAllocatedBoxes : shipmentJson.totalPackages,
-      grossWeightKg: cargoGrossWeight > 0 ? cargoGrossWeight : shipmentJson.grossWeightKg,
-      netWeightKg: cargoNetWeight > 0 ? cargoNetWeight : shipmentJson.netWeightKg,
+      totalPallets: allAllocatedPallets.length > 0 ? allAllocatedPallets.length : shipmentJson.totalPallets,
+      totalBoxes: totalAllBoxes > 0 ? totalAllBoxes : shipmentJson.totalBoxes,
+      totalPackages: totalAllBoxes > 0 ? totalAllBoxes : shipmentJson.totalPackages,
+      grossWeightKg: totalAllGross > 0 ? totalAllGross : shipmentJson.grossWeightKg,
+      netWeightKg: totalAllNet > 0 ? totalAllNet : shipmentJson.netWeightKg,
       shippingMarks: updatedMarks,
       pallets
     };
@@ -262,7 +415,7 @@ export function ContainerBayWorkspace({
                 Container Placement &amp; Equipment Allocation
               </h2>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-primary-soft text-brand-primary border border-brand-primary/30 font-semibold">
-                {containerType} ({specs.maxPallets} Pallets Max)
+                {activeContainer.containerType} ({specs.maxPallets} Pallets Max)
               </span>
             </div>
             <p className="text-xs text-content-secondary mt-0.5">
@@ -304,25 +457,34 @@ export function ContainerBayWorkspace({
                 : 'bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text'
             }`}
           >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{hasSynced ? '✓ Synced to DG & BOL' : 'Apply & Sync to Manifests'}</span>
+            {hasSynced ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Synced to Manifests!</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                <span>Apply &amp; Sync to Manifests</span>
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Main Workspace Body (2 Columns) */}
+      {/* Main Grid: 5 Cols Left (Pallets List) | 7 Cols Right (Bay Grid & Equipment) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* =========================================================================
-            LEFT COLUMN: Pallet Allocation List (5 Cols)
+            LEFT COLUMN: Pallets & Cargo Inventory (5 Cols)
             ========================================================================= */}
-        <div className="lg:col-span-5 p-4 bg-surface border border-divider rounded-2xl flex flex-col space-y-3.5 shadow-sm">
-          <div className="flex items-center justify-between pb-2 border-b border-divider">
+        <div className="lg:col-span-5 bg-surface border border-divider rounded-2xl p-4 space-y-3.5 shadow-sm">
+          <div className="flex items-center justify-between pb-3 border-b border-divider">
             <div>
               <h3 className="text-xs font-bold text-content-primary uppercase tracking-wider">
                 Extracted Pallets ({pallets.length})
               </h3>
               <p className="text-[10px] text-content-secondary">
-                {allocatedPalletsList.length} of {pallets.length} allocated to this container bay
+                {allocatedPalletsList.length} of {pallets.length} allocated to active container
               </p>
             </div>
 
@@ -341,14 +503,53 @@ export function ContainerBayWorkspace({
               >
                 None
               </button>
-              <button
-                type="button"
-                onClick={handleOpenNewPallet}
-                className="px-2.5 py-1 text-[11px] rounded bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text font-semibold flex items-center space-x-1 shadow-xs transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                <span>Add</span>
-              </button>
+
+              {/* Add Dropdown for Pallet & Container */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMenu((prev) => !prev)}
+                  className="px-2.5 py-1 text-[11px] rounded bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text font-semibold flex items-center space-x-1 shadow-xs transition-colors cursor-pointer"
+                  title="Add Pallet or Container"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add</span>
+                  <ChevronDown className="w-3 h-3 ml-0.5" />
+                </button>
+
+                {showAddMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowAddMenu(false)}
+                    />
+                    <div className="absolute right-0 mt-1 w-38 bg-surface border border-divider rounded-xl shadow-xl py-1 z-50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddMenu(false);
+                          handleOpenNewPallet();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-content-primary hover:bg-surface-secondary flex items-center space-x-2 transition-colors cursor-pointer"
+                      >
+                        <Layers className="w-3.5 h-3.5 text-brand-primary" />
+                        <span className="font-medium">Add Pallet</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddMenu(false);
+                          handleOpenNewContainer();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-content-primary hover:bg-surface-secondary flex items-center space-x-2 transition-colors border-t border-divider/60 cursor-pointer"
+                      >
+                        <Boxes className="w-3.5 h-3.5 text-brand-accent" />
+                        <span className="font-medium">Add Container</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -356,11 +557,15 @@ export function ContainerBayWorkspace({
           <div className="space-y-2 max-h-[580px] overflow-y-auto pr-1">
             {pallets.length === 0 ? (
               <div className="p-8 text-center text-xs text-content-secondary border border-dashed border-divider rounded-xl">
-                No pallets extracted. Click &quot;+ Add&quot; above to create one.
+                No pallets extracted. Click &quot;Add &gt; Add Pallet&quot; above to create one.
               </div>
             ) : (
               pallets.map((p, idx) => {
-                const isAllocated = allocatedPalletNumbers.has(p.palletNumber);
+                const assignedContId = palletAllocationMap[p.palletNumber];
+                const isAllocated = assignedContId === activeContainer.id;
+                const otherCont = assignedContId && assignedContId !== activeContainer.id
+                  ? containers.find((c) => c.id === assignedContId)
+                  : null;
 
                 return (
                   <div
@@ -369,6 +574,8 @@ export function ContainerBayWorkspace({
                     className={`p-3 rounded-xl border cursor-pointer transition-all ${
                       isAllocated
                         ? 'bg-brand-primary-soft/40 border-brand-primary/40 text-content-primary shadow-xs'
+                        : otherCont
+                        ? 'bg-amber-500/10 border-amber-500/30 text-content-primary opacity-80'
                         : 'bg-surface-secondary/60 border-divider text-content-secondary hover:border-brand-primary/30 opacity-75'
                     }`}
                   >
@@ -388,6 +595,11 @@ export function ContainerBayWorkspace({
                             {p.modelCode}
                           </span>
                         )}
+                        {otherCont && (
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-600 border border-amber-500/30">
+                            {otherCont.containerNumber || 'Other Container'}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-1">
@@ -397,8 +609,8 @@ export function ContainerBayWorkspace({
                             e.stopPropagation();
                             handleOpenEditPallet(idx);
                           }}
-                          className="p-1 text-content-muted hover:text-brand-primary transition-colors"
-                          title="Edit Pallet"
+                          className="p-1 text-content-muted hover:text-brand-primary transition-colors cursor-pointer"
+                          title="Edit Pallet Details"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -408,7 +620,7 @@ export function ContainerBayWorkspace({
                             e.stopPropagation();
                             handleDeletePallet(idx);
                           }}
-                          className="p-1 text-content-muted hover:text-state-error transition-colors"
+                          className="p-1 text-content-muted hover:text-state-error transition-colors cursor-pointer"
                           title="Delete Pallet"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -416,15 +628,18 @@ export function ContainerBayWorkspace({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-1 text-[11px] font-mono text-content-secondary pt-1 border-t border-divider/60">
+                    <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-content-secondary mt-1 bg-surface/60 p-1.5 rounded-lg border border-divider/60">
                       <div>
-                        Boxes: <span className="text-content-primary font-semibold">{p.boxCount}</span>
+                        <span className="text-content-muted">Boxes: </span>
+                        <span className="font-semibold text-content-primary">{p.boxCount || 0}</span>
                       </div>
                       <div>
-                        Gross: <span className="text-content-primary font-semibold">{p.grossWeightKg.toLocaleString()} kg</span>
+                        <span className="text-content-muted">Gross: </span>
+                        <span className="font-semibold text-content-primary">{p.grossWeightKg} kg</span>
                       </div>
                       <div>
-                        Net: <span className="text-content-primary font-semibold">{p.netWeightKg.toLocaleString()} kg</span>
+                        <span className="text-content-muted">Net: </span>
+                        <span className="font-semibold text-content-primary">{p.netWeightKg} kg</span>
                       </div>
                     </div>
                   </div>
@@ -438,6 +653,67 @@ export function ContainerBayWorkspace({
             RIGHT COLUMN: Visual Container Bay, Equipment Inputs & VGM (7 Cols)
             ========================================================================= */}
         <div className="lg:col-span-7 flex flex-col space-y-4">
+          {/* Container Selection / Switcher Bar */}
+          <div className="p-3 bg-surface border border-divider rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
+            <div className="flex items-center space-x-2 overflow-x-auto py-0.5 max-w-full">
+              <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider shrink-0 mr-1">
+                Containers ({containers.length}):
+              </span>
+              {containers.map((cont, idx) => {
+                const isActive = cont.id === activeContainer.id;
+                const contPalletsCount = pallets.filter((p) => palletAllocationMap[p.palletNumber] === cont.id).length;
+                const contSpecs = CONTAINER_SPECS[cont.containerType] || CONTAINER_SPECS['20GP'];
+
+                return (
+                  <div
+                    key={cont.id}
+                    onClick={() => setActiveContainerId(cont.id)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center space-x-2 cursor-pointer transition-all shrink-0 ${
+                      isActive
+                        ? 'bg-brand-primary text-brand-primary-text border-brand-primary shadow-xs'
+                        : 'bg-surface-secondary hover:bg-surface text-content-primary border-divider'
+                    }`}
+                  >
+                    <Boxes className="w-3.5 h-3.5" />
+                    <span>
+                      {cont.containerNumber ? cont.containerNumber : `Container ${idx + 1}`}
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-surface border border-divider text-content-secondary'
+                      }`}
+                    >
+                      {contPalletsCount}/{contSpecs.maxPallets}p
+                    </span>
+                    {containers.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteContainer(cont.id);
+                        }}
+                        className={`p-0.5 rounded hover:bg-red-500/20 ${isActive ? 'text-white/80 hover:text-white' : 'text-content-muted hover:text-state-error'}`}
+                        title="Remove container"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenNewContainer}
+              className="px-2.5 py-1.5 rounded-xl border border-dashed border-divider hover:border-brand-primary text-content-secondary hover:text-brand-primary text-xs font-medium flex items-center space-x-1 transition-colors shrink-0 cursor-pointer"
+              title="Add New Container"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Container</span>
+            </button>
+          </div>
+
           {/* Visual Container Floorplan Load Grid */}
           <div className="p-5 bg-surface border border-divider rounded-2xl space-y-3.5 shadow-sm">
             <div className="flex items-center justify-between">
@@ -453,7 +729,7 @@ export function ContainerBayWorkspace({
               <div className="flex items-center space-x-2">
                 <label className="text-xs text-content-secondary font-medium">Equipment:</label>
                 <select
-                  value={containerType}
+                  value={activeContainer.containerType}
                   onChange={(e) => handleContainerTypeChange(e.target.value as ContainerType)}
                   className="bg-input-bg border border-divider text-xs text-content-primary rounded-lg px-2.5 py-1 font-mono focus:outline-none focus:border-brand-primary font-medium cursor-pointer"
                 >
@@ -469,7 +745,7 @@ export function ContainerBayWorkspace({
             <div className="p-4 bg-surface-secondary border border-divider rounded-xl">
               <div className="text-[9px] font-mono text-content-muted mb-2.5 flex justify-between uppercase tracking-wider">
                 <span>DOOR END &rarr;</span>
-                <span className="font-bold text-content-secondary">BAY INTERIOR ({containerType})</span>
+                <span className="font-bold text-content-secondary">BAY INTERIOR ({activeContainer.containerType})</span>
                 <span>&larr; NOSE / FRONT</span>
               </div>
 
@@ -576,13 +852,18 @@ export function ContainerBayWorkspace({
             </div>
           </div>
 
-          {/* Equipment Inputs (Auto-syncing to DG & BOL) */}
+          {/* Equipment Inputs for the Active Container (Auto-syncing to DG & BOL) */}
           <div className="p-5 bg-surface border border-divider rounded-2xl space-y-3.5 shadow-sm">
-            <div className="flex items-center space-x-2">
-              <Scale className="w-4 h-4 text-brand-primary" />
-              <h3 className="text-xs font-bold text-content-primary uppercase tracking-wider">
-                Equipment &amp; Haulier Specifications
-              </h3>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Scale className="w-4 h-4 text-brand-primary" />
+                <h3 className="text-xs font-bold text-content-primary uppercase tracking-wider">
+                  Active Container &amp; Haulier Specifications
+                </h3>
+              </div>
+              <span className="text-[10px] font-mono text-content-muted">
+                Editing: {activeContainer.containerNumber || 'Container'}
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -593,8 +874,8 @@ export function ContainerBayWorkspace({
                 <input
                   type="text"
                   placeholder="e.g. MSKU1234567"
-                  value={containerNumber}
-                  onChange={(e) => setContainerNumber(e.target.value.toUpperCase())}
+                  value={activeContainer.containerNumber}
+                  onChange={(e) => updateActiveContainer({ containerNumber: e.target.value.toUpperCase() })}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
                 />
               </div>
@@ -606,8 +887,8 @@ export function ContainerBayWorkspace({
                 <input
                   type="text"
                   placeholder="e.g. SL987654"
-                  value={sealNumber}
-                  onChange={(e) => setSealNumber(e.target.value.toUpperCase())}
+                  value={activeContainer.sealNumber}
+                  onChange={(e) => updateActiveContainer({ sealNumber: e.target.value.toUpperCase() })}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
                 />
               </div>
@@ -618,8 +899,8 @@ export function ContainerBayWorkspace({
                 </label>
                 <input
                   type="number"
-                  value={tareWeightKg || ''}
-                  onChange={(e) => setTareWeightKg(Number(e.target.value) || 0)}
+                  value={activeContainer.tareWeightKg || ''}
+                  onChange={(e) => updateActiveContainer({ tareWeightKg: Number(e.target.value) || 0 })}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                 />
               </div>
@@ -650,26 +931,21 @@ export function ContainerBayWorkspace({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
-                    Vessel Name
-                  </label>
+              <div>
+                <label className="block text-[11px] font-medium text-content-secondary mb-1">
+                  Vessel Name &amp; Voyage Number
+                </label>
+                <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
-                    placeholder="e.g. PACIFIC VOYAGER"
+                    placeholder="e.g. MSC LAUREN"
                     value={vesselName}
                     onChange={(e) => setVesselName(e.target.value)}
-                    className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary focus:outline-none focus:border-brand-primary"
+                    className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                   />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
-                    Voyage Number
-                  </label>
                   <input
                     type="text"
-                    placeholder="e.g. 2602E"
+                    placeholder="e.g. 246W"
                     value={voyageNumber}
                     onChange={(e) => setVoyageNumber(e.target.value)}
                     className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
@@ -679,24 +955,10 @@ export function ContainerBayWorkspace({
             </div>
           </div>
 
-          {/* Live VGM Calculator Banner */}
-          <div className="p-4 bg-brand-primary-soft border border-brand-primary/30 rounded-2xl space-y-2 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-4 h-4 text-brand-primary" />
-                <span className="text-xs font-bold text-content-primary uppercase tracking-wider">
-                  SOLAS Verified Gross Mass (VGM — Box 19c)
-                </span>
-              </div>
-              <span className="text-base font-mono font-extrabold text-brand-primary">
-                {vgmWeightKg.toLocaleString()} kg
-              </span>
-            </div>
-
-            <div className="p-2.5 bg-surface rounded-xl border border-divider text-xs font-mono text-content-primary flex items-center justify-between">
-              <span>Cargo Gross: {cargoGrossWeight.toLocaleString()} kg</span>
-              <span className="text-content-muted">+</span>
-              <span>Container Tare: {Number(tareWeightKg).toLocaleString()} kg</span>
+          {/* Real-time SOLAS VGM Indicator Card */}
+          <div className="p-4 bg-surface border border-divider rounded-2xl shadow-sm space-y-2">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-content-secondary">Cargo Gross ({cargoGrossWeight.toLocaleString()} kg) + Tare ({activeContainer.tareWeightKg} kg)</span>
               <span className="text-content-muted">=</span>
               <span className="text-state-success font-bold">VGM: {vgmWeightKg.toLocaleString()} kg</span>
             </div>
@@ -720,7 +982,7 @@ export function ContainerBayWorkspace({
               <button
                 type="button"
                 onClick={() => setShowPalletForm(false)}
-                className="text-content-muted hover:text-content-primary"
+                className="text-content-muted hover:text-content-primary cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -790,16 +1052,116 @@ export function ContainerBayWorkspace({
               <button
                 type="button"
                 onClick={() => setShowPalletForm(false)}
-                className="px-3 py-1.5 rounded-lg text-xs text-content-secondary hover:text-content-primary"
+                className="px-3 py-1.5 rounded-lg text-xs text-content-secondary hover:text-content-primary cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSavePalletForm}
-                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm"
+                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm cursor-pointer"
               >
                 Save Pallet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Container Modal */}
+      {showContainerForm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-divider">
+              <div className="flex items-center space-x-2">
+                <Boxes className="w-4 h-4 text-brand-primary" />
+                <h4 className="text-xs font-bold text-content-primary uppercase tracking-wider">
+                  Add New Container
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowContainerForm(false)}
+                className="text-content-muted hover:text-content-primary cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-medium text-content-secondary mb-1">
+                  Container Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. MSKU1234567"
+                  value={containerForm.containerNumber}
+                  onChange={(e) => setContainerForm((prev) => ({ ...prev, containerNumber: e.target.value.toUpperCase() }))}
+                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-content-secondary mb-1">
+                  Seal Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. SL987654"
+                  value={containerForm.sealNumber}
+                  onChange={(e) => setContainerForm((prev) => ({ ...prev, sealNumber: e.target.value.toUpperCase() }))}
+                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-content-secondary mb-1">
+                  Container Equipment Type
+                </label>
+                <select
+                  value={containerForm.containerType}
+                  onChange={(e) => {
+                    const t = e.target.value as ContainerType;
+                    const defaultT = CONTAINER_SPECS[t]?.tareWeightKg || 2150;
+                    setContainerForm((prev) => ({ ...prev, containerType: t, tareWeightKg: defaultT }));
+                  }}
+                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary cursor-pointer"
+                >
+                  <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
+                  <option value="40GP">40&apos; GP (Max 40 Pallets / 28,500 kg)</option>
+                  <option value="40HC">40&apos; HC (Max 40 Pallets / 28,500 kg)</option>
+                  <option value="45HC">45&apos; HC (Max 44 Pallets / 28,500 kg)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium text-content-secondary mb-1">
+                  Tare Weight (kg)
+                </label>
+                <input
+                  type="number"
+                  value={containerForm.tareWeightKg || ''}
+                  onChange={(e) => setContainerForm((prev) => ({ ...prev, tareWeightKg: Number(e.target.value) || 0 }))}
+                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-divider">
+              <button
+                type="button"
+                onClick={() => setShowContainerForm(false)}
+                className="px-3 py-1.5 rounded-lg text-xs text-content-secondary hover:text-content-primary cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveContainerForm}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm cursor-pointer"
+              >
+                Add Container
               </button>
             </div>
           </div>
