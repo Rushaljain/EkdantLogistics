@@ -198,9 +198,14 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
   clean.shippingMarks = stripBoilerplate(clean.shippingMarks);
   clean.productDescription = stripBoilerplate(clean.productDescription);
 
-  // 2. Standard IMDG Code UN-Number Regulatory Enrichment
+  // 2. Standard IMDG Code UN-Number Regulatory Enrichment & Prefix Sanitization
   if (clean.unNumber && clean.unNumber.trim()) {
+    // Strip redundant leading "UN" or "UN NO" prefix so raw code is clean
+    clean.unNumber = clean.unNumber.replace(/^(?:UN\s*(?:NO\.?)?\s*[:.-]?\s*)+/i, '').trim();
     const unDigits = clean.unNumber.replace(/\D/g, '');
+    if (unDigits.length === 4) {
+      clean.unNumber = unDigits;
+    }
     const imdgRef = IMDG_UN_LOOKUP[unDigits];
 
     if (imdgRef) {

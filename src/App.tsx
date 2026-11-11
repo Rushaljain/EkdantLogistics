@@ -521,6 +521,8 @@ export function App(): React.JSX.Element {
               dgStats={dgStats}
               blStats={blStats}
               onFieldChange={handleFieldChange}
+              dgCustomOverrides={dgCustomOverrides}
+              blCustomOverrides={blCustomOverrides}
               onOpenContainerModal={() => setShowContainerModal(true)}
               onNewUpload={handleFlushAndNewShipment}
               onHardReset={handleHardReset}

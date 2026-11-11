@@ -9,15 +9,15 @@ import {
   Download,
   Copy,
   Check,
-  Search,
   ExternalLink,
   ChevronDown,
-  ChevronRight,
   Plus,
   RotateCcw,
   Sparkles,
   FolderPlus,
-  Key
+  Key,
+  CheckCircle2,
+  Zap
 } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
@@ -25,8 +25,8 @@ import type {
   MappedManifestField,
   FormatDocumentType
 } from '../types/index.ts';
-import { groupManifestFieldsBySection } from '../utils/manifestMatcher.ts';
-import { generateManifestHtml } from '../utils/documentExporter.ts';
+import { DgDocumentCanvas } from './DgDocumentCanvas.tsx';
+import { BlDocumentCanvas } from './BlDocumentCanvas.tsx';
 
 export type WorkspaceTab = 'extracted_data' | 'dg_manifest' | 'bl_manifest' | 'export_center';
 
@@ -48,6 +48,8 @@ interface WorkspacePageProps {
   dgStats: { populated: number; total: number; percentage: number };
   blStats: { populated: number; total: number; percentage: number };
   onFieldChange: (field: MappedManifestField, docType: FormatDocumentType, newValue: string) => void;
+  dgCustomOverrides?: Record<string, string>;
+  blCustomOverrides?: Record<string, string>;
 
   // Header & Modal Actions
   onOpenContainerModal: () => void;
@@ -68,9 +70,9 @@ interface WorkspacePageProps {
 
 export function WorkspacePage({
   shipmentJson,
-  onUpdateShipment: _onUpdateShipment,
-  activeDgFormat,
-  activeBlFormat,
+  onUpdateShipment,
+  activeDgFormat: _activeDgFormat,
+  activeBlFormat: _activeBlFormat,
   dgFormats,
   blFormats,
   selectedDgFormatId,
@@ -83,6 +85,8 @@ export function WorkspacePage({
   dgStats,
   blStats,
   onFieldChange,
+  dgCustomOverrides,
+  blCustomOverrides,
   onOpenContainerModal,
   onNewUpload,
   onHardReset,
@@ -102,18 +106,7 @@ export function WorkspacePage({
   // Sub-tabs in Extracted Data view: 'audit' | 'pallets' | 'raw_json'
   const [dataSubTab, setDataSubTab] = useState<'audit' | 'pallets' | 'raw_json'>('pallets');
 
-  // Search & Filter in Manifest Editors
-  const [fieldSearch, setFieldSearch] = useState<string>('');
-  const [fieldFilter, setFieldFilter] = useState<'ALL' | 'POPULATED' | 'PENDING'>('ALL');
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [copiedJson, setCopiedJson] = useState(false);
-
-  const toggleSection = (sectionName: string) => {
-    setCollapsedSections((prev) => ({
-      ...prev,
-      [sectionName]: !prev[sectionName]
-    }));
-  };
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(JSON.stringify(shipmentJson, null, 2));
@@ -132,43 +125,44 @@ export function WorkspacePage({
 
   const calculatedVgm = (shipmentJson.grossWeightKg || 0) + (shipmentJson.tareWeightKg || 0);
 
-  // Filtered fields for active manifest
-  const activeFields = activeTab === 'dg_manifest' ? mappedDgFields : mappedBlFields;
+  // Stage-2 Pending Fields Tracking & Instant Cycling
+  const pendingStage2DgKeys = useMemo(() => {
+    const pending: string[] = [];
+    if (!shipmentJson.bookingNumber?.trim()) pending.push('bookingNumber');
+    if (!shipmentJson.carrierName?.trim()) pending.push('carrierName');
+    if (!shipmentJson.vesselName?.trim() || !shipmentJson.voyageNumber?.trim()) pending.push('vesselVoyage');
+    if (!shipmentJson.containerNumber?.trim()) pending.push('containerNumber');
+    if (!shipmentJson.tareWeightKg || shipmentJson.tareWeightKg === 0) pending.push('tareWeightKg');
+    if (!shipmentJson.emergencyContactPhone?.trim()) pending.push('emergencyContactPhone');
+    return pending;
+  }, [shipmentJson]);
 
-  const filteredFields = useMemo(() => {
-    return activeFields.filter((f) => {
-      const matchesSearch =
-        !fieldSearch.trim() ||
-        f.labelInTemplate.toLowerCase().includes(fieldSearch.toLowerCase()) ||
-        f.fieldId.toLowerCase().includes(fieldSearch.toLowerCase()) ||
-        f.value.toLowerCase().includes(fieldSearch.toLowerCase());
+  const pendingStage2BlKeys = useMemo(() => {
+    const pending: string[] = [];
+    if (!shipmentJson.bookingNumber?.trim()) pending.push('bookingNumber');
+    if (!shipmentJson.carrierName?.trim()) pending.push('carrierName');
+    if (!shipmentJson.vesselName?.trim() || !shipmentJson.voyageNumber?.trim()) pending.push('vesselVoyage');
+    if (!shipmentJson.containerNumber?.trim()) pending.push('containerNumber');
+    if (!shipmentJson.tareWeightKg || shipmentJson.tareWeightKg === 0) pending.push('tareWeightKg');
+    if (!shipmentJson.shippingBillNumbers?.trim()) pending.push('shippingBillNumbers');
+    if (!shipmentJson.freeTimeClause?.trim()) pending.push('freeTimeClause');
+    return pending;
+  }, [shipmentJson]);
 
-      const isBlank = !f.value || f.value.trim() === '';
-      const matchesFilter =
-        fieldFilter === 'ALL' ||
-        (fieldFilter === 'POPULATED' && !isBlank) ||
-        (fieldFilter === 'PENDING' && isBlank);
+  const [stage2JumpIdx, setStage2JumpIdx] = useState(0);
 
-      return matchesSearch && matchesFilter;
-    });
-  }, [activeFields, fieldSearch, fieldFilter]);
-
-  const groupedFields = useMemo(() => {
-    return groupManifestFieldsBySection(filteredFields);
-  }, [filteredFields]);
-
-  // Live A4 HTML generation for iframe previews
-  const liveDgHtml = useMemo(() => {
-    return generateManifestHtml(shipmentJson, activeDgFormat, mappedDgFields, {
-      includePalletAnnex: true
-    });
-  }, [shipmentJson, activeDgFormat, mappedDgFields]);
-
-  const liveBlHtml = useMemo(() => {
-    return generateManifestHtml(shipmentJson, activeBlFormat, mappedBlFields, {
-      includePalletAnnex: true
-    });
-  }, [shipmentJson, activeBlFormat, mappedBlFields]);
+  const handleJumpToNextPending = () => {
+    const activePending = activeTab === 'dg_manifest' ? pendingStage2DgKeys : pendingStage2BlKeys;
+    if (activePending.length === 0) return;
+    const nextIdx = (stage2JumpIdx + 1) % activePending.length;
+    setStage2JumpIdx(nextIdx);
+    const targetKey = activePending[nextIdx];
+    const el = document.getElementById(`stage2-${targetKey}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.focus();
+    }
+  };
 
   // Field audit entries
   const auditEntries = useMemo(() => {
@@ -489,20 +483,46 @@ export function WorkspacePage({
         )}
 
         {/* ---------------------------------------------------------------------
-            VIEW 2: DG Manifest (IMO Boxes 1–22) Split View
+            VIEW 2: DG Manifest (IMO Boxes 1–22) Full-Width Interactive A4 Canvas
             --------------------------------------------------------------------- */}
         {activeTab === 'dg_manifest' && (
-          <div className="flex-1 flex overflow-hidden">
-            {/* Left Column: Grouped Interactive Fields (45% Width) */}
-            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-divider bg-app overflow-hidden">
-              {/* Field Filter & Format Bar */}
-              <div className="p-3 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs font-medium text-content-secondary">Format:</span>
+          <div className="flex-1 flex flex-col overflow-hidden bg-slate-200/60">
+            {/* Top Document Action Bar */}
+            <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
+              <div className="flex items-center space-x-3">
+                {/* Populated Badge */}
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-primary-soft text-brand-primary border border-brand-primary/30 flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-brand-primary" />
+                  <span>{dgStats.populated} / {dgStats.total} Boxes Populated</span>
+                </span>
+
+                {/* Pending Stage-2 Fields Jump Button */}
+                {pendingStage2DgKeys.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleJumpToNextPending}
+                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-1.5 transition-all animate-pulse"
+                    title="Click to cycle focus to next pending Stage-2 field"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>⚡ {pendingStage2DgKeys.length} Pending Stage-2 Fields — Click to Jump</span>
+                  </button>
+                ) : (
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-state-success-bg text-state-success border border-state-success/40 flex items-center space-x-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>All Critical Boxes Complete</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2">
+                {/* Carrier Format Selector */}
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
                   <select
                     value={selectedDgFormatId}
                     onChange={(e) => onSelectDgFormat(e.target.value)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-brand-primary max-w-[200px] truncate"
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
                   >
                     {dgFormats.map((fmt) => (
                       <option key={fmt.formatId} value={fmt.formatId}>
@@ -512,165 +532,115 @@ export function WorkspacePage({
                   </select>
                   <button
                     onClick={() => onOpenFormatLibrary('DG')}
-                    className="p-1 rounded text-brand-primary hover:bg-brand-primary-soft transition-colors"
+                    className="p-1.5 rounded-lg text-brand-primary hover:bg-brand-primary-soft border border-divider transition-colors"
                     title="Upload custom carrier format"
                   >
                     <FolderPlus className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-2" />
-                    <input
-                      type="text"
-                      placeholder="Search DG boxes..."
-                      value={fieldSearch}
-                      onChange={(e) => setFieldSearch(e.target.value)}
-                      className="bg-input-bg border border-divider text-xs text-content-primary rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-brand-primary"
-                    />
-                  </div>
+                {/* Quick Container UI Drawer Trigger */}
+                <button
+                  type="button"
+                  onClick={onOpenContainerModal}
+                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider flex items-center space-x-1.5 transition-colors shadow-xs"
+                  title="Open Container Bay & Equipment Manager"
+                >
+                  <Boxes className="w-3.5 h-3.5 text-brand-primary" />
+                  <span>Container UI</span>
+                </button>
 
-                  <select
-                    value={fieldFilter}
-                    onChange={(e) => setFieldFilter(e.target.value as any)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2 py-1 focus:outline-none focus:border-brand-primary"
+                {/* Document Quick Exports */}
+                <div className="flex items-center space-x-1 border-l border-divider pl-2">
+                  <button
+                    onClick={() => onPrintPdf('DG')}
+                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
+                    title="Print / Save PDF (Box 1-22 & Pallet Annex)"
                   >
-                    <option value="ALL">All ({dgStats.total})</option>
-                    <option value="POPULATED">Populated ({dgStats.populated})</option>
-                    <option value="PENDING">Pending ({dgStats.total - dgStats.populated})</option>
-                  </select>
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => onDownloadDocx('DG')}
+                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
+                    title="Download OpenXML Word (.docx)"
+                  >
+                    <FileText className="w-4 h-4 text-brand-primary" />
+                  </button>
+                  <button
+                    onClick={() => onDownloadHtml('DG')}
+                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
+                    title="Download Standalone Maritime HTML"
+                  >
+                    <ExternalLink className="w-4 h-4 text-brand-accent" />
+                  </button>
                 </div>
-              </div>
-
-              {/* Collapsible Grouped Fields Grid */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                {Object.entries(groupedFields).map(([sectionName, fields]) => {
-                  const isCollapsed = Boolean(collapsedSections[sectionName]);
-                  const populatedCount = fields.filter((f) => f.value && f.value.trim() !== '').length;
-
-                  return (
-                    <div
-                      key={sectionName}
-                      className="border border-divider rounded-xl overflow-hidden bg-surface"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleSection(sectionName)}
-                        className="w-full px-3.5 py-2.5 bg-surface-secondary hover:bg-slate-850 border-b border-divider flex items-center justify-between text-left transition-colors"
-                      >
-                        <div className="flex items-center space-x-2">
-                          {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4 text-content-muted" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-brand-primary" />
-                          )}
-                          <span className="text-xs font-bold text-content-primary tracking-wide">
-                            {sectionName}
-                          </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface border border-divider text-content-secondary">
-                            {populatedCount}/{fields.length}
-                          </span>
-                        </div>
-                      </button>
-
-                      {!isCollapsed && (
-                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-surface-secondary/40">
-                          {fields.map((field) => {
-                            const isBlank = !field.value || field.value.trim() === '';
-                            const isLongText =
-                              field.fieldId.includes('address') ||
-                              field.fieldId.includes('marks') ||
-                              field.fieldId.includes('desc') ||
-                              field.value.length > 50 ||
-                              field.value.includes('\n');
-
-                            return (
-                              <div
-                                key={field.fieldId}
-                                className={`p-2.5 rounded-lg border transition-all ${
-                                  isLongText ? 'col-span-1 sm:col-span-2' : 'col-span-1'
-                                } ${
-                                  isBlank
-                                    ? 'bg-surface border-divider'
-                                    : 'bg-surface border-brand-primary/30 shadow-xs'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span
-                                    className="text-[11px] font-medium text-content-primary truncate"
-                                    title={field.labelInTemplate}
-                                  >
-                                    {field.labelInTemplate}
-                                  </span>
-                                  <span
-                                    className={`text-[9px] font-mono px-1 py-0.2 rounded ${
-                                      field.status === 'POPULATED'
-                                        ? 'text-state-success bg-state-success-bg border border-state-success/40'
-                                        : 'text-content-muted bg-surface-secondary'
-                                    }`}
-                                  >
-                                    {field.status}
-                                  </span>
-                                </div>
-
-                                {isLongText ? (
-                                  <textarea
-                                    rows={3}
-                                    value={field.value}
-                                    onChange={(e) => onFieldChange(field, 'DG', e.target.value)}
-                                    placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono resize-y"
-                                  />
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={field.value}
-                                    onChange={(e) => onFieldChange(field, 'DG', e.target.value)}
-                                    placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono"
-                                  />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             </div>
 
-            {/* Right Column: Real-Time SOLAS 74 Multimodal DG A4 Document Preview (52% Width) */}
-            <div className="hidden lg:flex flex-1 h-full flex-col bg-surface-secondary overflow-hidden">
-              {/* Embedded Live A4 Document Frame */}
-              <div className="flex-1 p-3 bg-surface-secondary overflow-auto flex justify-center">
-                <iframe
-                  srcDoc={liveDgHtml}
-                  title="SOLAS DG Live Preview"
-                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-lg border border-divider"
-                />
-              </div>
+            {/* Full-Width Centered A4 Carrier Document Canvas */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center">
+              <DgDocumentCanvas
+                shipmentJson={shipmentJson}
+                onUpdateShipment={onUpdateShipment}
+                onFieldChange={(fieldId, val) => {
+                  const field = mappedDgFields.find((f) => f.fieldId === fieldId) || {
+                    fieldId,
+                    labelInTemplate: fieldId,
+                    sectionName: 'IMO Boxes',
+                    fieldType: 'text' as const,
+                    mappedShipmentKey: '',
+                    value: val,
+                    status: 'POPULATED' as const
+                  };
+                  onFieldChange(field, 'DG', val);
+                }}
+                customOverrides={dgCustomOverrides || {}}
+              />
             </div>
           </div>
         )}
 
         {/* ---------------------------------------------------------------------
-            VIEW 3: Bill of Lading (BOL) Split View
+            VIEW 3: Bill of Lading (BOL) Full-Width Interactive A4 Canvas
             --------------------------------------------------------------------- */}
         {activeTab === 'bl_manifest' && (
-          <div className="flex-1 flex overflow-hidden">
-            {/* Left Column: Grouped Interactive Fields (45% Width) */}
-            <div className="w-full lg:w-[48%] h-full flex flex-col border-r border-divider bg-app overflow-hidden">
-              {/* Field Filter & Format Bar */}
-              <div className="p-3 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs font-medium text-content-secondary">Format:</span>
+          <div className="flex-1 flex flex-col overflow-hidden bg-slate-200/60">
+            {/* Top Document Action Bar */}
+            <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
+              <div className="flex items-center space-x-3">
+                {/* Populated Badge */}
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-brand-primary-soft text-brand-primary border border-brand-primary/30 flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-brand-primary" />
+                  <span>{blStats.populated} / {blStats.total} Fields Populated</span>
+                </span>
+
+                {/* Pending Stage-2 Fields Jump Button */}
+                {pendingStage2BlKeys.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleJumpToNextPending}
+                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-1.5 transition-all animate-pulse"
+                    title="Click to cycle focus to next pending Stage-2 field"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>⚡ {pendingStage2BlKeys.length} Pending Stage-2 Fields — Click to Jump</span>
+                  </button>
+                ) : (
+                  <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-state-success-bg text-state-success border border-state-success/40 flex items-center space-x-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>All BOL Fields Complete</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2">
+                {/* Carrier Format Selector */}
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
                   <select
                     value={selectedBlFormatId}
                     onChange={(e) => onSelectBlFormat(e.target.value)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2.5 py-1 focus:outline-none focus:border-brand-primary max-w-[200px] truncate"
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
                   >
                     {blFormats.map((fmt) => (
                       <option key={fmt.formatId} value={fmt.formatId}>
@@ -680,146 +650,70 @@ export function WorkspacePage({
                   </select>
                   <button
                     onClick={() => onOpenFormatLibrary('BL')}
-                    className="p-1 rounded text-brand-primary hover:bg-brand-primary-soft transition-colors"
+                    className="p-1.5 rounded-lg text-brand-primary hover:bg-brand-primary-soft border border-divider transition-colors"
                     title="Upload custom carrier format"
                   >
                     <FolderPlus className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-2" />
-                    <input
-                      type="text"
-                      placeholder="Search BOL fields..."
-                      value={fieldSearch}
-                      onChange={(e) => setFieldSearch(e.target.value)}
-                      className="bg-input-bg border border-divider text-xs text-content-primary rounded-md pl-8 pr-2 py-1 w-36 focus:outline-none focus:border-brand-primary"
-                    />
-                  </div>
+                {/* Quick Container UI Drawer Trigger */}
+                <button
+                  type="button"
+                  onClick={onOpenContainerModal}
+                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider flex items-center space-x-1.5 transition-colors shadow-xs"
+                  title="Open Container Bay & Equipment Manager"
+                >
+                  <Boxes className="w-3.5 h-3.5 text-brand-primary" />
+                  <span>Container UI</span>
+                </button>
 
-                  <select
-                    value={fieldFilter}
-                    onChange={(e) => setFieldFilter(e.target.value as any)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-md px-2 py-1 focus:outline-none focus:border-brand-primary"
+                {/* Document Quick Exports */}
+                <div className="flex items-center space-x-1 border-l border-divider pl-2">
+                  <button
+                    onClick={() => onPrintPdf('BL')}
+                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
+                    title="Print / Save PDF (Ocean BOL Draft & Pallet Annex)"
                   >
-                    <option value="ALL">All ({blStats.total})</option>
-                    <option value="POPULATED">Populated ({blStats.populated})</option>
-                    <option value="PENDING">Pending ({blStats.total - blStats.populated})</option>
-                  </select>
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => onDownloadDocx('BL')}
+                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
+                    title="Download OpenXML Word (.docx)"
+                  >
+                    <FileText className="w-4 h-4 text-brand-primary" />
+                  </button>
+                  <button
+                    onClick={() => onDownloadHtml('BL')}
+                    className="p-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider transition-colors"
+                    title="Download Standalone Maritime HTML"
+                  >
+                    <ExternalLink className="w-4 h-4 text-brand-accent" />
+                  </button>
                 </div>
-              </div>
-
-              {/* Collapsible Grouped Fields Grid */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
-                {Object.entries(groupedFields).map(([sectionName, fields]) => {
-                  const isCollapsed = Boolean(collapsedSections[sectionName]);
-                  const populatedCount = fields.filter((f) => f.value && f.value.trim() !== '').length;
-
-                  return (
-                    <div
-                      key={sectionName}
-                      className="border border-divider rounded-xl overflow-hidden bg-surface"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleSection(sectionName)}
-                        className="w-full px-3.5 py-2.5 bg-surface-secondary hover:bg-brand-primary-soft/50 border-b border-divider flex items-center justify-between text-left transition-colors"
-                      >
-                        <div className="flex items-center space-x-2">
-                          {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4 text-content-muted" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-brand-primary" />
-                          )}
-                          <span className="text-xs font-bold text-content-primary tracking-wide">
-                            {sectionName}
-                          </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface border border-divider text-content-secondary">
-                            {populatedCount}/{fields.length}
-                          </span>
-                        </div>
-                      </button>
-
-                      {!isCollapsed && (
-                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-surface-secondary/40">
-                          {fields.map((field) => {
-                            const isBlank = !field.value || field.value.trim() === '';
-                            const isLongText =
-                              field.fieldId.includes('address') ||
-                              field.fieldId.includes('marks') ||
-                              field.fieldId.includes('desc') ||
-                              field.value.length > 50 ||
-                              field.value.includes('\n');
-
-                            return (
-                              <div
-                                key={field.fieldId}
-                                className={`p-2.5 rounded-lg border transition-all ${
-                                  isLongText ? 'col-span-1 sm:col-span-2' : 'col-span-1'
-                                } ${
-                                  isBlank
-                                    ? 'bg-surface border-divider'
-                                    : 'bg-surface border-brand-primary/30 shadow-xs'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span
-                                    className="text-[11px] font-medium text-content-primary truncate"
-                                    title={field.labelInTemplate}
-                                  >
-                                    {field.labelInTemplate}
-                                  </span>
-                                  <span
-                                    className={`text-[9px] font-mono px-1 py-0.2 rounded ${
-                                      field.status === 'POPULATED'
-                                        ? 'text-state-success bg-state-success-bg border border-state-success/40'
-                                        : 'text-content-muted bg-surface-secondary'
-                                    }`}
-                                  >
-                                    {field.status}
-                                  </span>
-                                </div>
-
-                                {isLongText ? (
-                                  <textarea
-                                    rows={3}
-                                    value={field.value}
-                                    onChange={(e) => onFieldChange(field, 'BL', e.target.value)}
-                                    placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1.5 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono resize-y"
-                                  />
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={field.value}
-                                    onChange={(e) => onFieldChange(field, 'BL', e.target.value)}
-                                    placeholder={`Enter ${field.labelInTemplate}...`}
-                                    className="w-full bg-input-bg border border-divider rounded px-2.5 py-1 text-xs text-content-primary focus:outline-none focus:border-brand-primary font-mono"
-                                  />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
               </div>
             </div>
 
-            {/* Right Column: Real-Time Ocean Bill of Lading A4 Document Preview (52% Width) */}
-            <div className="hidden lg:flex flex-1 h-full flex-col bg-surface-secondary overflow-hidden">
-              {/* Embedded Live A4 Document Frame */}
-              <div className="flex-1 p-3 bg-surface-secondary overflow-auto flex justify-center">
-                <iframe
-                  srcDoc={liveBlHtml}
-                  title="BOL Live Preview"
-                  className="w-full max-w-[850px] h-full bg-white rounded-lg shadow-lg border border-divider"
-                />
-              </div>
+            {/* Full-Width Centered A4 Carrier Document Canvas */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center">
+              <BlDocumentCanvas
+                shipmentJson={shipmentJson}
+                onUpdateShipment={onUpdateShipment}
+                onFieldChange={(fieldId, val) => {
+                  const field = mappedBlFields.find((f) => f.fieldId === fieldId) || {
+                    fieldId,
+                    labelInTemplate: fieldId,
+                    sectionName: 'BOL Fields',
+                    fieldType: 'text' as const,
+                    mappedShipmentKey: '',
+                    value: val,
+                    status: 'POPULATED' as const
+                  };
+                  onFieldChange(field, 'BL', val);
+                }}
+                customOverrides={blCustomOverrides || {}}
+              />
             </div>
           </div>
         )}
