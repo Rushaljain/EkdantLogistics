@@ -205,9 +205,6 @@ export function WorkspacePage({
           <div className="hidden sm:block">
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold text-content-primary tracking-wide">EKDANT</span>
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-brand-primary-soft text-brand-primary border border-brand-primary/30">
-                v2.0
-              </span>
             </div>
             <span className="text-[10px] text-content-secondary font-mono truncate block max-w-[150px]">
               {shipmentJson.invoiceNumbers[0] ? `Inv: ${shipmentJson.invoiceNumbers[0]}` : 'Active Shipment'}
@@ -215,118 +212,44 @@ export function WorkspacePage({
           </div>
         </div>
 
-        {/* Center: Primary View Switcher Buttons */}
-        <div className="flex items-center p-1 bg-surface-secondary border border-divider rounded-xl space-x-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('extracted_data')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
-              activeTab === 'extracted_data'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <TableIcon className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">1.</span>
-            <span>Extracted Data &amp; Pallets</span>
-            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${activeTab === 'extracted_data' ? 'bg-white/20 text-white' : 'bg-surface border border-divider text-content-secondary'}`}>
-              {shipmentJson.pallets.length}p
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('dg_manifest')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
-              activeTab === 'dg_manifest'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">2.</span>
-            <span>DG Manifest</span>
-            <span
-              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                dgStats.percentage === 100
-                  ? 'bg-state-success-bg text-state-success border border-state-success/40'
-                  : activeTab === 'dg_manifest'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-surface border border-divider text-brand-primary'
-              }`}
+        {/* Center: Consolidated View & Container Dropdown */}
+        <div className="flex items-center">
+          <div className="relative">
+            <select
+              aria-label="Select view or manifest"
+              value={activeTab}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'container_bay') {
+                  onOpenContainerModal();
+                } else {
+                  setActiveTab(val as WorkspaceTab);
+                }
+              }}
+              className="bg-surface-secondary border border-divider text-content-primary rounded-lg text-xs font-medium pl-3 pr-8 py-1.5 focus:outline-none focus:border-brand-primary appearance-none cursor-pointer shadow-sm hover:bg-surface transition-colors"
             >
-              {dgStats.populated}/{dgStats.total}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('bl_manifest')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
-              activeTab === 'bl_manifest'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">3.</span>
-            <span>Bill of Lading</span>
-            <span
-              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                blStats.percentage === 100
-                  ? 'bg-state-success-bg text-state-success border border-state-success/40'
-                  : activeTab === 'bl_manifest'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-surface border border-divider text-brand-primary'
-              }`}
-            >
-              {blStats.populated}/{blStats.total}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('export_center')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center space-x-1.5 ${
-              activeTab === 'export_center'
-                ? 'bg-brand-primary text-brand-primary-text shadow-sm'
-                : 'text-content-secondary hover:text-content-primary hover:bg-surface'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">4.</span>
-            <span>Export Center</span>
-          </button>
+              <option value="extracted_data">
+                1. Extracted Data &amp; Pallets ({shipmentJson.pallets.length}p)
+              </option>
+              <option value="dg_manifest">
+                2. DG Manifest ({dgStats.populated}/{dgStats.total})
+              </option>
+              <option value="bl_manifest">
+                3. Bill of Lading ({blStats.populated}/{blStats.total})
+              </option>
+              <option value="export_center">
+                4. Export Center
+              </option>
+              <option value="container_bay">
+                5. Container Bay &amp; VGM ({isEquipmentComplete ? `VGM: ${calculatedVgm.toLocaleString()} kg` : 'Equipment Pending'})
+              </option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
         </div>
 
-        {/* Right: Prominent Container UI Icon Button & Header Utilities */}
+        {/* Right: Header Utilities */}
         <div className="flex items-center space-x-2 shrink-0">
-          {/* Prominent Container UI Drawer Trigger */}
-          <button
-            type="button"
-            onClick={onOpenContainerModal}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center space-x-2 shadow-sm ${
-              isEquipmentComplete
-                ? 'bg-state-success-bg border-state-success/40 text-state-success hover:bg-state-success-bg/80'
-                : 'bg-state-warning-bg border-state-warning/40 text-state-warning hover:bg-state-warning-bg/80'
-            }`}
-            title="Open Container Load Bay, Equipment & SOLAS VGM Allocation"
-          >
-            <Boxes className="w-4 h-4 text-current" />
-            <span className="hidden xl:inline">Container Bay &amp; VGM</span>
-            <span className="flex items-center space-x-1">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  isEquipmentComplete ? 'bg-state-success' : 'bg-state-warning'
-                }`}
-              />
-              <span className="text-[10px] font-mono font-bold">
-                {isEquipmentComplete
-                  ? `VGM: ${calculatedVgm.toLocaleString()} kg`
-                  : 'Equipment Pending'}
-              </span>
-            </span>
-          </button>
 
           {/* New Upload Button */}
           <button
