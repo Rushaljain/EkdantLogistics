@@ -195,36 +195,6 @@ export function WorkspacePage({
           </div>
         </div>
 
-        {/* Center: Consolidated View & Container Dropdown */}
-        <div className="flex items-center">
-          <div className="relative">
-            <select
-              aria-label="Select view or manifest"
-              value={activeTab}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === 'container_bay') {
-                  onOpenContainerModal();
-                } else {
-                  setActiveTab(val as WorkspaceTab);
-                }
-              }}
-              className="bg-surface-secondary border border-divider text-content-primary rounded-lg text-xs font-medium pl-3 pr-8 py-1.5 focus:outline-none focus:border-brand-primary appearance-none cursor-pointer shadow-sm hover:bg-surface transition-colors"
-            >
-              <option value="dg_manifest">
-                DG Manifest ({dgStats.populated}/{dgStats.total})
-              </option>
-              <option value="bl_manifest">
-                Bill of Lading ({blStats.populated}/{blStats.total})
-              </option>
-              <option value="container_bay">
-                Container Placement
-              </option>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-        </div>
-
         {/* Right: Header Utilities */}
         <div className="flex items-center space-x-2 shrink-0">
 
@@ -489,22 +459,50 @@ export function WorkspacePage({
               </div>
 
               <div className="flex items-center space-x-2">
-                  {/* Carrier Format Selector */}
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
-                    <select
-                      value={selectedDgFormatId}
-                      onChange={(e) => onSelectDgFormat(e.target.value)}
-                      className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
-                    >
-                      {dgFormats.map((fmt) => (
-                        <option key={fmt.formatId} value={fmt.formatId}>
-                          {fmt.formatName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                {/* View / Manifest & Container Bay Switcher Dropdown */}
+                <div className="relative">
+                  <select
+                    aria-label="Select view or manifest"
+                    value={activeTab}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'container_bay') {
+                        onOpenContainerModal();
+                      } else {
+                        setActiveTab(val as WorkspaceTab);
+                      }
+                    }}
+                    className="bg-surface-secondary border border-divider text-content-primary rounded-lg text-xs font-medium pl-3 pr-8 py-1.5 focus:outline-none focus:border-brand-primary appearance-none cursor-pointer shadow-sm hover:bg-surface transition-colors"
+                  >
+                    <option value="dg_manifest">
+                      DG Manifest ({dgStats.populated}/{dgStats.total})
+                    </option>
+                    <option value="bl_manifest">
+                      Bill of Lading ({blStats.populated}/{blStats.total})
+                    </option>
+                    <option value="container_bay">
+                      Container Placement
+                    </option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
+
+                {/* Carrier Format Selector */}
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
+                  <select
+                    value={selectedDgFormatId}
+                    onChange={(e) => onSelectDgFormat(e.target.value)}
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
+                  >
+                    {dgFormats.map((fmt) => (
+                      <option key={fmt.formatId} value={fmt.formatId}>
+                        {fmt.formatName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               </div>
 
             {/* Full-Width Centered A4 Carrier Document Canvas */}
@@ -564,6 +562,34 @@ export function WorkspacePage({
               </div>
 
               <div className="flex items-center space-x-2">
+                {/* View / Manifest & Container Bay Switcher Dropdown */}
+                <div className="relative">
+                  <select
+                    aria-label="Select view or manifest"
+                    value={activeTab}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'container_bay') {
+                        onOpenContainerModal();
+                      } else {
+                        setActiveTab(val as WorkspaceTab);
+                      }
+                    }}
+                    className="bg-surface-secondary border border-divider text-content-primary rounded-lg text-xs font-medium pl-3 pr-8 py-1.5 focus:outline-none focus:border-brand-primary appearance-none cursor-pointer shadow-sm hover:bg-surface transition-colors"
+                  >
+                    <option value="dg_manifest">
+                      DG Manifest ({dgStats.populated}/{dgStats.total})
+                    </option>
+                    <option value="bl_manifest">
+                      Bill of Lading ({blStats.populated}/{blStats.total})
+                    </option>
+                    <option value="container_bay">
+                      Container Placement
+                    </option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+
                 {/* Carrier Format Selector */}
                 <div className="flex items-center space-x-1.5">
                   <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
