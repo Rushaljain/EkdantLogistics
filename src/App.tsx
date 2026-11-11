@@ -55,7 +55,7 @@ export function App(): React.JSX.Element {
   const [showContainerModal, setShowContainerModal] = useState<boolean>(false);
 
   // Ingestion & File State
-  const [mode, setMode] = useState<UploadMode>('SINGLE_INVOICE');
+  const [mode, setMode] = useState<UploadMode | ''>('');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [parseProgress, setParseProgress] = useState<ParseSessionProgress | null>(null);
@@ -117,8 +117,9 @@ export function App(): React.JSX.Element {
     };
   }, []);
 
-  const resetSessionState = (selectedMode: UploadMode) => {
-    const freshJson = createEmptyShipmentJSON(selectedMode);
+  const resetSessionState = (selectedMode: UploadMode | '') => {
+    const effectiveMode = selectedMode || 'SINGLE_INVOICE';
+    const freshJson = createEmptyShipmentJSON(effectiveMode);
     const freshDg = deriveDGManifestFromJSON(freshJson);
     const freshBl = deriveBLManifestFromDG(freshDg, undefined, freshJson);
     setShipmentJson(freshJson);
@@ -138,7 +139,8 @@ export function App(): React.JSX.Element {
     setIsPurging(true);
     try {
       await purgeAllWorkspaceStorage();
-      resetSessionState(mode);
+      setMode('');
+      resetSessionState('');
       setLastPurgedAt(new Date().toLocaleTimeString());
     } finally {
       setIsPurging(false);
@@ -149,11 +151,16 @@ export function App(): React.JSX.Element {
     if (hasParsed && shipmentJson.invoiceNumbers.length > 0) {
       archiveCurrentSession(shipmentJson, dgManifest, blManifest);
     }
-    resetSessionState(mode);
+    setMode('');
+    resetSessionState('');
   };
 
-  const handleModeChange = (newMode: UploadMode) => {
+  const handleModeChange = (newMode: UploadMode | '') => {
     setMode(newMode);
+    if (!newMode) {
+      setUploadedFiles([]);
+      return;
+    }
     if (!hasParsed) {
       resetSessionState(newMode);
     } else {
@@ -206,7 +213,7 @@ export function App(): React.JSX.Element {
     try {
       const result = await parseDocumentsToJSON(
         uploadedFiles,
-        mode,
+        mode || 'SINGLE_INVOICE',
         customApiKey || undefined,
         (progress) => {
           setParseProgress(progress);

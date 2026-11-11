@@ -6,9 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Boxes,
-  Key,
-  ShieldCheck,
-  RotateCcw
+  ShieldCheck
 } from 'lucide-react';
 
 export type PageId = 'workspace' | 'files' | 'formats';
@@ -20,11 +18,11 @@ interface NavigationSidebarProps {
   formatsCount: number;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
-  onOpenApiKeyModal: () => void;
-  hasCustomKey: boolean;
+  onOpenApiKeyModal?: () => void;
+  hasCustomKey?: boolean;
   lastPurgedAt: string | null;
-  onHardReset: () => void;
-  isPurging: boolean;
+  onHardReset?: () => void;
+  isPurging?: boolean;
 }
 
 export function NavigationSidebar({
@@ -34,11 +32,7 @@ export function NavigationSidebar({
   formatsCount,
   isCollapsed,
   onToggleCollapse,
-  onOpenApiKeyModal,
-  hasCustomKey,
-  lastPurgedAt,
-  onHardReset,
-  isPurging
+  lastPurgedAt
 }: NavigationSidebarProps): React.JSX.Element {
   const navItems = [
     {
@@ -83,7 +77,7 @@ export function NavigationSidebar({
                   EKDANT
                 </span>
                 <span className="text-[10px] font-mono tracking-wider text-content-on-dark-muted block uppercase">
-                  Logistics v2.0
+                  LOGISTICS
                 </span>
               </div>
             )}
@@ -147,53 +141,9 @@ export function NavigationSidebar({
       </div>
 
       {/* Drawer Footer Controls */}
-      <div className="p-2 border-t border-white/10 space-y-1.5">
-        {/* API Key Status & Modal Trigger */}
-        <button
-          onClick={onOpenApiKeyModal}
-          title={hasCustomKey ? 'Custom Gemini Key Configured' : 'Using Environment / Default Gemini Key'}
-          className={`w-full flex items-center rounded-lg transition-all text-xs ${
-            isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2 space-x-2.5'
-          } ${
-            hasCustomKey
-              ? 'bg-state-success-bg text-state-success border border-state-success/30 hover:bg-state-success-bg/80'
-              : 'bg-sidebar-hover text-content-on-dark-muted border border-white/10 hover:text-white'
-          }`}
-        >
-          <Key className="w-3.5 h-3.5 shrink-0" />
-          {!isCollapsed && (
-            <div className="flex-1 flex items-center justify-between truncate text-left">
-              <span className="truncate font-mono text-[11px]">
-                {hasCustomKey ? 'Custom Key' : 'API Key'}
-              </span>
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  hasCustomKey ? 'bg-state-success' : 'bg-state-warning'
-                }`}
-              />
-            </div>
-          )}
-        </button>
-
-        {/* Quick Hard Reset */}
-        <button
-          onClick={onHardReset}
-          disabled={isPurging}
-          title="Hard Reset Workspace Storage & Session"
-          className={`w-full flex items-center rounded-lg text-content-on-dark-muted hover:text-state-error hover:bg-state-error-bg/10 border border-white/10 hover:border-state-error/30 transition-all text-xs ${
-            isCollapsed ? 'justify-center p-2.5' : 'px-3 py-2 space-x-2.5'
-          }`}
-        >
-          <RotateCcw className={`w-3.5 h-3.5 shrink-0 ${isPurging ? 'animate-spin text-state-error' : ''}`} />
-          {!isCollapsed && (
-            <span className="truncate font-mono text-[11px]">
-              {isPurging ? 'Purging...' : 'Hard Reset'}
-            </span>
-          )}
-        </button>
-
+      <div className="p-2 border-t border-white/10">
         {!isCollapsed && lastPurgedAt && (
-          <div className="px-2 pt-1 pb-0.5 text-[9px] font-mono text-content-on-dark-muted truncate flex items-center space-x-1">
+          <div className="px-2 py-1 text-[9px] font-mono text-content-on-dark-muted truncate flex items-center space-x-1">
             <ShieldCheck className="w-3 h-3 text-content-on-dark-muted shrink-0" />
             <span className="truncate">Clean session: {lastPurgedAt}</span>
           </div>
