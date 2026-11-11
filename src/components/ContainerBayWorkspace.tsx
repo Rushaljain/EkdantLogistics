@@ -55,8 +55,8 @@ export function ContainerBayWorkspace({
   const defaultTare = CONTAINER_SPECS[initialType]?.tareWeightKg || 2150;
   const initialTare = shipmentJson.tareWeightKg > 0 ? shipmentJson.tareWeightKg : defaultTare;
 
-  // Multi-Container Initialization
-  const initialContainers: ContainerItem[] = useMemo(() => {
+  // Multi-Container State
+  const [containers, setContainers] = useState<ContainerItem[]>(() => {
     const rawConts = shipmentJson.containerNumber
       ? shipmentJson.containerNumber.split(/[,/]/).map((s) => s.trim()).filter(Boolean)
       : [];
@@ -83,10 +83,14 @@ export function ContainerBayWorkspace({
         tareWeightKg: initialTare
       }
     ];
-  }, []);
+  });
 
-  const [containers, setContainers] = useState<ContainerItem[]>(() => initialContainers);
-  const [activeContainerId, setActiveContainerId] = useState<string>(() => initialContainers[0]?.id || 'container-1');
+  const [activeContainerId, setActiveContainerId] = useState<string>(() => {
+    const rawConts = shipmentJson.containerNumber
+      ? shipmentJson.containerNumber.split(/[,/]/).map((s) => s.trim()).filter(Boolean)
+      : [];
+    return rawConts.length > 1 ? 'container-1' : 'container-1';
+  });
 
   // Active Container and its specs
   const activeContainer = containers.find((c) => c.id === activeContainerId) || containers[0] || {
@@ -115,7 +119,7 @@ export function ContainerBayWorkspace({
   const [pallets, setPallets] = useState<ExtractedPallet[]>(() => [...initialPallets]);
   const [palletAllocationMap, setPalletAllocationMap] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
-    const defaultContId = initialContainers[0]?.id || 'container-1';
+    const defaultContId = 'container-1';
     initialPallets.forEach((p) => {
       map[p.palletNumber] = defaultContId;
     });
@@ -961,6 +965,12 @@ export function ContainerBayWorkspace({
               <span className="text-content-secondary">Cargo Gross ({cargoGrossWeight.toLocaleString()} kg) + Tare ({activeContainer.tareWeightKg} kg)</span>
               <span className="text-content-muted">=</span>
               <span className="text-state-success font-bold">VGM: {vgmWeightKg.toLocaleString()} kg</span>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] font-mono text-content-secondary border-t border-divider/60 pt-1.5">
+              <span>Boxes: {totalAllocatedBoxes}</span>
+              <span>Net: {cargoNetWeight.toLocaleString()} kg</span>
+              <span>Gross: {cargoGrossWeight.toLocaleString()} kg</span>
             </div>
 
             <p className="text-[11px] text-content-secondary leading-relaxed">
