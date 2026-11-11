@@ -114,15 +114,6 @@ export function WorkspacePage({
     setTimeout(() => setCopiedJson(false), 2000);
   };
 
-  // Check equipment completeness for Container UI status dot
-  const isEquipmentComplete = Boolean(
-    shipmentJson.containerNumber &&
-    shipmentJson.containerNumber.trim() !== '' &&
-    shipmentJson.sealNumber &&
-    shipmentJson.sealNumber.trim() !== '' &&
-    shipmentJson.tareWeightKg > 0
-  );
-
   const calculatedVgm = (shipmentJson.grossWeightKg || 0) + (shipmentJson.tareWeightKg || 0);
 
   // Stage-2 Pending Fields Tracking & Instant Cycling
@@ -222,20 +213,14 @@ export function WorkspacePage({
               }}
               className="bg-surface-secondary border border-divider text-content-primary rounded-lg text-xs font-medium pl-3 pr-8 py-1.5 focus:outline-none focus:border-brand-primary appearance-none cursor-pointer shadow-sm hover:bg-surface transition-colors"
             >
-              <option value="extracted_data">
-                1. Extracted Data &amp; Pallets ({shipmentJson.pallets.length}p)
-              </option>
               <option value="dg_manifest">
-                2. DG Manifest ({dgStats.populated}/{dgStats.total})
+                DG Manifest ({dgStats.populated}/{dgStats.total})
               </option>
               <option value="bl_manifest">
-                3. Bill of Lading ({blStats.populated}/{blStats.total})
-              </option>
-              <option value="export_center">
-                4. Export Center
+                Bill of Lading ({blStats.populated}/{blStats.total})
               </option>
               <option value="container_bay">
-                5. Container Bay &amp; VGM ({isEquipmentComplete ? `VGM: ${calculatedVgm.toLocaleString()} kg` : 'Equipment Pending'})
+                Container Placement
               </option>
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -898,8 +883,6 @@ export function WorkspacePage({
                   onPrintPdf(targetDoc);
                 } else if (val === 'Word') {
                   onDownloadDocx(targetDoc);
-                } else if (val === 'HTML') {
-                  onDownloadHtml(targetDoc);
                 }
               }}
               className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
@@ -909,7 +892,6 @@ export function WorkspacePage({
               </option>
               <option value="PDF">PDF Document</option>
               <option value="Word">Word (.docx)</option>
-              <option value="HTML">Maritime HTML</option>
             </select>
           </div>
 
