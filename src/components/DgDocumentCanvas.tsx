@@ -143,10 +143,7 @@ export function DgDocumentCanvas({
   return (
     <div className="w-full max-w-[920px] mx-auto space-y-6 pb-12">
       {/* Top Controls: Pallet Annex Toggle */}
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-          Official SOLAS 74 / MARPOL 73/78 Form (Boxes 1–22)
-        </span>
+      <div className="flex items-center justify-end px-1">
         <label className="flex items-center space-x-2 cursor-pointer text-xs font-semibold text-slate-700 select-none bg-white px-3 py-1.5 rounded border border-slate-300 shadow-sm hover:bg-slate-50 transition-colors">
           <input
             type="checkbox"
