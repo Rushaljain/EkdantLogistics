@@ -14,7 +14,8 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Save
 } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
@@ -52,6 +53,7 @@ interface WorkspacePageProps {
   // Header & Modal Actions
   onOpenContainerModal: () => void;
   onNewUpload: () => void;
+  onSaveWork?: () => void;
   onHardReset: () => void;
   isPurging: boolean;
   onOpenApiKeyModal: () => void;
@@ -87,6 +89,7 @@ export function WorkspacePage({
   blCustomOverrides,
   onOpenContainerModal: _onOpenContainerModal,
   onNewUpload,
+  onSaveWork,
   onHardReset,
   isPurging,
   onOpenApiKeyModal: _onOpenApiKeyModal,
@@ -207,19 +210,20 @@ export function WorkspacePage({
           </div>
         </div>
 
-        {/* Center: Primary Workspace View Selector Dropdown */}
-        <div className="flex items-center space-x-2">
+        {/* Right: Header Utilities */}
+        <div className="flex items-center space-x-2 shrink-0">
+          {/* Primary View Selector Dropdown (Flushed elegantly in ribbon) */}
           <div className="relative flex items-center">
-            <div className="absolute left-3 pointer-events-none text-brand-primary flex items-center">
-              {activeTab === 'dg_manifest' && <FileText className="w-4 h-4" />}
-              {activeTab === 'bl_manifest' && <ExternalLink className="w-4 h-4" />}
-              {activeTab === 'container_bay' && <Boxes className="w-4 h-4" />}
+            <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
+              {activeTab === 'dg_manifest' && <FileText className="w-3.5 h-3.5" />}
+              {activeTab === 'bl_manifest' && <ExternalLink className="w-3.5 h-3.5" />}
+              {activeTab === 'container_bay' && <Boxes className="w-3.5 h-3.5" />}
             </div>
             <select
               aria-label="Select workspace view"
               value={activeTab === 'extracted_data' || activeTab === 'export_center' ? 'dg_manifest' : activeTab}
               onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
-              className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-xl text-xs font-bold pl-9 pr-8 py-2 appearance-none cursor-pointer shadow-xs transition-colors"
+              className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
             >
               <option value="dg_manifest">
                 DG Manifest ({dgStats.populated}/{dgStats.total})
@@ -231,18 +235,27 @@ export function WorkspacePage({
                 Container Placement ({shipmentJson.pallets.length}p)
               </option>
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2.5 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
           </div>
-        </div>
 
-        {/* Right: Header Utilities */}
-        <div className="flex items-center space-x-2 shrink-0">
+          {/* Save Work Button (Saves BL, DG, layouts, and truth JSON for files repository) */}
+          {onSaveWork && (
+            <button
+              type="button"
+              onClick={onSaveWork}
+              className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs hover:border-brand-primary/50"
+              title="Save work (BL, DG, Container placement & Truth JSON) into File Repository"
+            >
+              <Save className="w-3.5 h-3.5 text-brand-primary" />
+              <span>Save</span>
+            </button>
+          )}
 
           {/* New Upload Button */}
           <button
             type="button"
             onClick={onNewUpload}
-            className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-medium border border-divider transition-colors flex items-center space-x-1"
+            className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-medium border border-divider transition-colors flex items-center space-x-1 cursor-pointer"
             title="Upload new shipment batch"
           >
             <Plus className="w-3.5 h-3.5 text-brand-primary" />
@@ -254,7 +267,7 @@ export function WorkspacePage({
             type="button"
             onClick={onHardReset}
             disabled={isPurging}
-            className="p-1.5 rounded-lg bg-surface hover:bg-state-error-bg text-content-secondary hover:text-state-error border border-divider transition-colors"
+            className="p-1.5 rounded-lg bg-surface hover:bg-state-error-bg text-content-secondary hover:text-state-error border border-divider transition-colors cursor-pointer"
             title="Hard Reset Workspace Storage"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isPurging ? 'animate-spin' : ''}`} />

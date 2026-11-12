@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Key, X } from 'lucide-react';
+import { Key, X, Save } from 'lucide-react';
 import type {
   UploadMode,
   ExtractedShipmentJSON,
@@ -16,7 +16,13 @@ import {
   deriveDGManifestFromJSON,
   deriveBLManifestFromDG
 } from './types/index.ts';
-import { purgeAllWorkspaceStorage, archiveCurrentSession } from './utils/storageReset.ts';
+import {
+  purgeAllWorkspaceStorage,
+  saveWorkSession,
+  getSavedWorkSessions,
+  deleteSavedWorkSession,
+  type ArchivedShipment
+} from './utils/storageReset.ts';
 import { parseDocumentsToJSON, type ParseSessionProgress, type ParseResult } from './utils/documentParser.ts';
 import type { PreFilterResult } from './utils/spreadsheetPreFilter.ts';
 import {
@@ -98,6 +104,11 @@ export function App(): React.JSX.Element {
   // Export State
   const [isExportingZip, setIsExportingZip] = useState(false);
 
+  // Saved Work Sessions in Files Repository
+  const [savedWorkSessions, setSavedWorkSessions] = useState<ArchivedShipment[]>(() => getSavedWorkSessions());
+  const [showUploadConfirmModal, setShowUploadConfirmModal] = useState(false);
+  const [saveToastMessage, setSaveToastMessage] = useState<string | null>(null);
+
   // Purge workspace storage on initial mount
   useEffect(() => {
     let isMounted = true;
@@ -145,12 +156,64 @@ export function App(): React.JSX.Element {
     }
   };
 
-  const handleFlushAndNewShipment = () => {
-    if (hasParsed && shipmentJson.invoiceNumbers.length > 0) {
-      archiveCurrentSession(shipmentJson, dgManifest, blManifest);
+  const handleSaveCurrentWork = () => {
+    const record = saveWorkSession(
+      shipmentJson,
+      dgManifest,
+      blManifest,
+      dgCustomOverrides,
+      blCustomOverrides
+    );
+    setSavedWorkSessions(getSavedWorkSessions());
+    setSaveToastMessage(`Saved "${record.title}" to Files repository!`);
+    setTimeout(() => {
+      setSaveToastMessage(null);
+    }, 3000);
+  };
+
+  const handlePromptNewUpload = () => {
+    // If there is active work in workspace, prompt with modal
+    if (hasParsed || shipmentJson.pallets.length > 0 || shipmentJson.invoiceNumbers.length > 0) {
+      setShowUploadConfirmModal(true);
+    } else {
+      handleProceedNewUpload();
     }
+  };
+
+  const handleSaveThenNewUpload = () => {
+    handleSaveCurrentWork();
+    setShowUploadConfirmModal(false);
+    handleProceedNewUpload();
+  };
+
+  const handleProceedNewUpload = () => {
+    setShowUploadConfirmModal(false);
     setMode('');
     resetSessionState('');
+  };
+
+  const handleDeleteSavedWork = (id: string) => {
+    deleteSavedWorkSession(id);
+    setSavedWorkSessions(getSavedWorkSessions());
+  };
+
+  const handleLoadSavedWork = (session: ArchivedShipment) => {
+    setShipmentJson(session.shipmentJson);
+    if (session.dgManifest) setDgManifest(session.dgManifest);
+    if (session.blManifest) setBlManifest(session.blManifest);
+    setDgCustomOverrides(session.dgCustomOverrides || {});
+    setBlCustomOverrides(session.blCustomOverrides || {});
+    setMode(session.mode || 'SINGLE_INVOICE');
+    setHasParsed(true);
+    setActivePage('workspace');
+    setSaveToastMessage(`Restored "${session.title || 'Work Session'}" into Workspace!`);
+    setTimeout(() => {
+      setSaveToastMessage(null);
+    }, 3000);
+  };
+
+  const handleFlushAndNewShipment = () => {
+    handlePromptNewUpload();
   };
 
   const handleModeChange = (newMode: UploadMode | '') => {
@@ -552,6 +615,7 @@ export function App(): React.JSX.Element {
                 blCustomOverrides={blCustomOverrides}
                 onOpenContainerModal={() => {}}
                 onNewUpload={handleFlushAndNewShipment}
+                onSaveWork={handleSaveCurrentWork}
                 onHardReset={handleHardReset}
                 isPurging={isPurging}
                 onOpenApiKeyModal={() => setShowKeyModal(true)}
@@ -592,6 +656,9 @@ export function App(): React.JSX.Element {
             onClearFiles={handleClearFiles}
             onOpenInWorkspace={() => setActivePage('workspace')}
             hasParsed={hasParsed}
+            savedWorkSessions={savedWorkSessions}
+            onLoadSavedSession={handleLoadSavedWork}
+            onDeleteSavedSession={handleDeleteSavedWork}
           />
         )}
 
@@ -685,6 +752,60 @@ export function App(): React.JSX.Element {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal before Uploading New Documents */}
+      {showUploadConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+                <Save className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-content-primary">
+                  Save content before uploading New ?
+                </h3>
+                <p className="text-xs text-content-secondary mt-0.5">
+                  Would you like to save your current manifests, layouts, and data into the Files repository before starting a new upload?
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-divider flex items-center justify-end space-x-2.5">
+              <button
+                type="button"
+                onClick={() => setShowUploadConfirmModal(false)}
+                className="px-3 py-2 rounded-lg text-xs font-medium text-content-secondary hover:bg-surface-secondary border border-transparent transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleProceedNewUpload}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-surface-secondary hover:bg-surface text-content-primary border border-divider hover:border-state-error/40 transition-colors cursor-pointer"
+              >
+                Proceed without Saving
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveThenNewUpload}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-primary hover:bg-brand-primary-hover text-white shadow-sm flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Notification Toast */}
+      {saveToastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold flex items-center space-x-2 animate-in fade-in slide-in-from-bottom-2">
+          <Save className="w-4 h-4 text-emerald-400" />
+          <span>{saveToastMessage}</span>
         </div>
       )}
     </div>

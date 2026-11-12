@@ -10,6 +10,77 @@ export interface ArchivedShipment {
   shipmentJson: ExtractedShipmentJSON;
   dgManifest?: DGManifest;
   blManifest?: BLManifest;
+  dgCustomOverrides?: Record<string, string>;
+  blCustomOverrides?: Record<string, string>;
+  title?: string;
+}
+
+const STORAGE_SAVED_SESSIONS_KEY = 'ekdant_saved_work_sessions_v1';
+
+/**
+ * Returns saved work sessions from localStorage (persisted across sessions)
+ */
+export function getSavedWorkSessions(): ArchivedShipment[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_SAVED_SESSIONS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('Failed to read saved work sessions:', err);
+    return [];
+  }
+}
+
+/**
+ * Saves or updates a work session with full truth JSON, manifests, layouts, and overrides.
+ */
+export function saveWorkSession(
+  shipmentJson: ExtractedShipmentJSON,
+  dgManifest?: DGManifest,
+  blManifest?: BLManifest,
+  dgCustomOverrides?: Record<string, string>,
+  blCustomOverrides?: Record<string, string>
+): ArchivedShipment {
+  const invoiceRef = shipmentJson.invoiceNumbers?.[0] || shipmentJson.bookingNumber || shipmentJson.shipperReference || 'Shipment';
+  const record: ArchivedShipment = {
+    id: `save-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    archivedAt: new Date().toISOString(),
+    mode: shipmentJson.uploadMode,
+    title: `${invoiceRef} (${shipmentJson.pallets?.length || 0} Pallets)`,
+    shipmentJson: JSON.parse(JSON.stringify(shipmentJson)),
+    dgManifest: dgManifest ? JSON.parse(JSON.stringify(dgManifest)) : undefined,
+    blManifest: blManifest ? JSON.parse(JSON.stringify(blManifest)) : undefined,
+    dgCustomOverrides: dgCustomOverrides ? JSON.parse(JSON.stringify(dgCustomOverrides)) : {},
+    blCustomOverrides: blCustomOverrides ? JSON.parse(JSON.stringify(blCustomOverrides)) : {}
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const existing = getSavedWorkSessions();
+      // Keep most recent first
+      const updated = [record, ...existing.filter((s) => s.id !== record.id)].slice(0, 50);
+      window.localStorage.setItem(STORAGE_SAVED_SESSIONS_KEY, JSON.stringify(updated));
+    } catch (err) {
+      console.warn('Failed to write work session to localStorage:', err);
+    }
+  }
+
+  return record;
+}
+
+/**
+ * Deletes a saved work session by ID.
+ */
+export function deleteSavedWorkSession(id: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getSavedWorkSessions();
+    const updated = existing.filter((s) => s.id !== id);
+    window.localStorage.setItem(STORAGE_SAVED_SESSIONS_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn('Failed to delete work session from localStorage:', err);
+  }
 }
 
 // In-memory archive store for current session isolation
@@ -37,6 +108,7 @@ export async function purgeAllWorkspaceStorage(): Promise<void> {
     try {
       const preservedLibrary = window.localStorage.getItem('ekdant_format_library_v1');
       const preservedKey = window.localStorage.getItem('ekdant_custom_gemini_key');
+      const preservedSavedSessions = window.localStorage.getItem(STORAGE_SAVED_SESSIONS_KEY);
 
       window.localStorage.clear();
 
@@ -45,6 +117,9 @@ export async function purgeAllWorkspaceStorage(): Promise<void> {
       }
       if (preservedKey) {
         window.localStorage.setItem('ekdant_custom_gemini_key', preservedKey);
+      }
+      if (preservedSavedSessions) {
+        window.localStorage.setItem(STORAGE_SAVED_SESSIONS_KEY, preservedSavedSessions);
       }
     } catch (e) {
       console.warn('[StorageReset] localStorage clear failed:', e);
