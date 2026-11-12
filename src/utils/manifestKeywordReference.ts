@@ -308,16 +308,12 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
   if (clean.pallets && clean.pallets.length > 0) {
     const synthesizedRanges = synthesizePalletRanges(clean.pallets);
     if (synthesizedRanges.length > 0) {
-      const currentMarks = (clean.shippingMarks || '').trim();
-      const missingRanges = synthesizedRanges.filter(range => {
-        // If range contains "TO", check if full range or start/end is already in marks
-        return !currentMarks.includes(range);
-      });
-
-      if (missingRanges.length > 0) {
-        const palletBlock = `PALLET NOS: ${missingRanges.join(', ')}`;
-        clean.shippingMarks = currentMarks ? `${currentMarks}\n${palletBlock}` : palletBlock;
-      }
+      // Strip any existing PALLET NOS line before appending synthesized range to prevent duplicates
+      const currentMarks = (clean.shippingMarks || '')
+        .replace(/(?:\r?\n)?PALLET\s*NOS?:\s*[^\r\n]*/gi, '')
+        .trim();
+      const palletBlock = `PALLET NOS: ${synthesizedRanges.join(', ')}`;
+      clean.shippingMarks = currentMarks ? `${currentMarks}\n${palletBlock}` : palletBlock;
     }
   }
 
@@ -372,11 +368,13 @@ export function buildCombinedDgCargoBlock(
 
   // 1. Marks & Numbers
   if (includeMarks) {
-    let marksText = (shipment.shippingMarks || '').trim();
+    let marksText = (shipment.shippingMarks || '')
+      .replace(/(?:\r?\n)?PALLET\s*NOS?:\s*[^\r\n]*/gi, '')
+      .trim();
     if (shipment.pallets && shipment.pallets.length > 0) {
       const palletRanges = synthesizePalletRanges(shipment.pallets);
       const palletStr = palletRanges.join(', ');
-      if (palletStr && !marksText.includes(palletRanges[0])) {
+      if (palletStr) {
         marksText = marksText ? `${marksText}\nPALLET NOS: ${palletStr}` : `PALLET NOS: ${palletStr}`;
       }
     }
@@ -463,6 +461,112 @@ export function buildCombinedDgCargoBlock(
   }
 
   return blocks.join('\n\n');
+}
+
+/**
+ * Builds the official 1-page IMO Box 14 DG Cargo Description block.
+ * Vertical line-by-line standard: PSN, Technical Name, Class, UN No, Pkg Group, EMS, Marine Pollutant,
+ * Segregation Group, UN Packing Code, No & Kind of Packaging, Flash Point, Marks & Pallet Nos, Emergency Contact.
+ */
+export function buildImoBox14CargoBlock(shipment: ExtractedShipmentJSON): string {
+  const lines: string[] = [];
+  const unDigits = (shipment.unNumber || '').replace(/\D/g, '');
+  const imdgRef = IMDG_UN_LOOKUP[unDigits];
+
+  // 1. PROPER SHIPPING NAME
+  const psn = (shipment.properShippingName || imdgRef?.properShippingName || '').trim();
+  if (psn) {
+    lines.push(`PROPER SHIPPING NAME (PSN): ${psn}`);
+  }
+
+  // 2. TECHNICAL NAME / COMMERCIAL DESCRIPTION
+  const techDesc = (shipment.productDescription || '').trim();
+  if (techDesc && techDesc.toLowerCase() !== psn.toLowerCase()) {
+    lines.push(`TECHNICAL NAME: ${techDesc}`);
+  }
+
+  // 3. CLASS & SUB CLASS
+  const imoClass = (shipment.imoClass || imdgRef?.imoClass || '').trim();
+  if (imoClass) {
+    lines.push(`CLASS: ${imoClass}`);
+  }
+
+  // 4. UN NO
+  if (shipment.unNumber && shipment.unNumber.trim()) {
+    lines.push(`UN NO: ${shipment.unNumber.trim()}`);
+  }
+
+  // 5. PKG GROUP
+  const pg = (shipment.packingGroup || imdgRef?.packingGroup || '').trim();
+  if (pg) {
+    lines.push(`PKG GROUP: ${pg}`);
+  }
+
+  // 6. EMS
+  const ems = (shipment.emsNumber || imdgRef?.emsNumber || '').trim();
+  if (ems) {
+    lines.push(`EMS: ${ems}`);
+  }
+
+  // 7. MARINE POLLUTANT
+  if (shipment.isDangerousGoods || shipment.unNumber) {
+    lines.push(`MARINE POLLUTANT: ${shipment.marinePollutant ? 'YES' : 'NO'}`);
+  }
+
+  // 8. SEGREGATION GROUP
+  const sgg = (shipment.segregationGroup || imdgRef?.segregationGroup || '').trim();
+  if (sgg) {
+    lines.push(`SEGREGATION GROUP: ${sgg}`);
+  }
+
+  // 9. UN PACKING CODE
+  if (shipment.unPackingCode && shipment.unPackingCode.trim()) {
+    lines.push(`UN PACKING CODE: ${shipment.unPackingCode.trim()}`);
+  }
+
+  // 10. NO & KIND OF PACKAGING (Outer & Inner)
+  const outerCount = shipment.outerPackagingCount || shipment.totalPallets || (shipment.pallets && shipment.pallets.length) || 0;
+  const outerType = shipment.outerPackagingType || 'PALLETS';
+  const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
+  const innerType = shipment.innerPackageType || 'BOXES';
+
+  if (outerCount > 0 || innerCount > 0) {
+    const pkgParts: string[] = [];
+    if (outerCount > 0) pkgParts.push(`${outerCount} ${outerType}`);
+    if (innerCount > 0) pkgParts.push(`${innerCount} ${innerType}`);
+    lines.push(`NO & KIND OF PACKAGING: ${pkgParts.join(' / ')}`);
+  }
+
+  // 11. FLASH POINT
+  if (shipment.flashPoint && shipment.flashPoint.trim()) {
+    lines.push(`FLASH POINT: ${shipment.flashPoint.trim()}`);
+  }
+
+  // 12. MARKS & PALLET NOS
+  const marks = (shipment.shippingMarks || '')
+    .replace(/(?:\r?\n)?PALLET\s*NOS?:\s*[^\r\n]*/gi, '')
+    .trim();
+  let palletStr = '';
+  if (shipment.pallets && shipment.pallets.length > 0) {
+    const ranges = synthesizePalletRanges(shipment.pallets);
+    if (ranges.length > 0) {
+      palletStr = ranges.join(', ');
+    }
+  }
+  if (marks || palletStr) {
+    const markParts: string[] = [];
+    if (marks) markParts.push(marks);
+    if (palletStr) markParts.push(`PALLET NOS: ${palletStr}`);
+    lines.push(`MARKS & PALLET NOS:\n${markParts.join('\n')}`);
+  }
+
+  // 13. EMERGENCY CONTACT
+  if (shipment.emergencyContactPhone || shipment.emergencyContactName) {
+    const contactParts = [shipment.emergencyContactPhone, shipment.emergencyContactName].filter(Boolean).join(' - ');
+    lines.push(`EMERGENCY CONTACT NO. & NAME: ${contactParts}`);
+  }
+
+  return lines.join('\n');
 }
 
 /**

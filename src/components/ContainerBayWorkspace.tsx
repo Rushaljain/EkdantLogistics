@@ -7,7 +7,10 @@ import {
   Edit2,
   X,
   ChevronDown,
-  Layers
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  GripVertical
 } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
@@ -165,6 +168,110 @@ export function ContainerBayWorkspace({
       tareWeightKg: newDefaultTare
     });
   };
+
+  // Move a pallet to a specific container (or unallocate)
+  const movePalletToContainer = (palletNumber: string, targetContainerId: string | null) => {
+    setPalletAllocationMap((prev) => {
+      const next = { ...prev };
+      if (!targetContainerId) {
+        delete next[palletNumber];
+      } else {
+        const targetCont = containers.find((c) => c.id === targetContainerId);
+        const targetSpecs = CONTAINER_SPECS[targetCont?.containerType || '20GP'] || CONTAINER_SPECS['20GP'];
+        const currentInTarget = pallets.filter((p) => next[p.palletNumber] === targetContainerId && p.palletNumber !== palletNumber).length;
+        if (currentInTarget >= targetSpecs.maxPallets) {
+          return next;
+        }
+        next[palletNumber] = targetContainerId;
+      }
+      return next;
+    });
+  };
+
+  // Drag and drop states
+  const [draggedPalletNumber, setDraggedPalletNumber] = useState<string | null>(null);
+  const [dragOverContainerId, setDragOverContainerId] = useState<string | null>(null);
+  const containerTabsRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollTimerRef = useRef<number | null>(null);
+
+  // Carousel navigation handlers
+  const activeContainerIndex = useMemo(() => {
+    const idx = containers.findIndex((c) => c.id === activeContainer.id);
+    return idx >= 0 ? idx : 0;
+  }, [containers, activeContainer.id]);
+
+  const handlePrevContainer = () => {
+    if (activeContainerIndex > 0) {
+      const prevCont = containers[activeContainerIndex - 1];
+      if (prevCont) {
+        setActiveContainerId(prevCont.id);
+        scrollContainerIntoView(prevCont.id);
+      }
+    }
+  };
+
+  const handleNextContainer = () => {
+    if (activeContainerIndex < containers.length - 1) {
+      const nextCont = containers[activeContainerIndex + 1];
+      if (nextCont) {
+        setActiveContainerId(nextCont.id);
+        scrollContainerIntoView(nextCont.id);
+      }
+    }
+  };
+
+  const scrollContainerIntoView = (contId: string) => {
+    if (!containerTabsRef.current) return;
+    const tabEl = containerTabsRef.current.querySelector(`[data-container-id="${contId}"]`) as HTMLElement | null;
+    if (tabEl) {
+      tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  };
+
+  // Auto-scroll carousel during drag near edges
+  const handleDragOverCarousel = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!containerTabsRef.current) return;
+    const rect = containerTabsRef.current.getBoundingClientRect();
+    const mouseX = e.clientX;
+    const edgeThreshold = 60;
+
+    if (autoScrollTimerRef.current) {
+      window.clearInterval(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = null;
+    }
+
+    if (mouseX < rect.left + edgeThreshold) {
+      // Near left edge -> scroll left and show previous container
+      autoScrollTimerRef.current = window.setInterval(() => {
+        if (containerTabsRef.current) {
+          containerTabsRef.current.scrollLeft -= 15;
+        }
+      }, 30);
+    } else if (mouseX > rect.right - edgeThreshold) {
+      // Near right edge -> scroll right and show next container
+      autoScrollTimerRef.current = window.setInterval(() => {
+        if (containerTabsRef.current) {
+          containerTabsRef.current.scrollLeft += 15;
+        }
+      }, 30);
+    }
+  };
+
+  const handleDragLeaveCarousel = () => {
+    if (autoScrollTimerRef.current) {
+      window.clearInterval(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (autoScrollTimerRef.current) {
+        window.clearInterval(autoScrollTimerRef.current);
+      }
+    };
+  }, []);
 
   // Toggle allocation of a pallet to the active container
   const togglePalletAllocation = (palletNumber: string) => {
@@ -527,9 +634,25 @@ export function ContainerBayWorkspace({
                 return (
                   <div
                     key={p.palletNumber || idx}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedPalletNumber(p.palletNumber);
+                      e.dataTransfer.setData('text/plain', p.palletNumber);
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragEnd={() => {
+                      setDraggedPalletNumber(null);
+                      setDragOverContainerId(null);
+                      if (autoScrollTimerRef.current) {
+                        window.clearInterval(autoScrollTimerRef.current);
+                        autoScrollTimerRef.current = null;
+                      }
+                    }}
                     onClick={() => togglePalletAllocation(p.palletNumber)}
-                    className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                      isAllocated
+                    className={`p-3 rounded-xl border cursor-grab active:cursor-grabbing transition-all select-none ${
+                      draggedPalletNumber === p.palletNumber
+                        ? 'opacity-40 border-brand-primary scale-98 shadow-md'
+                        : isAllocated
                         ? 'bg-brand-primary-soft/40 border-brand-primary/40 text-content-primary shadow-xs'
                         : otherCont
                         ? 'bg-amber-500/10 border-amber-500/30 text-content-primary opacity-80'
@@ -538,6 +661,7 @@ export function ContainerBayWorkspace({
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center space-x-2">
+                        <GripVertical className="w-3.5 h-3.5 text-content-muted shrink-0" />
                         <input
                           type="checkbox"
                           checked={isAllocated}
@@ -610,34 +734,112 @@ export function ContainerBayWorkspace({
             RIGHT COLUMN: Visual Container Bay, Equipment Inputs & VGM (7 Cols)
             ========================================================================= */}
         <div className="lg:col-span-7 flex flex-col space-y-4">
-          {/* Container Selection / Switcher Bar */}
-          <div className="p-3 bg-surface border border-divider rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
-            <div className="flex items-center space-x-2 overflow-x-auto py-0.5 max-w-full">
-              <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider shrink-0 mr-1">
-                Containers ({containers.length}):
-              </span>
+          {/* Container Selection / Carousel Bar */}
+          <div className="p-3 bg-surface border border-divider rounded-2xl shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider">
+                  Containers ({containers.length})
+                </span>
+                <span className="text-[10px] text-content-muted">
+                  Slide or drag pallets onto a container
+                </span>
+              </div>
+
+              {/* Prev / Next Carousel Arrow Controls */}
+              <div className="flex items-center space-x-1">
+                <button
+                  type="button"
+                  onClick={handlePrevContainer}
+                  disabled={activeContainerIndex === 0}
+                  className={`p-1.5 rounded-lg border transition-all ${
+                    activeContainerIndex === 0
+                      ? 'border-divider text-content-muted/40 cursor-not-allowed bg-surface-secondary/40'
+                      : 'border-divider bg-surface hover:bg-surface-secondary text-content-primary hover:border-brand-primary cursor-pointer shadow-xs'
+                  }`}
+                  title="Previous Container"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] font-mono font-semibold text-content-secondary px-1">
+                  {activeContainerIndex + 1} / {containers.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNextContainer}
+                  disabled={activeContainerIndex === containers.length - 1}
+                  className={`p-1.5 rounded-lg border transition-all ${
+                    activeContainerIndex === containers.length - 1
+                      ? 'border-divider text-content-muted/40 cursor-not-allowed bg-surface-secondary/40'
+                      : 'border-divider bg-surface hover:bg-surface-secondary text-content-primary hover:border-brand-primary cursor-pointer shadow-xs'
+                  }`}
+                  title="Next Container"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable Container Carousel Track */}
+            <div
+              ref={containerTabsRef}
+              onDragOver={handleDragOverCarousel}
+              onDragLeave={handleDragLeaveCarousel}
+              className="flex items-center space-x-2.5 overflow-x-auto pb-2 pt-0.5 max-w-full scroll-smooth select-none focus:outline-none focus:ring-0 custom-horizontal-scrollbar"
+              style={{ scrollbarWidth: 'thin' }}
+            >
               {containers.map((cont, idx) => {
                 const isActive = cont.id === activeContainer.id;
+                const isDragOver = dragOverContainerId === cont.id;
                 const contPalletsCount = pallets.filter((p) => palletAllocationMap[p.palletNumber] === cont.id).length;
                 const contSpecs = CONTAINER_SPECS[cont.containerType] || CONTAINER_SPECS['20GP'];
 
                 return (
                   <div
                     key={cont.id}
+                    data-container-id={cont.id}
                     onClick={() => setActiveContainerId(cont.id)}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center space-x-2 cursor-pointer transition-all shrink-0 ${
-                      isActive
-                        ? 'bg-brand-primary text-brand-primary-text border-brand-primary shadow-xs'
-                        : 'bg-surface-secondary hover:bg-surface text-content-primary border-divider'
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dragOverContainerId !== cont.id) {
+                        setDragOverContainerId(cont.id);
+                        setActiveContainerId(cont.id);
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                      if (dragOverContainerId === cont.id) {
+                        setDragOverContainerId(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
+                      if (pNum) {
+                        movePalletToContainer(pNum, cont.id);
+                        setActiveContainerId(cont.id);
+                      }
+                      setDragOverContainerId(null);
+                      setDraggedPalletNumber(null);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center space-x-2.5 cursor-pointer transition-all shrink-0 select-none ${
+                      isDragOver
+                        ? 'border-brand-primary ring-2 ring-brand-primary/40 bg-brand-primary/10 scale-102 shadow-md'
+                        : isActive
+                        ? 'bg-brand-primary text-brand-primary-text border-brand-primary shadow-sm'
+                        : 'bg-surface-secondary hover:bg-surface text-content-primary border-divider hover:border-brand-primary/50'
                     }`}
                   >
-                    <Boxes className="w-3.5 h-3.5" />
-                    <span>
+                    <Boxes className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate max-w-[130px]">
                       {cont.containerNumber ? cont.containerNumber : `Container ${idx + 1}`}
                     </span>
                     <span
-                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                        isActive ? 'bg-white/20 text-white' : 'bg-surface border border-divider text-content-secondary'
+                      className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full shrink-0 ${
+                        isActive
+                          ? 'bg-white/20 text-white font-bold'
+                          : 'bg-surface border border-divider text-content-secondary'
                       }`}
                     >
                       {contPalletsCount}/{contSpecs.maxPallets}p
@@ -649,7 +851,9 @@ export function ContainerBayWorkspace({
                           e.stopPropagation();
                           handleDeleteContainer(cont.id);
                         }}
-                        className={`p-0.5 rounded hover:bg-red-500/20 ${isActive ? 'text-white/80 hover:text-white' : 'text-content-muted hover:text-state-error'}`}
+                        className={`p-0.5 rounded hover:bg-red-500/20 shrink-0 ${
+                          isActive ? 'text-white/80 hover:text-white' : 'text-content-muted hover:text-state-error'
+                        }`}
                         title="Remove container"
                       >
                         <X className="w-3 h-3" />
@@ -659,16 +863,6 @@ export function ContainerBayWorkspace({
                 );
               })}
             </div>
-
-            <button
-              type="button"
-              onClick={handleOpenNewContainer}
-              className="px-2.5 py-1.5 rounded-xl border border-dashed border-divider hover:border-brand-primary text-content-secondary hover:text-brand-primary text-xs font-medium flex items-center space-x-1 transition-colors shrink-0 cursor-pointer"
-              title="Add New Container"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Container</span>
-            </button>
           </div>
 
           {/* Visual Container Floorplan Load Grid */}
@@ -699,7 +893,22 @@ export function ContainerBayWorkspace({
             </div>
 
             {/* Graphic 2-row container floorplan */}
-            <div className="p-4 bg-surface-secondary border border-divider rounded-xl">
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
+                if (pNum) {
+                  movePalletToContainer(pNum, activeContainer.id);
+                }
+                setDraggedPalletNumber(null);
+                setDragOverContainerId(null);
+              }}
+              className="p-4 bg-surface-secondary border border-divider rounded-xl transition-colors hover:border-brand-primary/40"
+            >
               <div className="text-[9px] font-mono text-content-muted mb-2.5 flex justify-between uppercase tracking-wider">
                 <span>DOOR END &rarr;</span>
                 <span className="font-bold text-content-secondary">BAY INTERIOR ({activeContainer.containerType})</span>

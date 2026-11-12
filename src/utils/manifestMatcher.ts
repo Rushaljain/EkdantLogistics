@@ -214,18 +214,26 @@ export function buildMappedManifest(
       f => f.fieldId !== field.fieldId && f.mappedShipmentKey === 'shippingMarks'
     );
 
+    const isPureShippingMarksField =
+      field.mappedShipmentKey === 'shippingMarks' ||
+      fieldIdLower === 'box_14_shipping_marks' ||
+      fieldIdLower === 'shipping_marks' ||
+      (labelLower.includes('shipping marks') && !labelLower.includes('description of goods'));
+
     const isCombinedDgCargoBox =
       format.documentType === 'DG' &&
+      !isPureShippingMarksField &&
       (
         fieldIdLower.includes('box_14_cargo') ||
-        fieldIdLower.includes('box14') ||
         fieldIdLower.includes('combined_cargo') ||
         (labelLower.includes('number and kind of packages') && labelLower.includes('description of goods')) ||
-        (labelLower.includes('shipping marks') && labelLower.includes('description')) ||
+        (labelLower.includes('shipping marks') && labelLower.includes('description of goods')) ||
         ((field.mappedShipmentKey === 'productDescription' || field.mappedShipmentKey === 'properShippingName') && !hasSeparateUnField)
       );
 
-    if (isCombinedDgCargoBox && customOverrides[field.fieldId] === undefined) {
+    if (isPureShippingMarksField && customOverrides[field.fieldId] === undefined) {
+      resolvedValue = shipment.shippingMarks || '';
+    } else if (isCombinedDgCargoBox && customOverrides[field.fieldId] === undefined) {
       const includeMarks = !hasSeparateMarksField || labelLower.includes('shipping marks') || labelLower.includes('marks & nos');
       resolvedValue = buildCombinedDgCargoBlock(shipment, includeMarks);
     }
@@ -377,14 +385,20 @@ export function buildMappedManifest(
     // 10. Secondary Smart Fallback Keyword Chains (when still blank)
     if (isValueBlank && !isVgmField) {
       // Chain 1: Transport Document / Booking / Reference Number Fields
+      const isForwarderRefField =
+        field.mappedShipmentKey === 'forwarderReference' ||
+        fieldIdLower.includes('box_5') ||
+        fieldIdLower.includes('forwarder') ||
+        labelLower.includes('forwarder');
+
       const isTransportDocOrRefField =
+        !isForwarderRefField &&
         !labelLower.includes('container') &&
         !labelLower.includes('seal') &&
         !labelLower.includes('declaration') &&
         (
           field.mappedShipmentKey === 'bookingNumber' ||
           field.mappedShipmentKey === 'shipperReference' ||
-          field.mappedShipmentKey === 'forwarderReference' ||
           fieldIdLower.includes('booking') ||
           fieldIdLower.includes('transport_doc') ||
           fieldIdLower.includes('doc_no') ||
@@ -401,7 +415,9 @@ export function buildMappedManifest(
           labelLower.includes('reference')
         );
 
-      if (isTransportDocOrRefField) {
+      if (isForwarderRefField) {
+        resolvedValue = shipment.forwarderReference || '';
+      } else if (isTransportDocOrRefField) {
         // Fallback 1: Commercial invoice numbers joined
         if (shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0) {
           resolvedValue = shipment.invoiceNumbers.join(', ');

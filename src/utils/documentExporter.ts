@@ -5,6 +5,7 @@
 import JSZip from 'jszip';
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
 import { groupManifestFieldsBySection } from './manifestMatcher.ts';
+import { buildImoBox14CargoBlock } from './manifestKeywordReference.ts';
 
 /**
  * Escapes characters for HTML output
@@ -60,7 +61,9 @@ export function generateManifestHtml(
   options: ManifestExportOptions = {}
 ): string {
   const isDg = format.documentType === 'DG';
-  const includePallets = options.includePalletAnnex !== false && shipment.pallets && shipment.pallets.length > 0;
+  const includePallets = isDg
+    ? (options.includePalletAnnex === true && Boolean(shipment.pallets && shipment.pallets.length > 0))
+    : (options.includePalletAnnex !== false && Boolean(shipment.pallets && shipment.pallets.length > 0));
 
   const refCode = shipment.bookingNumber ||
     (shipment.invoiceNumbers && shipment.invoiceNumbers[0]) ||
@@ -96,34 +99,23 @@ function generateDgManifestHtml(
   const box6Consignee = val((id, lbl) => id.includes('box_6') || lbl.includes('consignee')) || `${shipment.consigneeName}\n${shipment.consigneeAddress}`;
   const box7Carrier = val((id, lbl) => id.includes('box_7') || lbl.includes('carrier')) || shipment.carrierName || '';
 
-  const box8PreCarriage = val((id, lbl) => id.includes('box_8') || lbl.includes('pre-carriage')) || shipment.preCarriageBy || '';
-  const box9PlaceOfReceipt = val((id, lbl) => id.includes('box_9') || lbl.includes('place of receipt')) || shipment.placeOfReceipt || shipment.portOfLoading || '';
   const box10VesselVoyage = val((id, lbl) => id.includes('box_10') || lbl.includes('vessel')) || (shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '');
   const box11Pol = val((id, lbl) => id.includes('box_11') || lbl.includes('port of loading')) || shipment.portOfLoading || '';
   const box12Pod = val((id, lbl) => id.includes('box_12') || lbl.includes('port of discharge')) || shipment.portOfDischarge || '';
   const box13Dest = val((id, lbl) => id.includes('box_13') || lbl.includes('destination')) || shipment.finalDestination || shipment.portOfDischarge || '';
 
-  const box14Marks = val((id, lbl) => id.includes('box_14') || (lbl.includes('marks') && !lbl.includes('number and kind'))) || shipment.shippingMarks || '';
-  const box15Cargo = val((id, lbl) => id.includes('box_15_package') || (lbl.includes('number and kind') && lbl.includes('description'))) || shipment.productDescription || '';
-  const box15Psn = val((id, lbl) => id.includes('box_15_proper') || id.includes('proper_shipping_name') || lbl.includes('proper shipping name')) || shipment.properShippingName || '';
-  const box15Un = val((id, lbl) => id.includes('box_15_un') || lbl.includes('un number') || lbl.includes('un no')) || shipment.unNumber || '';
-  const box15Class = val((id, lbl) => id.includes('box_15_imo') || lbl.includes('imo class') || lbl.includes('class')) || shipment.imoClass || '';
-  const box15Pg = val((id, lbl) => id.includes('box_15_packing') || lbl.includes('packing group')) || shipment.packingGroup || '';
-  const box15Ems = val((id, lbl) => id.includes('box_15_ems') || lbl.includes('ems')) || shipment.emsNumber || '';
-  const box15PackagingCode = val((id, lbl) => id.includes('box_15_un_packing') || lbl.includes('packaging code')) || shipment.unPackingCode || '';
+  const box14CargoBlock = buildImoBox14CargoBlock(shipment);
 
   const box16Gross = val((id, lbl) => id.includes('box_16') || lbl.includes('gross mass')) || (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : '');
   const box17Net = val((id, lbl) => id.includes('box_17') || lbl.includes('net mass')) || (shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toFixed(2)} KGS` : '');
   const box18Cube = val((id, lbl) => id.includes('box_18') || lbl.includes('cube') || lbl.includes('m³')) || (shipment.volumeCbm > 0 ? `${shipment.volumeCbm.toFixed(3)} M³` : '');
 
-  const box19Container = val((id, lbl) => id.includes('box_19_container') || (lbl.includes('container') && lbl.includes('seal'))) ||
-    (shipment.containerNumber ? (shipment.sealNumber ? `${shipment.containerNumber} / SEAL: ${shipment.sealNumber}` : shipment.containerNumber) : '');
-  const box19Tare = val((id, lbl) => id.includes('box_19_tare') || lbl.includes('tare mass')) || (shipment.tareWeightKg > 0 ? `${shipment.tareWeightKg.toFixed(0)} KGS` : '');
-  const box19Vgm = val((id, lbl) => id.includes('box_19_total_gross_incl_tare') || lbl.includes('incl. tare') || lbl.includes('vgm')) ||
-    (shipment.grossWeightKg > 0 && shipment.tareWeightKg > 0 ? `${Number((shipment.grossWeightKg + shipment.tareWeightKg).toFixed(2))} KGS` : '');
+  const box19Tare = val((id, lbl) => id.includes('box_18_tare') || id.includes('box_19_tare') || lbl.includes('tare mass')) || (shipment.tareWeightKg > 0 ? `${shipment.tareWeightKg.toFixed(0)} KGS` : '');
+  const box19Vgm = val((id, lbl) => id.includes('box_19_total_gross') || id.includes('box_19_vgm') || lbl.includes('incl. tare') || lbl.includes('vgm')) ||
+    (shipment.grossWeightKg > 0 && shipment.tareWeightKg > 0 ? `${Number((shipment.grossWeightKg + shipment.tareWeightKg).toFixed(2))} KGS` : (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : ''));
 
   const box20Declarant = val((id, lbl) => id.includes('box_20') || lbl.includes('container / vehicle packing certificate')) || shipment.dgDeclarantName || shipment.shipperName || '';
-  const box21Emergency = val((id, lbl) => id.includes('box_21') || lbl.includes('emergency response') || lbl.includes('emergency contact')) || shipment.emergencyContactPhone || '';
+  const box21Emergency = val((id, lbl) => id.includes('box_9') || id.includes('box_21') || lbl.includes('emergency')) || shipment.emergencyContactPhone || '';
   const box22ShipperDecl = val((id, lbl) => id.includes('box_22') || lbl.includes("shipper's declaration") || lbl.includes('shipper declaration')) ||
     `${shipment.dgDeclarationPlaceAndDate || ''}\n${shipment.dgDeclarantName || shipment.shipperName || ''}`;
 
@@ -133,27 +125,27 @@ function generateDgManifestHtml(
   <meta charset="UTF-8">
   <title>MULTIMODAL DANGEROUS GOODS DECLARATION - ${escapeHtml(refCode)}</title>
   <style>
-    @page { size: A4 portrait; margin: 8mm 10mm; }
+    @page { size: A4 portrait; margin: 6mm 8mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { font-family: "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 12px; color: #000000; background: #ffffff; font-size: 10px; line-height: 1.25; }
-    .dg-form-container { width: 100%; max-width: 820px; margin: 0 auto; border: 2px solid #000; background: #fff; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 6px; color: #000000; background: #ffffff; font-size: 8px; line-height: 1.2; }
+    .dg-form-container { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #000; background: #fff; page-break-inside: avoid; }
     .table-layout { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    .table-layout td, .table-layout th { border: 1px solid #000; padding: 4px 6px; vertical-align: top; word-wrap: break-word; }
-    .box-num { font-size: 8px; font-weight: 800; text-transform: uppercase; color: #111; display: block; margin-bottom: 2px; }
-    .box-val { font-size: 9.5px; font-weight: 600; white-space: pre-wrap; color: #000; }
+    .table-layout td, .table-layout th { border: 1px solid #000; padding: 3px 5px; vertical-align: top; word-wrap: break-word; }
+    .box-num { font-size: 7px; font-weight: 800; text-transform: uppercase; color: #111; display: block; margin-bottom: 1.5px; }
+    .box-val { font-size: 8px; font-weight: 600; white-space: pre-wrap; color: #000; }
     .box-val-bold { font-weight: 700; }
-    .legal-text { font-size: 7.5px; line-height: 1.15; color: #222; margin-top: 4px; }
-    .header-title-box { background: #f1f5f9; text-align: center; border-bottom: 2px solid #000; padding: 6px; }
-    .header-title-box h1 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 0.8px; }
-    .header-title-box .sub { font-size: 8.5px; font-weight: bold; color: #334155; margin-top: 2px; }
+    .legal-text { font-size: 6.5px; line-height: 1.15; color: #222; margin-top: 2px; }
+    .header-title-box { background: #f8fafc; text-align: center; border-bottom: 1.5px solid #000; padding: 4px; }
+    .header-title-box h1 { margin: 0; font-size: 11.5px; font-weight: 900; letter-spacing: 0.6px; }
+    .header-title-box .sub { font-size: 7.5px; font-weight: bold; color: #334155; margin-top: 1px; }
     .center-col { text-align: center; }
     .right-col { text-align: right; }
     .annex-section { margin-top: 14px; border-top: 2px solid #000; padding-top: 8px; }
     .annex-title { font-size: 10.5px; font-weight: 800; text-transform: uppercase; margin: 0 0 6px 0; }
-    .annex-table { width: 100%; border-collapse: collapse; font-size: 9px; }
-    .annex-table th { background: #f1f5f9; border: 1px solid #000; padding: 4px; text-align: left; font-size: 8px; }
-    .annex-table td { border: 1px solid #000; padding: 3px 5px; }
-    @media print { body { padding: 0; } .dg-form-container { border: 2px solid #000; } }
+    .annex-table { width: 100%; border-collapse: collapse; font-size: 8.5px; }
+    .annex-table th { background: #f1f5f9; border: 1px solid #000; padding: 3px; text-align: left; font-size: 7.5px; }
+    .annex-table td { border: 1px solid #000; padding: 2px 4px; }
+    @media print { body { padding: 0; } .dg-form-container { border: 1.5px solid #000; } }
   </style>
 </head>
 <body>
@@ -163,106 +155,138 @@ function generateDgManifestHtml(
       <div class="sub">This form meets the requirements of SOLAS 74, Chapter VII, Regulation 5.4 and MARPOL 73/78, Annex III, Regulation 4</div>
     </div>
 
+    <!-- Top Half (50% Left / 50% Right Columns) -->
     <table class="table-layout">
-      <!-- Row 1: Shipper (Box 1) & Header Refs (Boxes 2, 3, 4, 5) -->
       <tr>
-        <td style="width: 52%;" rowspan="3">
-          <span class="box-num">1. Shipper / Consignor (Name and full address, IEC, GSTIN)</span>
-          <div class="box-val">${escapeHtml(box1Shipper)}</div>
+        <!-- Left Column (50%) -->
+        <td style="width: 50%; padding: 0; vertical-align: top; border: none;">
+          <table class="table-layout" style="height: 100%;">
+            <tr>
+              <td style="height: 65px;">
+                <span class="box-num">1. Shipper / Consignor / Sender</span>
+                <div class="box-val">${escapeHtml(box1Shipper)}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="height: 55px;">
+                <span class="box-num">6. Consignee</span>
+                <div class="box-val">${escapeHtml(box6Consignee)}</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span class="box-num">7. Carrier</span>
+                <div class="box-val">${escapeHtml(box7Carrier || '---')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span class="box-num">8. This shipment is within the limitations prescribed for:</span>
+                <div class="box-val" style="font-size: 7px; font-weight: bold; color: #1e293b;">
+                  [ PASSENGER AND CARGO AIRCRAFT &nbsp;&bull;&nbsp; CARGO AIRCRAFT ONLY ]
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 0;">
+                <table class="table-layout">
+                  <tr>
+                    <td style="width: 50%; border-top: none; border-left: none; border-bottom: none;">
+                      <span class="box-num">10. Vessel and voy</span>
+                      <div class="box-val box-val-bold">${escapeHtml(box10VesselVoyage || '---')}</div>
+                    </td>
+                    <td style="width: 50%; border-top: none; border-right: none; border-bottom: none;">
+                      <span class="box-num">11. Port of loading</span>
+                      <div class="box-val">${escapeHtml(box11Pol || '---')}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 0;">
+                <table class="table-layout">
+                  <tr>
+                    <td style="width: 50%; border-top: none; border-left: none; border-bottom: none;">
+                      <span class="box-num">12. Port of discharge</span>
+                      <div class="box-val">${escapeHtml(box12Pod || '---')}</div>
+                    </td>
+                    <td style="width: 50%; border-top: none; border-right: none; border-bottom: none;">
+                      <span class="box-num">13. Destination</span>
+                      <div class="box-val">${escapeHtml(box13Dest || '---')}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </td>
-        <td style="width: 48%;">
-          <span class="box-num">2. Transport Document Number</span>
-          <div class="box-val box-val-bold">${escapeHtml(box2TransportDoc || '---')}</div>
-        </td>
-      </tr>
-      <tr>
-        <td>
-          <span class="box-num">3. Page of Page</span>
-          <div class="box-val box-val-bold">${escapeHtml(box3Page)}</div>
-        </td>
-      </tr>
-      <tr>
-        <td>
-          <span class="box-num">4. Shipper's Reference Number</span>
-          <div class="box-val">${escapeHtml(box4ShipperRef || '---')}</div>
-        </td>
-      </tr>
 
-      <!-- Row 2: Consignee (Box 6) & Carrier / Freight Forwarder (Box 5, 7) -->
-      <tr>
-        <td rowspan="2">
-          <span class="box-num">6. Consignee (Name and full address)</span>
-          <div class="box-val">${escapeHtml(box6Consignee)}</div>
-        </td>
-        <td>
-          <span class="box-num">5. Freight Forwarder's Reference Number</span>
-          <div class="box-val">${escapeHtml(box5ForwarderRef || '---')}</div>
-        </td>
-      </tr>
-      <tr>
-        <td>
-          <span class="box-num">7. Carrier (Name and Details)</span>
-          <div class="box-val">${escapeHtml(box7Carrier || '---')}</div>
-        </td>
-      </tr>
-
-      <!-- Row 3: Pre-Carriage & Place of Receipt (Boxes 8 & 9) -->
-      <tr>
-        <td>
-          <span class="box-num">8. This shipment is within the limitations prescribed for: Pre-Carriage by</span>
-          <div class="box-val">${escapeHtml(box8PreCarriage || 'ROAD / FEEDER')}</div>
-        </td>
-        <td>
-          <span class="box-num">9. Place of Receipt by Pre-Carrier &amp; 24-hr Emergency Contact</span>
-          <div class="box-val">${escapeHtml(box9PlaceOfReceipt || '---')}</div>
-          ${box21Emergency ? `<div style="font-size: 8.5px; font-weight: 700; color: #b91c1c; margin-top: 3px;">24-HR EMERGENCY: ${escapeHtml(box21Emergency)}</div>` : ''}
-        </td>
-      </tr>
-
-      <!-- Row 4: Vessel/Voyage, POL, POD, Destination (Boxes 10, 11, 12, 13) -->
-      <tr>
-        <td>
-          <span class="box-num">10. Vessel and Voyage Number</span>
-          <div class="box-val box-val-bold">${escapeHtml(box10VesselVoyage || '---')}</div>
-        </td>
-        <td>
-          <span class="box-num">11. Port of Loading</span>
-          <div class="box-val">${escapeHtml(box11Pol || '---')}</div>
-        </td>
-      </tr>
-      <tr>
-        <td>
-          <span class="box-num">12. Port of Discharge</span>
-          <div class="box-val">${escapeHtml(box12Pod || '---')}</div>
-        </td>
-        <td>
-          <span class="box-num">13. Destination</span>
-          <div class="box-val">${escapeHtml(box13Dest || '---')}</div>
+        <!-- Right Column (50%) -->
+        <td style="width: 50%; padding: 0; vertical-align: top; border: none; border-left: 1px solid #000;">
+          <table class="table-layout" style="height: 100%;">
+            <tr>
+              <td>
+                <span class="box-num">2. Transport Document Number</span>
+                <div class="box-val box-val-bold">${escapeHtml(box2TransportDoc || '---')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 0;">
+                <table class="table-layout">
+                  <tr>
+                    <td style="width: 45%; border-top: none; border-left: none; border-bottom: none;">
+                      <span class="box-num">3. Page 1 of 1</span>
+                      <div class="box-val box-val-bold">${escapeHtml(box3Page)}</div>
+                    </td>
+                    <td style="width: 55%; border-top: none; border-right: none; border-bottom: none;">
+                      <span class="box-num">4. Shipper's reference</span>
+                      <div class="box-val">${escapeHtml(box4ShipperRef || '---')}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span class="box-num">5. Freight Forwarder's reference</span>
+                <div class="box-val">${escapeHtml(box5ForwarderRef || '---')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="background: #fafafa; padding: 4px;">
+                <span class="box-num">SHIPPER'S DECLARATION</span>
+                <div class="legal-text">
+                  I hereby declare that the contents of this consignment are fully and accurately described below by the proper shipping name(s), and are classified, packaged, marked and labelled/placarded, and are in all respects in proper condition for transport according to the applicable international and national governmental regulations.
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="height: 48px;">
+                <span class="box-num">9. Additional handling information</span>
+                <div class="box-val" style="color: #b91c1c; font-weight: 700; font-size: 7.5px;">
+                  EMERGENCY CONTACT NUMBER: ${escapeHtml(box21Emergency || '---')}
+                </div>
+              </td>
+            </tr>
+          </table>
         </td>
       </tr>
     </table>
 
-    <!-- Main Dangerous Goods Cargo Table: Boxes 14, 15, 16, 17, 18 -->
+    <!-- Center Cargo Table (Unified Wide Box 14 + 3 Weight Columns) -->
     <table class="table-layout" style="border-top: none;">
       <tr style="background: #f8fafc;">
-        <th style="width: 25%;"><span class="box-num">14. Shipping Marks &amp; Pallet Numbers</span></th>
-        <th style="width: 45%;"><span class="box-num">15. Number and Kind of Packages; Description of Goods; UN No; PSN; Class; PG; EMS; Segregation</span></th>
-        <th style="width: 10%;" class="right-col"><span class="box-num">16. Gross Mass (kg)</span></th>
-        <th style="width: 10%;" class="right-col"><span class="box-num">17. Net Mass (kg)</span></th>
-        <th style="width: 10%;" class="right-col"><span class="box-num">18. Cube (m³)</span></th>
+        <th style="width: 70%; text-align: left;">
+          <span class="box-num">14. Shipping Marks | *Number and kind of packages; description of goods</span>
+        </th>
+        <th style="width: 10%;" class="right-col"><span class="box-num">Gross Mass (kg)</span></th>
+        <th style="width: 10%;" class="right-col"><span class="box-num">Net Mass (kgs)</span></th>
+        <th style="width: 10%;" class="right-col"><span class="box-num">Cube (m³)</span></th>
       </tr>
       <tr>
-        <td style="min-height: 180px;">
-          <div class="box-val">${escapeHtml(box14Marks || '---')}</div>
-        </td>
-        <td>
-          ${box15Psn ? `<div style="margin-bottom: 4px;"><strong>PROPER SHIPPING NAME:</strong><br><span style="font-size: 10px; font-weight: 700; color: #000;">${escapeHtml(box15Psn)}</span></div>` : ''}
-          <div class="box-val" style="margin-bottom: 6px;">${escapeHtml(box15Cargo)}</div>
-          <div style="background: #f1f5f9; padding: 4px 6px; border: 1px dashed #64748b; font-size: 8.5px; font-family: monospace;">
-            <div><strong>UN NUMBER:</strong> ${escapeHtml(box15Un || '---')} &nbsp;|&nbsp; <strong>IMO CLASS:</strong> ${escapeHtml(box15Class || '---')} &nbsp;|&nbsp; <strong>PG:</strong> ${escapeHtml(box15Pg || '---')}</div>
-            <div><strong>EMS NO:</strong> ${escapeHtml(box15Ems || '---')} &nbsp;|&nbsp; <strong>MARINE POLLUTANT:</strong> ${shipment.marinePollutant ? 'YES' : 'NO'}</div>
-            ${box15PackagingCode ? `<div><strong>PACKAGING SPEC:</strong> ${escapeHtml(box15PackagingCode)}</div>` : ''}
-          </div>
+        <td style="padding: 4px 6px;">
+          <div class="box-val" style="font-family: monospace; font-size: 7.5px; line-height: 1.25;">${escapeHtml(box14CargoBlock)}</div>
         </td>
         <td class="right-col"><div class="box-val box-val-bold">${escapeHtml(box16Gross || '---')}</div></td>
         <td class="right-col"><div class="box-val">${escapeHtml(box17Net || '---')}</div></td>
@@ -270,63 +294,62 @@ function generateDgManifestHtml(
       </tr>
     </table>
 
-    <!-- Container / Vehicle Details: Box 19, 19b, 19c -->
+    <!-- Official IMO Equipment Row (Boxes 15, 16, 17, 18, 19) -->
     <table class="table-layout" style="border-top: none;">
       <tr style="background: #f8fafc;">
-        <th style="width: 32%;"><span class="box-num">19. Container Identification No. / Seal No.</span></th>
-        <th style="width: 18%;"><span class="box-num">Container Size &amp; Type</span></th>
-        <th style="width: 25%;" class="right-col"><span class="box-num">19b. Container Tare Mass (kg)</span></th>
-        <th style="width: 25%;" class="right-col"><span class="box-num">19c. Total Gross (incl. tare) / VGM (kg)</span></th>
+        <th style="width: 26%;"><span class="box-num">15. Container identification no.</span></th>
+        <th style="width: 20%;"><span class="box-num">16. Seal number(s)</span></th>
+        <th style="width: 16%;"><span class="box-num">17. Container size &amp; type</span></th>
+        <th style="width: 18%;" class="right-col"><span class="box-num">18. Tare mass (kg)</span></th>
+        <th style="width: 20%;" class="right-col"><span class="box-num">19. Total gross (incl. tare) (kg)</span></th>
       </tr>
       <tr>
-        <td><div class="box-val box-val-bold">${escapeHtml(box19Container || '---')}</div></td>
+        <td><div class="box-val box-val-bold">${escapeHtml(shipment.containerNumber || '---')}</div></td>
+        <td><div class="box-val">${escapeHtml(shipment.sealNumber || '---')}</div></td>
         <td><div class="box-val">${escapeHtml(shipment.containerType || "20' GP")}</div></td>
         <td class="right-col"><div class="box-val">${escapeHtml(box19Tare || '---')}</div></td>
         <td class="right-col"><div class="box-val box-val-bold" style="color: #047857;">${escapeHtml(box19Vgm || '---')}</div></td>
       </tr>
     </table>
 
-    <!-- Declarations and Signatures: Boxes 20, 21, 22 -->
+    <!-- Bottom Signature Row (Boxes 20, 21, 22) -->
     <table class="table-layout" style="border-top: none;">
       <tr>
-        <td style="width: 38%;">
+        <td style="width: 36%;">
           <span class="box-num">20. Container / Vehicle Packing Certificate</span>
           <div class="legal-text">
             I hereby declare that the goods described above have been packed/loaded into the container/vehicle identified above in accordance with the applicable provisions.
           </div>
-          <div style="margin-top: 10px;">
-            <div style="font-size: 8px; color: #475569;">Name / Status of Declarant:</div>
-            <div class="box-val box-val-bold">${escapeHtml(box20Declarant || 'AUTHORIZED SIGNATORY')}</div>
-            <div style="font-size: 8px; color: #475569; margin-top: 4px;">Place and Date:</div>
-            <div class="box-val">${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
-            <div style="font-size: 8px; color: #475569; margin-top: 4px;">Signature of Declarant:</div>
-            <div style="height: 22px; border-bottom: 1px dotted #94a3b8; margin-top: 4px;"></div>
+          <div style="margin-top: 6px; font-size: 7.5px;">
+            <div>Name/Status: <strong>${escapeHtml(box20Declarant || 'AUTHORIZED SIGNATORY')}</strong></div>
+            <div>Place and Date: ${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+            <div style="margin-top: 2px;">Signature of Declarant:</div>
+            <div style="height: 16px; border-bottom: 1px dotted #94a3b8; margin-top: 2px;"></div>
           </div>
         </td>
-        <td style="width: 24%;">
-          <span class="box-num">21. Receiving Organization Receipt</span>
+        <td style="width: 28%;">
+          <span class="box-num">21. RECEIVING ORGANIZATION RECEIPT</span>
           <div class="legal-text">
             Received the above number of packages/containers in apparent good order and condition.
           </div>
-          <div style="margin-top: 14px; font-size: 8px; color: #475569;">
-            <div>Haulier's Name: <span style="border-bottom: 1px dotted #94a3b8; display: inline-block; width: 60px;">&nbsp;</span></div>
-            <div style="margin-top: 6px;">Vehicle Reg No: <span style="border-bottom: 1px dotted #94a3b8; display: inline-block; width: 60px;">&nbsp;</span></div>
-            <div style="margin-top: 6px;">Driver's Signature:</div>
-            <div style="height: 22px; border-bottom: 1px dotted #94a3b8; margin-top: 4px;"></div>
+          <div style="margin-top: 6px; font-size: 7.5px;">
+            <div>Haulier: <span style="border-bottom: 1px dotted #94a3b8; display: inline-block; width: 60px;">&nbsp;</span></div>
+            <div style="margin-top: 2px;">Vehicle Reg No: <span style="border-bottom: 1px dotted #94a3b8; display: inline-block; width: 50px;">&nbsp;</span></div>
+            <div style="margin-top: 2px;">Driver Signature:</div>
+            <div style="height: 16px; border-bottom: 1px dotted #94a3b8; margin-top: 2px;"></div>
           </div>
         </td>
-        <td style="width: 38%;">
+        <td style="width: 36%;">
           <span class="box-num">22. Shipper's Declaration</span>
           <div class="legal-text">
             I hereby declare that the contents of this consignment are fully and accurately described above by the proper shipping name, and are classified, packaged, marked and labeled/placarded and are in all respects in proper condition for transport according to the applicable international and national governmental regulations.
           </div>
-          <div style="margin-top: 8px;">
-            <div style="font-size: 8px; color: #475569;">Company Name:</div>
-            <div class="box-val box-val-bold">${escapeHtml(shipment.shipperName || '---')}</div>
-            <div style="font-size: 8px; color: #475569; margin-top: 4px;">Name/Status of Declarant &amp; Date:</div>
-            <div class="box-val">${escapeHtml(box22ShipperDecl || '---')}</div>
-            <div style="font-size: 8px; color: #475569; margin-top: 4px;">Signature of Declarant:</div>
-            <div style="height: 22px; border-bottom: 1px dotted #94a3b8; margin-top: 4px;"></div>
+          <div style="margin-top: 6px; font-size: 7.5px;">
+            <div>Company Name: <strong>${escapeHtml(shipment.shipperName || '---')}</strong></div>
+            <div>Declarant: ${escapeHtml(box22ShipperDecl || shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY')}</div>
+            <div>Place &amp; Date: ${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+            <div style="margin-top: 2px;">Signature of Declarant:</div>
+            <div style="height: 16px; border-bottom: 1px dotted #94a3b8; margin-top: 2px;"></div>
           </div>
         </td>
       </tr>
@@ -460,7 +483,7 @@ function generateBlManifestHtml(
       <tr>
         <td>
           <span class="cell-title">Freight Forwarder / Agent Details</span>
-          <div class="cell-data">${escapeHtml(shipment.forwarderReference || 'EKDANT LOGISTICS SERVICE')}</div>
+          <div class="cell-data">${escapeHtml(shipment.forwarderReference || '---')}</div>
         </td>
       </tr>
 
@@ -685,6 +708,7 @@ export async function exportManifestToDocx(
   mappedFields: MappedManifestField[],
   options: ManifestExportOptions = {}
 ): Promise<Blob> {
+  const isDg = format.documentType === 'DG';
   const zip = new JSZip();
 
   // 1. [Content_Types].xml
@@ -820,7 +844,8 @@ export async function exportManifestToDocx(
 
   // Optional Pallet Table in Word
   let palletAnnexXml = '';
-  if (options.includePalletAnnex !== false && shipment.pallets && shipment.pallets.length > 0) {
+  const shouldIncludePallets = isDg ? (options.includePalletAnnex === true) : (options.includePalletAnnex !== false);
+  if (shouldIncludePallets && shipment.pallets && shipment.pallets.length > 0) {
     let palletRows = '';
     for (let idx = 0; idx < shipment.pallets.length; idx++) {
       const p = shipment.pallets[idx];
@@ -864,7 +889,6 @@ export async function exportManifestToDocx(
     `;
   }
 
-  const isDg = format.documentType === 'DG';
   const docTitle = isDg ? 'MULTIMODAL DANGEROUS GOODS DECLARATION' : 'BILL OF LADING FOR OCEAN TRANSPORT';
   const refCode = shipment.bookingNumber || shipment.invoiceNumbers?.[0] || shipment.shipperReference || 'DRAFT';
 
