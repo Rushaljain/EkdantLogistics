@@ -12,6 +12,7 @@ export interface ParseSessionProgress {
   processedFiles: number;
   totalFiles: number;
   filterLogs: string[];
+  percent?: number;
 }
 
 export interface ParseResult {
@@ -130,7 +131,8 @@ export async function parseDocumentsToJSON(
     message: `Reading ${files.length} uploaded files...`,
     processedFiles: 0,
     totalFiles: files.length,
-    filterLogs: []
+    filterLogs: [],
+    percent: 5
   });
 
   // Step 1: Prepare multimodal payload with explicit file boundary annotations
@@ -139,6 +141,7 @@ export async function parseDocumentsToJSON(
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const readPercent = Math.min(30, Math.round(5 + ((i + 1) / files.length) * 25));
 
     if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
       onProgress?.({
@@ -146,7 +149,8 @@ export async function parseDocumentsToJSON(
         message: `Processing spreadsheet coordinate grid: ${file.name}`,
         processedFiles: i + 1,
         totalFiles: files.length,
-        filterLogs: logs
+        filterLogs: logs,
+        percent: readPercent
       });
 
       const buffer = await file.arrayBuffer();
@@ -165,7 +169,8 @@ export async function parseDocumentsToJSON(
         message: `Encoding visual layout for PDF: ${file.name}`,
         processedFiles: i + 1,
         totalFiles: files.length,
-        filterLogs: logs
+        filterLogs: logs,
+        percent: readPercent
       });
 
       const base64Data = await fileToBase64(file);
@@ -195,7 +200,8 @@ export async function parseDocumentsToJSON(
     message: `Executing Gemini Multimodal Structured Extraction (${mode})...`,
     processedFiles: files.length,
     totalFiles: files.length,
-    filterLogs: logs
+    filterLogs: logs,
+    percent: 35
   });
 
   const modeInstruction = mode === 'SINGLE_INVOICE'
@@ -314,7 +320,8 @@ export async function parseDocumentsToJSON(
     message: 'Verifying mathematical consistency across extracted pallet weights...',
     processedFiles: files.length,
     totalFiles: files.length,
-    filterLogs: logs
+    filterLogs: logs,
+    percent: 92
   });
 
   consolidateAndVerifyMath(cleanShipment, warnings);
@@ -324,7 +331,8 @@ export async function parseDocumentsToJSON(
     message: 'Parsing complete. ExtractedShipmentJSON ready for inspection.',
     processedFiles: files.length,
     totalFiles: files.length,
-    filterLogs: logs
+    filterLogs: logs,
+    percent: 100
   });
 
   return {

@@ -43,36 +43,68 @@ export function UploadLandingView({
   onExecuteParsing
 }: UploadLandingViewProps): React.JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [fakePercent, setFakePercent] = React.useState<number>(1);
+  const [dynamicPercent, setDynamicPercent] = React.useState<number>(1);
 
   React.useEffect(() => {
     if (!isParsing) {
-      setFakePercent(1);
+      setDynamicPercent(1);
       return;
     }
 
     const interval = setInterval(() => {
-      setFakePercent((prev) => {
-        if (prev < 30) return prev + Math.floor(Math.random() * 4 + 2);
-        if (prev < 70) return prev + Math.floor(Math.random() * 3 + 1);
-        if (prev < 90) return prev + 1;
-        if (prev < 98) return prev + (Math.random() > 0.6 ? 1 : 0);
-        return 98;
+      setDynamicPercent((prev) => {
+        // Look at current parseProgress milestone
+        const stage = parseProgress?.stage;
+        const reportedPercent = parseProgress?.percent;
+
+        if (reportedPercent !== undefined) {
+          if (reportedPercent === 100) return 100;
+          // Slowly crawl upwards towards next target without getting stuck
+          if (prev < reportedPercent) {
+            return Math.min(reportedPercent, prev + 2);
+          }
+        }
+
+        if (stage === 'reading' || stage === 'prefiltering') {
+          // In file reading stage, advance up to 35%
+          if (prev < 30) return prev + 1;
+          return prev;
+        }
+
+        if (stage === 'ai_extracting') {
+          // AI Extraction takes 3-10 seconds: smoothly increment from 35% up to 94%
+          if (prev < 50) return prev + 2;
+          if (prev < 75) return prev + 1;
+          if (prev < 90) return prev + 1;
+          if (prev < 96) return prev + (Math.random() > 0.4 ? 1 : 0);
+          return 96;
+        }
+
+        if (stage === 'consolidating') {
+          if (prev < 98) return prev + 1;
+          return 98;
+        }
+
+        if (stage === 'done') {
+          return 100;
+        }
+
+        // Generic fallback advance
+        if (prev < 92) return prev + 1;
+        return prev;
       });
-    }, 250);
+    }, 180);
 
     return () => clearInterval(interval);
-  }, [isParsing]);
+  }, [isParsing, parseProgress?.stage, parseProgress?.percent]);
 
-  // If backend progress provides totalFiles > 0, we can also factor it
   const displayPercent = React.useMemo(() => {
     if (!isParsing) return 0;
-    if (parseProgress && parseProgress.totalFiles > 0) {
-      const fileFraction = (parseProgress.processedFiles / parseProgress.totalFiles) * 90;
-      return Math.max(fakePercent, Math.min(98, Math.round(fileFraction)));
+    if (parseProgress?.percent !== undefined) {
+      return Math.max(dynamicPercent, parseProgress.percent);
     }
-    return fakePercent;
-  }, [isParsing, parseProgress, fakePercent]);
+    return Math.max(1, Math.min(99, dynamicPercent));
+  }, [isParsing, parseProgress?.percent, dynamicPercent]);
 
   const isModeSelected = Boolean(mode);
 
