@@ -64,6 +64,8 @@ CRITICAL EXTRACTION RULES:
    - Extract EVERY individual pallet row into the "pallets" array of objects with:
      * "palletNumber": Verbatim pallet identifier as written in the source table (never rename to generic sequences).
      * "modelCode": Model, product number, or item code.
+     * "brand": Brand name associated with this pallet item if specified.
+     * "invoiceNumber": Source invoice number associated with this pallet if specified.
      * "boxCount": Number of boxes/items on this specific pallet.
      * "netWeightKg": Net weight of this specific pallet in kg.
      * "grossWeightKg": Gross weight of this specific pallet in kg.
@@ -485,6 +487,8 @@ function normalizeExtractedJSON(
     clean.pallets = raw.pallets.map((p: any, idx: number): ExtractedPallet => ({
       palletNumber: str(p.palletNumber) || String(idx + 1),
       modelCode: str(p.modelCode),
+      brand: str(p.brand || p.brandName || ''),
+      invoiceNumber: str(p.invoiceNumber || p.invoiceNo || p.invoice || ''),
       boxCount: num(p.boxCount),
       netWeightKg: num(p.netWeightKg),
       grossWeightKg: num(p.grossWeightKg),

@@ -6,6 +6,8 @@ export type UploadMode = 'SINGLE_INVOICE' | 'MULTI_INVOICE';
 export interface ExtractedPallet {
   palletNumber: string;
   modelCode: string;
+  brand?: string;
+  invoiceNumber?: string;
   boxCount: number;
   netWeightKg: number;
   grossWeightKg: number;
@@ -56,6 +58,8 @@ export interface Pallet {
   dimensions?: string;
   footprintAreaMm2?: number;
   modelOrDescription?: string;
+  brand?: string;
+  invoiceNumber?: string;
   isDangerousGoods: boolean;
   imoClass?: string;
   unNumber?: string;

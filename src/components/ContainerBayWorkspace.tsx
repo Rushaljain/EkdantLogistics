@@ -134,12 +134,16 @@ export function ContainerBayWorkspace({
   const [palletForm, setPalletForm] = useState<{
     palletNumber: string;
     modelCode: string;
+    brand: string;
+    invoiceNumber: string;
     boxCount: number;
     grossWeightKg: number;
     netWeightKg: number;
   }>({
     palletNumber: '',
     modelCode: '',
+    brand: '',
+    invoiceNumber: '',
     boxCount: 0,
     grossWeightKg: 0,
     netWeightKg: 0
@@ -353,6 +357,8 @@ export function ContainerBayWorkspace({
     setPalletForm({
       palletNumber: target.palletNumber,
       modelCode: target.modelCode,
+      brand: target.brand || '',
+      invoiceNumber: target.invoiceNumber || '',
       boxCount: target.boxCount,
       grossWeightKg: target.grossWeightKg,
       netWeightKg: target.netWeightKg
@@ -366,6 +372,8 @@ export function ContainerBayWorkspace({
     setPalletForm({
       palletNumber: `P-${nextNum.toString().padStart(2, '0')}`,
       modelCode: shipmentJson.productDescription?.split('\n')[0]?.slice(0, 30) || 'STANDARD',
+      brand: shipmentJson.brandName || '',
+      invoiceNumber: shipmentJson.invoiceNumbers?.[0] || '',
       boxCount: 40,
       grossWeightKg: 1020,
       netWeightKg: 980
@@ -383,6 +391,8 @@ export function ContainerBayWorkspace({
           ...next[editingPalletIndex],
           palletNumber: palletForm.palletNumber.trim(),
           modelCode: palletForm.modelCode.trim(),
+          brand: palletForm.brand.trim() || undefined,
+          invoiceNumber: palletForm.invoiceNumber.trim() || undefined,
           boxCount: Number(palletForm.boxCount) || 0,
           grossWeightKg: Number(palletForm.grossWeightKg) || 0,
           netWeightKg: Number(palletForm.netWeightKg) || 0
@@ -393,6 +403,8 @@ export function ContainerBayWorkspace({
       const newPallet: ExtractedPallet = {
         palletNumber: palletForm.palletNumber.trim(),
         modelCode: palletForm.modelCode.trim(),
+        brand: palletForm.brand.trim() || undefined,
+        invoiceNumber: palletForm.invoiceNumber.trim() || undefined,
         boxCount: Number(palletForm.boxCount) || 0,
         grossWeightKg: Number(palletForm.grossWeightKg) || 0,
         netWeightKg: Number(palletForm.netWeightKg) || 0,
@@ -660,30 +672,49 @@ export function ContainerBayWorkspace({
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center space-x-2">
-                        <GripVertical className="w-3.5 h-3.5 text-content-muted shrink-0" />
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <GripVertical className="w-3.5 h-3.5 text-content-muted shrink-0 cursor-grab active:cursor-grabbing" />
                         <input
                           type="checkbox"
                           checked={isAllocated}
                           onChange={() => togglePalletAllocation(p.palletNumber)}
                           className="rounded border-divider bg-input-bg text-brand-primary focus:ring-0 cursor-pointer"
                         />
-                        <span className="text-xs font-mono font-bold text-brand-primary">
+                        <span className="text-xs font-mono font-bold text-brand-primary shrink-0">
                           {p.palletNumber}
                         </span>
                         {p.modelCode && (
-                          <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-surface border border-divider text-content-primary truncate max-w-[130px]">
+                          <span
+                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-surface border-divider text-content-primary truncate max-w-[130px] shrink-0"
+                            title={p.modelCode}
+                          >
                             {p.modelCode}
                           </span>
                         )}
+                        {p.brand && (
+                          <span
+                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200/90 dark:border-slate-700 truncate max-w-[130px] shrink-0"
+                            title={`Brand: ${p.brand}`}
+                          >
+                            {p.brand}
+                          </span>
+                        )}
+                        {p.invoiceNumber && (
+                          <span
+                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/70 dark:border-indigo-800/60 truncate max-w-[130px] shrink-0"
+                            title={`Invoice: ${p.invoiceNumber}`}
+                          >
+                            {p.invoiceNumber.toUpperCase().startsWith('INV') ? p.invoiceNumber : `INV: ${p.invoiceNumber}`}
+                          </span>
+                        )}
                         {otherCont && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-600 border border-amber-500/30">
+                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-600 border border-amber-500/30 shrink-0">
                             {otherCont.containerNumber || 'Other Container'}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center space-x-1">
+                      <div className="flex items-center space-x-1 shrink-0">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1180,6 +1211,34 @@ export function ContainerBayWorkspace({
                   onChange={(e) => setPalletForm((prev) => ({ ...prev, modelCode: e.target.value }))}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary focus:outline-none focus:border-brand-primary"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
+                    Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Brand Name"
+                    value={palletForm.brand}
+                    onChange={(e) => setPalletForm((prev) => ({ ...prev, brand: e.target.value }))}
+                    className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary focus:outline-none focus:border-brand-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-content-secondary mb-1">
+                    Source Invoice #
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. INV-1001"
+                    value={palletForm.invoiceNumber}
+                    onChange={(e) => setPalletForm((prev) => ({ ...prev, invoiceNumber: e.target.value }))}
+                    className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2">

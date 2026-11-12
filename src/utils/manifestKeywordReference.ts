@@ -240,6 +240,16 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
   }
 
   // 3. Guarantee shipment.pallets Hydration & Fallback Synthesis
+  let primaryBrand = (clean.brandName || '').trim();
+  if (!primaryBrand) {
+    const marksAndDesc = `${clean.shippingMarks || ''}\n${clean.productDescription || ''}`;
+    const brandMatch = marksAndDesc.match(/BRAND\s*[:.-]?\s*([A-Za-z0-9\s_-]+?)(?=\n|;|\/|\[|\(|$)/i);
+    if (brandMatch && brandMatch[1].trim()) {
+      primaryBrand = brandMatch[1].trim();
+      clean.brandName = primaryBrand;
+    }
+  }
+
   if (!clean.pallets || clean.pallets.length === 0) {
     const marksAndDesc = `${clean.shippingMarks || ''}\n${clean.productDescription || ''}`;
     const synthesizedIds: string[] = [];
@@ -289,6 +299,8 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
       clean.pallets = synthesizedIds.map((pId, idx) => ({
         palletNumber: pId,
         modelCode: model,
+        brand: primaryBrand || undefined,
+        invoiceNumber: (clean.invoiceNumbers && clean.invoiceNumbers.length === 1) ? clean.invoiceNumbers[0] : undefined,
         boxCount: baseBoxes + (idx < remainderBoxes ? 1 : 0),
         grossWeightKg: baseGross,
         netWeightKg: baseNet,
@@ -302,6 +314,36 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
         clean.outerPackagingCount = palletCount;
       }
     }
+  }
+
+  // Row-level fallback hydration for brand and source invoice on all pallets
+  if (clean.pallets && clean.pallets.length > 0) {
+    clean.pallets = clean.pallets.map((p) => {
+      let pBrand = (p.brand || '').trim();
+      if (!pBrand && primaryBrand) {
+        pBrand = primaryBrand;
+      }
+
+      let pInv = (p.invoiceNumber || '').trim();
+      if (!pInv) {
+        if (clean.invoiceNumbers && clean.invoiceNumbers.length === 1) {
+          pInv = clean.invoiceNumbers[0];
+        } else if (clean.invoiceNumbers && clean.invoiceNumbers.length > 1 && p.sourceFile) {
+          const matchingInv = clean.invoiceNumbers.find(inv =>
+            p.sourceFile.toLowerCase().includes(inv.toLowerCase())
+          );
+          if (matchingInv) {
+            pInv = matchingInv;
+          }
+        }
+      }
+
+      return {
+        ...p,
+        brand: pBrand || undefined,
+        invoiceNumber: pInv || undefined
+      };
+    });
   }
 
   // 4. Deterministic Pallet Range Synthesis into shippingMarks

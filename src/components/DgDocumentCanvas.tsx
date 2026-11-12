@@ -99,6 +99,8 @@ export function DgDocumentCanvas({
     const newPallet: ExtractedPallet = {
       palletNumber: `P-${nextIdx.toString().padStart(2, '0')}`,
       modelCode: shipmentJson.pallets[0]?.modelCode || '',
+      brand: shipmentJson.pallets[0]?.brand || shipmentJson.brandName || undefined,
+      invoiceNumber: shipmentJson.pallets[0]?.invoiceNumber || shipmentJson.invoiceNumbers?.[0] || undefined,
       boxCount: 40,
       grossWeightKg: 1020,
       netWeightKg: 980,

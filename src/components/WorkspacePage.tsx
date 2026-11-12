@@ -14,8 +14,7 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
-  CheckCircle2,
-  Zap
+  CheckCircle2
 } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
@@ -411,7 +410,21 @@ export function WorkspacePage({
                         {shipmentJson.pallets.map((p, idx) => (
                           <tr key={p.palletNumber || idx} className="hover:bg-surface-secondary text-[11px]">
                             <td className="px-4 py-2 text-brand-primary font-bold">{p.palletNumber}</td>
-                            <td className="px-4 py-2 text-content-primary">{p.modelCode || '—'}</td>
+                            <td className="px-4 py-2 text-content-primary">
+                              <div className="flex items-center space-x-1.5 flex-wrap">
+                                <span>{p.modelCode || '—'}</span>
+                                {p.brand && (
+                                  <span className="font-mono text-[10px] font-medium tracking-tight px-1.5 py-0.2 rounded border bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700">
+                                    {p.brand}
+                                  </span>
+                                )}
+                                {p.invoiceNumber && (
+                                  <span className="font-mono text-[10px] font-medium tracking-tight px-1.5 py-0.2 rounded border bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800">
+                                    {p.invoiceNumber.toUpperCase().startsWith('INV') ? p.invoiceNumber : `INV: ${p.invoiceNumber}`}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-4 py-2 text-right text-content-primary">{p.boxCount}</td>
                             <td className="px-4 py-2 text-right text-content-primary">{p.grossWeightKg.toLocaleString()}</td>
                             <td className="px-4 py-2 text-right text-content-primary">{p.netWeightKg.toLocaleString()}</td>
@@ -479,17 +492,13 @@ export function WorkspacePage({
                   <button
                     type="button"
                     onClick={handleJumpToNextPending}
-                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-2 transition-all opacity-100 cursor-pointer text-left"
-                    title="Click to cycle focus to next pending Stage-2 field"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm inline-flex items-center transition-all opacity-100 cursor-pointer"
+                    title="Click to jump to next missing field"
                   >
-                    <Zap className="w-3.5 h-3.5 shrink-0" />
-                    <div className="flex flex-col leading-tight">
-                      <span>Fields Pending {dgStats.total - dgStats.populated}/{dgStats.total}</span>
-                      <span className="text-[9px] font-normal opacity-90">Click to jump to missing item</span>
-                    </div>
+                    <span>Fields Pending {dgStats.total - dgStats.populated}/{dgStats.total}</span>
                   </button>
                 ) : (
-                  <span className="text-xs font-bold px-3 py-1 rounded-md bg-state-success hover:bg-state-success text-white shadow-sm flex items-center space-x-1.5 transition-all opacity-100">
+                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-state-success text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>All Critical Boxes Complete</span>
                   </span>
@@ -551,17 +560,13 @@ export function WorkspacePage({
                   <button
                     type="button"
                     onClick={handleJumpToNextPending}
-                    className="text-xs font-bold px-3 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center space-x-2 transition-all opacity-100 cursor-pointer text-left"
-                    title="Click to cycle focus to next pending Stage-2 field"
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm inline-flex items-center transition-all opacity-100 cursor-pointer"
+                    title="Click to jump to next missing field"
                   >
-                    <Zap className="w-3.5 h-3.5 shrink-0" />
-                    <div className="flex flex-col leading-tight">
-                      <span>Fields Pending {blStats.total - blStats.populated}/{blStats.total}</span>
-                      <span className="text-[9px] font-normal opacity-90">Click to jump to missing item</span>
-                    </div>
+                    <span>Fields Pending {blStats.total - blStats.populated}/{blStats.total}</span>
                   </button>
                 ) : (
-                  <span className="text-xs font-bold px-3 py-1 rounded-md bg-state-success hover:bg-state-success text-white shadow-sm flex items-center space-x-1.5 transition-all opacity-100">
+                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-state-success text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>All BOL Fields Complete</span>
                   </span>
