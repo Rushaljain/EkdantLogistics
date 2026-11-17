@@ -52,6 +52,8 @@ import { WorkspacePage } from './components/WorkspacePage.tsx';
 import { FilesPage } from './components/FilesPage.tsx';
 import { FormatAdderPage } from './components/FormatAdderPage.tsx';
 import { UploadLandingView } from './components/UploadLandingView.tsx';
+import { WarehouseInventoryHub } from './components/WarehouseInventoryHub.tsx';
+import { ingestShipmentToLedger, getCFSLedgerEntries } from './utils/inventoryStore.ts';
 
 export function App(): React.JSX.Element {
   // Navigation & Shell State
@@ -108,6 +110,7 @@ export function App(): React.JSX.Element {
   const [savedWorkSessions, setSavedWorkSessions] = useState<ArchivedShipment[]>(() => getSavedWorkSessions());
   const [showUploadConfirmModal, setShowUploadConfirmModal] = useState(false);
   const [saveToastMessage, setSaveToastMessage] = useState<string | null>(null);
+  const [cfsLedgerCount, setCfsLedgerCount] = useState<number>(() => getCFSLedgerEntries().length);
 
   // Purge workspace storage on initial mount
   useEffect(() => {
@@ -291,6 +294,10 @@ export function App(): React.JSX.Element {
       const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, result.shipmentJson);
       setBlManifest(derivedBl);
 
+      // Auto-populate CFS Warehouse Inventory & Stock Ledger
+      ingestShipmentToLedger(result.shipmentJson);
+      setCfsLedgerCount(getCFSLedgerEntries().length);
+
       // Trigger smooth skeleton fade-in transition
       setIsTransitioningToWorkspace(true);
       setHasParsed(true);
@@ -360,8 +367,25 @@ export function App(): React.JSX.Element {
     setDgManifest(derivedDg);
     const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, demoJson);
     setBlManifest(derivedBl);
+    ingestShipmentToLedger(demoJson);
+    setCfsLedgerCount(getCFSLedgerEntries().length);
     setHasParsed(true);
     setApiError(null);
+  };
+
+  // Load unified truth JSON generated from picked warehouse pallets into Workspace
+  const handleLoadShipmentFromWarehouse = (shipment: ExtractedShipmentJSON) => {
+    setShipmentJson(shipment);
+    const derivedDg = deriveDGManifestFromJSON(shipment);
+    setDgManifest(derivedDg);
+    const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, shipment);
+    setBlManifest(derivedBl);
+    setHasParsed(true);
+    setActivePage('workspace');
+    setSaveToastMessage(`Loaded ${shipment.pallets?.length || 0} pallets from Warehouse into Workspace!`);
+    setTimeout(() => {
+      setSaveToastMessage(null);
+    }, 3000);
   };
 
   // Formats filtered by type
@@ -559,6 +583,7 @@ export function App(): React.JSX.Element {
         onSelectPage={setActivePage}
         filesCount={uploadedFiles.length}
         formatsCount={formats.length}
+        inventoryCount={cfsLedgerCount}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
         onOpenApiKeyModal={() => setShowKeyModal(true)}
@@ -620,6 +645,7 @@ export function App(): React.JSX.Element {
                 isPurging={isPurging}
                 onOpenApiKeyModal={() => setShowKeyModal(true)}
                 hasCustomKey={Boolean(customApiKey.trim())}
+                onOpenInventory={() => setActivePage('inventory')}
                 onPrintPdf={handlePrintPdf}
                 onDownloadDocx={handleDownloadDocx}
                 onDownloadHtml={handleDownloadHtml}
@@ -643,8 +669,17 @@ export function App(): React.JSX.Element {
               onExecuteParsing={handleExecuteParsing}
               onLoadDemoJson={handleLoadDemoJson}
               onOpenFormatLibrary={() => setActivePage('formats')}
+              onOpenInventory={() => setActivePage('inventory')}
             />
           )
+        )}
+
+        {activePage === 'inventory' && (
+          <WarehouseInventoryHub
+            onLoadShipmentIntoWorkspace={handleLoadShipmentFromWarehouse}
+            onNavigateToWorkspace={() => setActivePage('workspace')}
+            activeShipmentJson={shipmentJson}
+          />
         )}
 
         {activePage === 'files' && (

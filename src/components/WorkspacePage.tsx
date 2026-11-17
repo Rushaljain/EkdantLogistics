@@ -59,6 +59,7 @@ interface WorkspacePageProps {
   isPurging: boolean;
   onOpenApiKeyModal: () => void;
   hasCustomKey: boolean;
+  onOpenInventory?: () => void;
 
   // Export actions
   onPrintPdf: (docType: FormatDocumentType) => void;
@@ -95,6 +96,7 @@ export function WorkspacePage({
   isPurging,
   onOpenApiKeyModal: _onOpenApiKeyModal,
   hasCustomKey: _hasCustomKey,
+  onOpenInventory,
   onPrintPdf,
   onDownloadDocx,
   onDownloadHtml,
@@ -314,6 +316,19 @@ export function WorkspacePage({
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
           </div>
+
+          {/* Quick Access to Warehouse Inventory & CFS Ledger */}
+          {onOpenInventory && (
+            <button
+              type="button"
+              onClick={onOpenInventory}
+              className="px-2.5 py-1.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 text-xs font-semibold border border-indigo-700/50 transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
+              title="Open CHA Warehouse Inventory & CFS Stock Ledger"
+            >
+              <Boxes className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden md:inline">Warehouse Ledger</span>
+            </button>
+          )}
 
           {/* Save Work Button (Saves BL, DG, layouts, and truth JSON for files repository) */}
           {onSaveWork && (

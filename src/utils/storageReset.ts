@@ -109,6 +109,7 @@ export async function purgeAllWorkspaceStorage(): Promise<void> {
       const preservedLibrary = window.localStorage.getItem('ekdant_format_library_v1');
       const preservedKey = window.localStorage.getItem('ekdant_custom_gemini_key');
       const preservedSavedSessions = window.localStorage.getItem(STORAGE_SAVED_SESSIONS_KEY);
+      const preservedLedger = window.localStorage.getItem('ekdant_cha_cfs_ledger_v1');
 
       window.localStorage.clear();
 
@@ -120,6 +121,9 @@ export async function purgeAllWorkspaceStorage(): Promise<void> {
       }
       if (preservedSavedSessions) {
         window.localStorage.setItem(STORAGE_SAVED_SESSIONS_KEY, preservedSavedSessions);
+      }
+      if (preservedLedger) {
+        window.localStorage.setItem('ekdant_cha_cfs_ledger_v1', preservedLedger);
       }
     } catch (e) {
       console.warn('[StorageReset] localStorage clear failed:', e);

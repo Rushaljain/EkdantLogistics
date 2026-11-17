@@ -14,6 +14,8 @@ export interface ExtractedPallet {
   sourceFile: string;
 }
 
+export type PalletItem = ExtractedPallet;
+
 export type ContainerType = '20GP' | '40GP' | '40HC' | '45HC';
 
 export const CONTAINER_SPECS: Record<ContainerType, { name: string; maxPayloadKg: number; tareWeightKg: number; cbm: number; maxPallets: number }> = {
@@ -580,5 +582,96 @@ export interface MappedManifestField {
   value: string;
   status: 'POPULATED' | 'PENDING_BLANK';
   fieldCategory?: 'INVOICE_DATA' | 'STAGE2_CARRIER' | 'SIGNATURE_HAULIER';
+}
+
+// ==========================================
+// Phase 4: CHA Warehouse Inventory & CFS Stock Ledger Types
+// ==========================================
+
+export type PalletStockStatus = 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'STUFFED_DISPATCHED';
+
+export interface PalletStockUnit {
+  id: string;
+  palletNumber: number | string;
+  model: string;
+  brand?: string;
+  invoicedBatteries: number;
+  receivedBatteries: number;
+  netWeightKg: number;
+  grossWeightKg: number;
+  status: PalletStockStatus;
+  invoiceNumber?: string;
+  containerNo?: string;
+  stuffedDate?: string;
+}
+
+export interface CFSLedgerEntry {
+  id: string;
+  createdAt: string;
+  month: string; // 'APR' | 'MAY' | 'JUNE' | 'JULY' | 'AUG' | 'SEP' | 'OCT' | 'NOV' | 'DEC' | 'JAN' | 'FEB' | 'MAR'
+  customer: string;
+  exporterShipper: string;
+  customInvoiceNo: string;
+  pod: string;
+
+  // As received from EIL-Export
+  invoicedPallets: number;
+  invoicedBatteries: number;
+  invoicedGrossWeightKg: number;
+
+  // Actual Received from Factory (Stock-In)
+  actualReceivedPallets: number;
+  actualReceivedBatteries: number;
+
+  // Short fall / Pending
+  shortfallPallets: number;
+  shortfallBatteries: number;
+
+  // Carting & Gate-In Logistics
+  cartingInDate: string;
+  vehicleNo: string;
+  lastPltRecdDate: string;
+  secondVehicleDate?: string;
+  secondVehicleNo?: string;
+  gateInStatus?: string;
+
+  // Actual Stuffed Qty (Stock-Out)
+  actualStuffedPallets: number;
+  actualStuffedBatteries: number;
+
+  // Balance Qty (Live CFS floor balance)
+  balancePallets: number;
+  balanceBatteries: number;
+
+  // Stage-2 Customs & Container
+  shippingBillNo: string;
+  shippingBillDate: string;
+  containerNo: string;
+  sealNo: string;
+  stuffingDate: string;
+  pickupDate: string;
+  portGateInDate: string;
+  daysInCFS: number;
+  remarks: string;
+
+  // Pallet-level units
+  pallets: PalletStockUnit[];
+}
+
+export type CustomerStockAlert = 'STOCK_OUT' | 'LOW_STOCK' | 'FACTORY_SHORTFALL' | 'OK';
+
+export interface CustomerStockSummary {
+  customer: string;
+  totalInvoicedPallets: number;
+  totalReceivedPallets: number;
+  totalShortfallPallets: number;
+  totalShortfallBatteries: number;
+  totalStuffedPallets: number;
+  totalBalancePallets: number;
+  totalBalanceBatteries: number;
+  totalBalanceGrossWeightKg: number;
+  required20GPContainers: number;
+  alertType: CustomerStockAlert;
+  alertMessage: string;
 }
 

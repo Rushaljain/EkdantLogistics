@@ -27,6 +27,7 @@ interface UploadLandingViewProps {
   onExecuteParsing: () => void;
   onLoadDemoJson?: () => void;
   onOpenFormatLibrary?: () => void;
+  onOpenInventory?: () => void;
 }
 
 export function UploadLandingView({
@@ -40,7 +41,8 @@ export function UploadLandingView({
   isParsing,
   parseProgress,
   apiError,
-  onExecuteParsing
+  onExecuteParsing,
+  onOpenInventory
 }: UploadLandingViewProps): React.JSX.Element {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [dynamicPercent, setDynamicPercent] = React.useState<number>(1);
@@ -265,6 +267,20 @@ export function UploadLandingView({
                 </>
               )}
             </button>
+
+            {onOpenInventory && (
+              <div className="pt-2 border-t border-divider flex items-center justify-between text-xs">
+                <span className="text-content-secondary">Physical warehouse inventory:</span>
+                <button
+                  type="button"
+                  onClick={onOpenInventory}
+                  className="text-brand-primary hover:underline font-semibold flex items-center space-x-1"
+                >
+                  <span>Warehouse Stock &amp; CFS Ledger</span>
+                  <span>→</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -6,16 +6,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Boxes,
+  Warehouse,
   ShieldCheck
 } from 'lucide-react';
 
-export type PageId = 'workspace' | 'files' | 'formats';
+export type PageId = 'workspace' | 'inventory' | 'files' | 'formats';
 
 interface NavigationSidebarProps {
   activePage: PageId;
   onSelectPage: (page: PageId) => void;
   filesCount: number;
   formatsCount: number;
+  inventoryCount?: number;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onOpenApiKeyModal?: () => void;
@@ -30,6 +32,7 @@ export function NavigationSidebar({
   onSelectPage,
   filesCount,
   formatsCount,
+  inventoryCount,
   isCollapsed,
   onToggleCollapse,
   lastPurgedAt
@@ -41,6 +44,13 @@ export function NavigationSidebar({
       icon: Layers,
       description: 'Operational 3-panel processor',
       badge: null
+    },
+    {
+      id: 'inventory' as PageId,
+      label: 'Warehouse Stock Ledger',
+      icon: Warehouse,
+      description: 'CFS Carting & Stock Report',
+      badge: inventoryCount && inventoryCount > 0 ? String(inventoryCount) : null
     },
     {
       id: 'files' as PageId,
