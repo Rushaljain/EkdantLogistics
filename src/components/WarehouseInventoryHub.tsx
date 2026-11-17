@@ -1,6 +1,5 @@
-// Ekdant Logistics - CHA Warehouse Inventory Hub (Sprint 5)
-// "Top Control Deck + 3 Operational Tiles" Architecture
-// Strict zero-hardcoding: dynamic resolution from ExtractedShipmentJSON & CFSLedgerEntry
+// Ekdant Logistics - Warehouse Inventory
+// Clean, simplified operator UI: 3 KPI Cards + Section Dropdown (Inventory, Monthly Live Reports, Inventory Logs)
 
 import React, { useState, useMemo, useRef } from 'react';
 import {
@@ -13,14 +12,9 @@ import {
   Search,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   X,
-  Maximize2,
-  Minimize2,
   Printer,
-  AlertTriangle,
-  History,
-  Grid
+  History
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -50,7 +44,7 @@ interface WarehouseInventoryHubProps {
   activeShipmentJson?: ExtractedShipmentJSON;
 }
 
-// In-place click-to-edit cell matching enterprise spreadsheet ergonomics
+// In-place click-to-edit cell
 function InlineCell({
   value,
   onChange,
@@ -138,31 +132,27 @@ export function WarehouseInventoryHub({
 }: WarehouseInventoryHubProps): React.JSX.Element {
   const [entries, setEntries] = useState<CFSLedgerEntry[]>(() => getCFSLedgerEntries());
 
-  // Operational View Modes: 'grid' (all 3 tiles) or focus on single tile ('inventory' | 'reports' | 'logs')
-  const [tileViewMode, setTileViewMode] = useState<'grid' | 'inventory' | 'reports' | 'logs'>('grid');
+  // Section Selector: 'inventory' | 'reports' | 'logs'
+  const [activeSection, setActiveSection] = useState<'inventory' | 'reports' | 'logs'>('inventory');
 
-  // Top Control Deck: Collapsible
-  const [isDeckExpanded, setIsDeckExpanded] = useState<boolean>(true);
-
-  // Global Filters
+  // Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [customerFilter, setCustomerFilter] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'READY' | 'LOW_STOCK' | 'SHORTFALL' | 'AGEING' | 'DONE'>('ALL');
   const [selectedMonth, setSelectedMonth] = useState<CFSMonth>('ALL');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
 
-  // Tile 1 (Inventory) States
+  // Inventory States
   const [selectedPalletIds, setSelectedPalletIds] = useState<Set<string>>(new Set());
   const [selectedDispatchCustomer, setSelectedDispatchCustomer] = useState<string>('');
   const [expandedInventoryInvoiceIds, setExpandedInventoryInvoiceIds] = useState<Set<string>>(new Set());
   const [inventoryStatusFilter, setInventoryStatusFilter] = useState<'ALL' | 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'SHORTFALL'>('ALL');
 
-  // Tile 2 (Monthly Live Reports) States
+  // Reports States
   const [reportType, setReportType] = useState<'stock_22' | 'carting_17'>('stock_22');
   const [expandedCartingInvoiceIds, setExpandedCartingInvoiceIds] = useState<Set<string>>(new Set());
 
-  // Tile 3 (Inventory Logs) States
+  // Logs States
   const [logDirectionFilter, setLogDirectionFilter] = useState<'ALL' | 'STOCK_OUT' | 'STOCK_IN'>('ALL');
 
   // Stuffing & Dispatch Modal State
@@ -194,8 +184,8 @@ export function WarehouseInventoryHub({
     setEntries(loaded);
   };
 
-  // Customer Summaries for Header Pills
-  const customerPillData = useMemo(() => {
+  // Customer Summaries for Customer Dropdown
+  const customerDropdownData = useMemo(() => {
     const map = new Map<string, { pallets: number; batteries: number }>();
     entries.forEach((e) => {
       const cust = e.customer?.trim();
@@ -205,13 +195,15 @@ export function WarehouseInventoryHub({
       cur.batteries += e.balanceBatteries || 0;
       map.set(cust, cur);
     });
-    return Array.from(map.entries()).map(([cust, stats]) => ({
-      customer: cust,
-      ...stats
-    }));
+    return Array.from(map.entries())
+      .map(([cust, stats]) => ({
+        customer: cust,
+        ...stats
+      }))
+      .sort((a, b) => a.customer.localeCompare(b.customer));
   }, [entries]);
 
-  // Top 4 Primary Live KPI Cards
+  // Clean KPI Totals
   const kpis = useMemo(() => {
     const totalBalancePallets = entries.reduce((s, e) => s + (e.balancePallets || 0), 0);
     const totalBalanceBatteries = entries.reduce((s, e) => s + (e.balanceBatteries || 0), 0);
@@ -238,12 +230,6 @@ export function WarehouseInventoryHub({
     });
     const dispatchedContainersCount = containerSet.size;
 
-    const totalShortfallPallets = entries.reduce((s, e) => s + (e.shortfallPallets || 0), 0);
-    const lowStockCount = entries.filter((e) => e.balancePallets > 0 && e.balancePallets < 22).length;
-    const ageingCount = entries.filter((e) => (e.daysInCFS || 0) > 15 && e.balancePallets > 0).length;
-
-    const total20GPLoads = Math.ceil(totalBalancePallets / 22);
-
     return {
       totalBalancePallets,
       totalBalanceBatteries,
@@ -253,11 +239,7 @@ export function WarehouseInventoryHub({
       pendingGateInCount,
       totalStuffedPallets,
       totalStuffedBatteries,
-      dispatchedContainersCount,
-      totalShortfallPallets,
-      lowStockCount,
-      ageingCount,
-      total20GPLoads
+      dispatchedContainersCount
     };
   }, [entries]);
 
@@ -272,13 +254,6 @@ export function WarehouseInventoryHub({
       }
       if (customerFilter !== 'ALL' && e.customer?.trim().toUpperCase() !== customerFilter.toUpperCase()) {
         return false;
-      }
-      if (statusFilter !== 'ALL') {
-        if (statusFilter === 'READY' && !(e.balancePallets > 0 && e.actualStuffedPallets === 0)) return false;
-        if (statusFilter === 'LOW_STOCK' && !(e.balancePallets >= 1 && e.balancePallets < 22)) return false;
-        if (statusFilter === 'SHORTFALL' && !(e.shortfallPallets > 0 || e.shortfallBatteries > 0)) return false;
-        if (statusFilter === 'AGEING' && !(e.daysInCFS > 15 && e.balancePallets > 0)) return false;
-        if (statusFilter === 'DONE' && !(e.balancePallets === 0 && e.actualStuffedPallets > 0)) return false;
       }
       if (fromTime !== null || toTime !== null) {
         const entryDates = [
@@ -307,9 +282,9 @@ export function WarehouseInventoryHub({
       }
       return true;
     });
-  }, [entries, selectedMonth, customerFilter, statusFilter, dateFrom, dateTo, searchQuery]);
+  }, [entries, selectedMonth, customerFilter, dateFrom, dateTo, searchQuery]);
 
-  // Tile 1: Active Floor Stock Invoices
+  // Active Floor Stock Invoices
   const activeStockInvoices = useMemo(() => {
     return filteredEntries.filter((e) => {
       if (inventoryStatusFilter === 'ALL') {
@@ -328,7 +303,7 @@ export function WarehouseInventoryHub({
     });
   }, [filteredEntries, inventoryStatusFilter]);
 
-  // Tile 1: Available Pallet Units for Picking
+  // Available Pallet Units for Picking
   const availablePalletUnits = useMemo(() => {
     const list: { pallet: PalletStockUnit; entry: CFSLedgerEntry }[] = [];
     filteredEntries.forEach((e) => {
@@ -379,7 +354,7 @@ export function WarehouseInventoryHub({
         if (!selectedDispatchCustomer) {
           setSelectedDispatchCustomer(customer);
         } else if (selectedDispatchCustomer !== customer) {
-          showToast(`Dispatch locked to customer: ${selectedDispatchCustomer}. Clear selection to pick another customer.`);
+          showToast(`Selection locked to customer: ${selectedDispatchCustomer}. Clear to select another customer.`);
           return prev;
         }
         next.add(palletId);
@@ -394,7 +369,7 @@ export function WarehouseInventoryHub({
     if (available.length === 0) return;
 
     if (selectedDispatchCustomer && selectedDispatchCustomer !== entry.customer) {
-      showToast(`Selection locked to ${selectedDispatchCustomer}. Clear selection to switch customer.`);
+      showToast(`Selection locked to ${selectedDispatchCustomer}. Clear selection first.`);
       return;
     }
 
@@ -412,21 +387,10 @@ export function WarehouseInventoryHub({
     });
   };
 
-  // Quick Select All for Selected Customer
-  const handleSelectAllForCustomer = () => {
-    if (availablePalletUnits.length === 0) return;
-    const targetCust = customerFilter !== 'ALL' ? customerFilter : availablePalletUnits[0].entry.customer;
-    const matching = availablePalletUnits.filter((item) => item.entry.customer === targetCust);
-    const next = new Set<string>();
-    matching.forEach((item) => next.add(item.pallet.id));
-    setSelectedPalletIds(next);
-    setSelectedDispatchCustomer(targetCust);
-  };
-
   // Action: Load into 20' GP & Navigate to Workspace
   const handleLoadSelectedIntoWorkspace = () => {
     if (selectedPalletsStats.palletList.length === 0) {
-      showToast('Select at least 1 pallet to load into 20\' GP.');
+      showToast("Select at least 1 pallet to load.");
       return;
     }
     const customer = selectedDispatchCustomer || selectedPalletsStats.palletList[0].brand || 'Consignee';
@@ -440,7 +404,7 @@ export function WarehouseInventoryHub({
     );
 
     onLoadShipmentIntoWorkspace(truthJson);
-    showToast(`Loaded ${selectedPalletsStats.count} pallets (${selectedPalletsStats.required20GP} × 20' GP) into Workspace!`);
+    showToast(`Loaded ${selectedPalletsStats.count} pallets into Workspace.`);
     onNavigateToWorkspace();
   };
 
@@ -464,11 +428,11 @@ export function WarehouseInventoryHub({
     reloadEntries();
   };
 
-  // Action: 1-Click Confirm Full Gate-In
+  // Action: Confirm Full Gate-In
   const handleConfirmFullGateIn = (entryId: string) => {
     const updated = confirmFullGateIn(entryId);
     if (updated) {
-      showToast(`Confirmed 100% Gate-In for ${updated.customInvoiceNo}!`);
+      showToast(`Confirmed receipt for ${updated.customInvoiceNo}`);
       reloadEntries();
     }
   };
@@ -479,7 +443,7 @@ export function WarehouseInventoryHub({
     const file = e.target.files[0];
     const res = await importCFSExcel(file);
     if (res.importedCount > 0) {
-      showToast(`Imported ${res.importedCount} records from ${file.name}!`);
+      showToast(`Imported ${res.importedCount} records from ${file.name}`);
       reloadEntries();
     } else {
       showToast(`0 records imported. ${res.errors.join(' ')}`);
@@ -487,7 +451,7 @@ export function WarehouseInventoryHub({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Tile 3: Derived Inventory Movement Records
+  // Derived Inventory Movement Records
   const allMovementRecords = useMemo(() => {
     return getDerivedInventoryMovements(entries);
   }, [entries]);
@@ -523,7 +487,7 @@ export function WarehouseInventoryHub({
     });
   }, [allMovementRecords, logDirectionFilter, customerFilter, dateFrom, dateTo, searchQuery]);
 
-  // Customer-Wise Outgoing Summary Strip (Tile 3)
+  // Customer Outgoing Summary
   const customerOutgoingSummaries = useMemo(() => {
     const map = new Map<string, { pallets: number; batteries: number; containers: Set<string> }>();
     allMovementRecords.forEach((r) => {
@@ -543,12 +507,11 @@ export function WarehouseInventoryHub({
     }));
   }, [allMovementRecords]);
 
-  // Clear all active filters helper
-  const hasActiveFilters = searchQuery || customerFilter !== 'ALL' || statusFilter !== 'ALL' || selectedMonth !== 'ALL' || dateFrom || dateTo;
+  // Clear all filters
+  const hasActiveFilters = searchQuery || customerFilter !== 'ALL' || selectedMonth !== 'ALL' || dateFrom || dateTo;
   const handleClearFilters = () => {
     setSearchQuery('');
     setCustomerFilter('ALL');
-    setStatusFilter('ALL');
     setSelectedMonth('ALL');
     setDateFrom('');
     setDateTo('');
@@ -564,7 +527,7 @@ export function WarehouseInventoryHub({
         </div>
       )}
 
-      {/* Hidden Excel File Input */}
+      {/* Hidden File Input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -573,62 +536,25 @@ export function WarehouseInventoryHub({
         className="hidden"
       />
 
-      {/* =========================================================================
-          1. TOP CONTROL DECK: "USER DASHBOARD" (Always on Top, Collapsible)
-          ========================================================================= */}
-      <section className="bg-surface border-b border-divider shrink-0 z-20 shadow-xs transition-all">
-        {/* Top Control Bar Header */}
-        <div className="h-13 px-4 sm:px-6 flex items-center justify-between border-b border-divider/60">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center text-white shadow-xs">
-              <Boxes className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-xs font-bold text-content-primary tracking-wide uppercase">
-                  CFS Warehouse Hub
-                </h1>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface-secondary border border-divider text-content-secondary font-medium">
-                  Control Deck
-                </span>
-              </div>
-              <p className="text-[10px] text-content-muted hidden sm:block">
-                Floor Stock Ledger • 20' GP Pallet Stuffer • Gate-In Audit Trail
-              </p>
-            </div>
+      {/* TOP HEADER */}
+      <header className="bg-surface border-b border-divider shrink-0 z-20 shadow-xs">
+        <div className="h-12 px-4 sm:px-6 flex items-center justify-between border-b border-divider/60">
+          <div>
+            <h1 className="text-sm font-bold text-content-primary tracking-tight">
+              Warehouse Inventory
+            </h1>
           </div>
 
           <div className="flex items-center space-x-2">
-            {/* Compact / Expand Deck Toggle Button */}
-            <button
-              onClick={() => setIsDeckExpanded((prev) => !prev)}
-              className="px-2.5 py-1.5 rounded-lg bg-surface-secondary hover:bg-surface border border-divider text-xs font-medium text-content-secondary hover:text-content-primary flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title={isDeckExpanded ? 'Collapse to slim KPI bar' : 'Expand full user dashboard deck'}
-            >
-              {isDeckExpanded ? (
-                <>
-                  <ChevronUp className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Compact Deck</span>
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Expand Deck</span>
-                </>
-              )}
-            </button>
-
-            {/* Quick Import Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-              title="Import historical CFS Excel"
+              className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="Import Excel file"
             >
               <Upload className="w-3.5 h-3.5 text-brand-primary" />
-              <span className="hidden md:inline">Import .xlsx</span>
+              <span className="hidden sm:inline">Import Excel</span>
             </button>
 
-            {/* Direct Workspace Link */}
             <button
               onClick={onNavigateToWorkspace}
               className="px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
@@ -639,643 +565,167 @@ export function WarehouseInventoryHub({
           </div>
         </div>
 
-        {/* Expanded Deck View */}
-        {isDeckExpanded ? (
-          <div className="p-3.5 sm:p-4 space-y-3 bg-surface-secondary/40">
-            {/* 4 Primary Live KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 font-mono tabular-nums">
-              {/* KPI 1: Available Floor Balance */}
-              <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-[11px] text-content-secondary font-sans">
-                  <span className="font-semibold uppercase tracking-wider text-[10px]">Available Floor Balance</span>
-                  <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold font-mono">
-                    ≈ {kpis.total20GPLoads} × 20' GP
-                  </span>
-                </div>
-                <div className="mt-1.5 flex items-baseline space-x-1.5">
-                  <span className="text-xl font-extrabold text-content-primary">{kpis.totalBalancePallets}</span>
-                  <span className="text-xs text-content-muted font-normal font-sans">Plt</span>
-                  <span className="text-content-muted">•</span>
-                  <span className="text-base font-bold text-indigo-700">{kpis.totalBalanceBatteries.toLocaleString()}</span>
-                  <span className="text-xs text-content-muted font-normal font-sans">Units</span>
-                </div>
-                <div className="mt-1 text-[11px] text-content-secondary">
-                  Gross: <strong className="text-content-primary">{kpis.totalBalanceGrossKg.toLocaleString()} kg</strong>
-                </div>
+        {/* 3 CLEAN KPI CARDS (Redundant badges & exception card removed) */}
+        <div className="p-3 sm:p-4 bg-surface-secondary/30">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono tabular-nums">
+            {/* Card 1: Available Stock */}
+            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
+              <div className="text-xs font-semibold text-content-secondary font-sans">
+                Available Stock
               </div>
-
-              {/* KPI 2: Incoming / Gate-In Status */}
-              <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-[11px] text-content-secondary font-sans">
-                  <span className="font-semibold uppercase tracking-wider text-[10px]">Gate-In Status</span>
-                  {kpis.pendingGateInCount > 0 ? (
-                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold font-mono">
-                      {kpis.pendingGateInCount} Invoices Pending
-                    </span>
-                  ) : (
-                    <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold font-mono">
-                      All Gate-In Ready
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1.5 flex items-baseline space-x-1.5">
-                  <span className="text-xl font-extrabold text-content-primary">{kpis.totalReceivedPallets}</span>
-                  <span className="text-xs text-content-muted font-normal font-sans">/ {kpis.totalInvoicedPallets} Plt Checked In</span>
-                </div>
-                <div className="mt-1 text-[11px] text-content-secondary">
-                  Receipt Rate: <strong className="text-content-primary">{kpis.totalInvoicedPallets > 0 ? Math.round((kpis.totalReceivedPallets / kpis.totalInvoicedPallets) * 100) : 100}%</strong>
-                </div>
+              <div className="mt-1.5 flex items-baseline space-x-2">
+                <span className="text-xl font-bold text-content-primary">{kpis.totalBalancePallets}</span>
+                <span className="text-xs text-content-muted font-sans font-normal">Pallets</span>
+                <span className="text-content-muted">•</span>
+                <span className="text-base font-bold text-indigo-700">{kpis.totalBalanceBatteries.toLocaleString()}</span>
+                <span className="text-xs text-content-muted font-sans font-normal">Units</span>
               </div>
-
-              {/* KPI 3: Dispatched (Stock-Out) */}
-              <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
-                <div className="flex items-center justify-between text-[11px] text-content-secondary font-sans">
-                  <span className="font-semibold uppercase tracking-wider text-[10px]">Dispatched (Stock-Out)</span>
-                  <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold font-mono">
-                    {kpis.dispatchedContainersCount} Containers
-                  </span>
-                </div>
-                <div className="mt-1.5 flex items-baseline space-x-1.5">
-                  <span className="text-xl font-extrabold text-content-primary">{kpis.totalStuffedPallets}</span>
-                  <span className="text-xs text-content-muted font-normal font-sans">Plt</span>
-                  <span className="text-content-muted">•</span>
-                  <span className="text-base font-bold text-blue-700">{kpis.totalStuffedBatteries.toLocaleString()}</span>
-                  <span className="text-xs text-content-muted font-normal font-sans">Units</span>
-                </div>
-                <div className="mt-1 text-[11px] text-content-secondary">
-                  Stuffed &amp; Port Dispatched
-                </div>
-              </div>
-
-              {/* KPI 4: Exceptions & Alerts */}
-              <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between font-sans">
-                <div className="flex items-center justify-between text-[11px] text-content-secondary">
-                  <span className="font-semibold uppercase tracking-wider text-[10px]">Exceptions &amp; Alerts</span>
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1 font-mono text-[11px]">
-                  <button
-                    onClick={() => setStatusFilter((cur) => (cur === 'SHORTFALL' ? 'ALL' : 'SHORTFALL'))}
-                    className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-                      statusFilter === 'SHORTFALL'
-                        ? 'bg-rose-600 text-white border-rose-600 font-bold'
-                        : kpis.totalShortfallPallets > 0
-                        ? 'bg-rose-50 text-rose-700 border-rose-200 font-semibold hover:bg-rose-100'
-                        : 'bg-slate-50 text-slate-500 border-slate-200'
-                    }`}
-                    title="Click to filter by shortfall"
-                  >
-                    Shortfall ({kpis.totalShortfallPallets}p)
-                  </button>
-
-                  <button
-                    onClick={() => setStatusFilter((cur) => (cur === 'LOW_STOCK' ? 'ALL' : 'LOW_STOCK'))}
-                    className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-                      statusFilter === 'LOW_STOCK'
-                        ? 'bg-amber-600 text-white border-amber-600 font-bold'
-                        : kpis.lowStockCount > 0
-                        ? 'bg-amber-50 text-amber-800 border-amber-200 font-semibold hover:bg-amber-100'
-                        : 'bg-slate-50 text-slate-500 border-slate-200'
-                    }`}
-                    title="Click to filter by low stock (<22 pallets)"
-                  >
-                    Low Stock ({kpis.lowStockCount})
-                  </button>
-
-                  <button
-                    onClick={() => setStatusFilter((cur) => (cur === 'AGEING' ? 'ALL' : 'AGEING'))}
-                    className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
-                      statusFilter === 'AGEING'
-                        ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
-                        : kpis.ageingCount > 0
-                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200 font-semibold hover:bg-indigo-100'
-                        : 'bg-slate-50 text-slate-500 border-slate-200'
-                    }`}
-                    title="Click to filter ageing CFS stock (>15 days)"
-                  >
-                    Ageing &gt;15d ({kpis.ageingCount})
-                  </button>
-                </div>
-                <div className="mt-1 text-[10px] text-content-muted">
-                  Interactive filters applied to all 3 tiles below
-                </div>
+              <div className="mt-1 text-xs text-content-secondary font-sans">
+                Weight: <strong className="text-content-primary font-mono">{kpis.totalBalanceGrossKg.toLocaleString()} kg</strong>
               </div>
             </div>
 
-            {/* Interactive Customer & Global Filter Strip */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pt-1 border-t border-divider/60">
-              {/* Left: Global Search Box */}
-              <div className="flex items-center space-x-2">
-                <div className="relative w-full sm:w-72">
-                  <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search Invoice, Customer, Container, SB No., Truck..."
-                    className="w-full pl-8 pr-7 py-1.5 bg-surface border border-divider rounded-lg text-xs text-content-primary placeholder-content-muted focus:outline-none focus:border-brand-primary"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-content-muted hover:text-content-primary cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {hasActiveFilters && (
-                  <button
-                    onClick={handleClearFilters}
-                    className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer shrink-0"
-                    title="Reset all filters"
-                  >
-                    <X className="w-3 h-3" />
-                    <span>Clear All Filters</span>
-                  </button>
+            {/* Card 2: Gate-In Received */}
+            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
+              <div className="text-xs font-semibold text-content-secondary font-sans">
+                Gate-In Received
+              </div>
+              <div className="mt-1.5 flex items-baseline space-x-2">
+                <span className="text-xl font-bold text-content-primary">{kpis.totalReceivedPallets}</span>
+                <span className="text-xs text-content-muted font-sans font-normal">/ {kpis.totalInvoicedPallets} Pallets</span>
+              </div>
+              <div className="mt-1 text-xs text-content-secondary font-sans">
+                {kpis.pendingGateInCount > 0 ? (
+                  <span className="text-amber-700 font-medium">{kpis.pendingGateInCount} invoices pending receipt</span>
+                ) : (
+                  <span className="text-emerald-700 font-medium">All invoices received</span>
                 )}
               </div>
+            </div>
 
-              {/* Right: Horizontal Customer Stock Pills */}
-              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs font-mono tabular-nums">
-                <button
-                  onClick={() => setCustomerFilter('ALL')}
-                  className={`px-2.5 py-1 rounded-lg border text-xs transition-colors shrink-0 cursor-pointer font-sans ${
-                    customerFilter === 'ALL'
-                      ? 'bg-brand-primary text-white border-brand-primary font-bold shadow-2xs'
-                      : 'bg-surface hover:bg-surface-secondary text-content-secondary border-divider'
-                  }`}
-                >
-                  All Customers ({kpis.totalBalancePallets}p)
-                </button>
-
-                {customerPillData.map((c) => {
-                  const isSelected = customerFilter.toUpperCase() === c.customer.toUpperCase();
-                  return (
-                    <button
-                      key={c.customer}
-                      onClick={() => setCustomerFilter(isSelected ? 'ALL' : c.customer)}
-                      className={`px-2.5 py-1 rounded-lg border text-xs transition-colors shrink-0 flex items-center space-x-1.5 cursor-pointer ${
-                        isSelected
-                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-2xs'
-                          : 'bg-surface hover:bg-surface-secondary text-content-primary border-divider'
-                      }`}
-                      title={`Filter by ${c.customer}`}
-                    >
-                      <span className="font-sans font-medium truncate max-w-[120px]">{c.customer}</span>
-                      <span className="text-[10px] font-bold px-1 rounded bg-black/10">
-                        {c.pallets}p
-                      </span>
-                    </button>
-                  );
-                })}
+            {/* Card 3: Dispatched */}
+            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
+              <div className="text-xs font-semibold text-content-secondary font-sans">
+                Dispatched
+              </div>
+              <div className="mt-1.5 flex items-baseline space-x-2">
+                <span className="text-xl font-bold text-content-primary">{kpis.totalStuffedPallets}</span>
+                <span className="text-xs text-content-muted font-sans font-normal">Pallets</span>
+                <span className="text-content-muted">•</span>
+                <span className="text-base font-bold text-blue-700">{kpis.totalStuffedBatteries.toLocaleString()}</span>
+                <span className="text-xs text-content-muted font-sans font-normal">Units</span>
+              </div>
+              <div className="mt-1 text-xs text-content-secondary font-sans">
+                <strong className="text-content-primary font-mono">{kpis.dispatchedContainersCount}</strong> containers shipped
               </div>
             </div>
           </div>
-        ) : (
-          /* Slim Collapsed KPI Bar */
-          <div className="h-10 px-4 sm:px-6 bg-surface-secondary/60 flex items-center justify-between text-xs font-mono tabular-nums">
-            <div className="flex items-center space-x-2 truncate">
-              <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
-                Balance: {kpis.totalBalancePallets} Plt ({kpis.totalBalanceBatteries} Units • {kpis.total20GPLoads} × 20' GP)
-              </span>
-              <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 hidden sm:inline">
-                Gate-In: {kpis.totalReceivedPallets}/{kpis.totalInvoicedPallets} Plt
-              </span>
-              <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 hidden md:inline">
-                Stuffed: {kpis.totalStuffedPallets} Plt ({kpis.dispatchedContainersCount} Cont)
-              </span>
-              {kpis.totalShortfallPallets > 0 && (
-                <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 font-bold">
-                  Shortfall: {kpis.totalShortfallPallets} Plt
-                </span>
-              )}
-            </div>
+        </div>
 
-            <div className="flex items-center space-x-2 shrink-0">
-              {customerFilter !== 'ALL' && (
-                <span className="px-2 py-0.5 rounded bg-brand-primary text-white text-[11px] font-sans font-semibold">
-                  {customerFilter}
-                </span>
-              )}
-              <button
-                onClick={() => setIsDeckExpanded(true)}
-                className="text-[11px] text-brand-primary hover:underline font-sans font-medium cursor-pointer"
+        {/* CONTROLS BAR: SECTION DROPDOWN + CUSTOMER DROPDOWN + SEARCH */}
+        <div className="px-4 sm:px-6 py-2.5 bg-surface border-t border-divider flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Section Selector Dropdown (Yellow items placed in clean dropdown) */}
+            <div className="flex items-center space-x-1.5">
+              <label htmlFor="section-select" className="text-content-secondary font-medium shrink-0">Section:</label>
+              <select
+                id="section-select"
+                value={activeSection}
+                onChange={(e) => setActiveSection(e.target.value as 'inventory' | 'reports' | 'logs')}
+                className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-semibold text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
               >
-                Show Dashboard
+                <option value="inventory">Inventory ({availablePalletUnits.length} pallets)</option>
+                <option value="reports">Monthly Live Reports</option>
+                <option value="logs">Inventory Logs ({allMovementRecords.length})</option>
+              </select>
+            </div>
+
+            {/* Customer Dropdown */}
+            <div className="flex items-center space-x-1.5">
+              <label htmlFor="customer-select" className="text-content-secondary font-medium shrink-0">Customer:</label>
+              <select
+                id="customer-select"
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+                className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs max-w-[220px] truncate"
+              >
+                <option value="ALL">All Customers ({kpis.totalBalancePallets}p)</option>
+                {customerDropdownData.map((c) => (
+                  <option key={c.customer} value={c.customer}>
+                    {c.customer} ({c.pallets}p)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-64">
+              <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search invoice, container, vehicle..."
+                className="w-full pl-8 pr-7 py-1.5 bg-surface-secondary/50 border border-divider rounded-lg text-xs text-content-primary placeholder-content-muted focus:outline-none focus:border-brand-primary"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-content-muted hover:text-content-primary cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                onClick={handleClearFilters}
+                className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Reset filters"
+              >
+                <X className="w-3 h-3" />
+                <span>Clear Filters</span>
               </button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* =========================================================================
-          2. SUB-HEADER: RESPONSIVE VIEW MODE SWITCHER
-          ========================================================================= */}
-      <div className="h-12 px-4 sm:px-6 border-b border-divider bg-surface flex items-center justify-between shrink-0 text-xs">
-        {/* Left: View Mode Switcher */}
-        <div className="flex items-center space-x-2">
-          <span className="text-content-secondary font-medium hidden sm:inline text-xs">
-            Operational View:
-          </span>
-          <div className="bg-surface-secondary border border-divider p-0.5 rounded-lg flex items-center space-x-0.5 text-xs font-medium">
-            <button
-              onClick={() => setTileViewMode('grid')}
-              className={`px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 cursor-pointer ${
-                tileViewMode === 'grid'
-                  ? 'bg-surface text-brand-primary font-bold shadow-xs'
-                  : 'text-content-secondary hover:text-content-primary'
-              }`}
-              title="View all 3 tiles in a responsive split grid"
-            >
-              <Grid className="w-3.5 h-3.5" />
-              <span>Overview Grid (All 3)</span>
-            </button>
-
-            <button
-              onClick={() => setTileViewMode('inventory')}
-              className={`px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 cursor-pointer ${
-                tileViewMode === 'inventory'
-                  ? 'bg-surface text-brand-primary font-bold shadow-xs'
-                  : 'text-content-secondary hover:text-content-primary'
-              }`}
-              title="Focus 100% on Floor Stock & Container Picking"
-            >
-              <Boxes className="w-3.5 h-3.5 text-emerald-600" />
-              <span>1. Inventory ({availablePalletUnits.length}p)</span>
-            </button>
-
-            <button
-              onClick={() => setTileViewMode('reports')}
-              className={`px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 cursor-pointer ${
-                tileViewMode === 'reports'
-                  ? 'bg-surface text-brand-primary font-bold shadow-xs'
-                  : 'text-content-secondary hover:text-content-primary'
-              }`}
-              title="Focus 100% on Monthly CFS Stock & Carting Tables"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
-              <span>2. Monthly Live Reports</span>
-            </button>
-
-            <button
-              onClick={() => setTileViewMode('logs')}
-              className={`px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 cursor-pointer ${
-                tileViewMode === 'logs'
-                  ? 'bg-surface text-brand-primary font-bold shadow-xs'
-                  : 'text-content-secondary hover:text-content-primary'
-              }`}
-              title="Focus 100% on Outgoing & Gate-In Movement Ledger"
-            >
-              <History className="w-3.5 h-3.5 text-blue-600" />
-              <span>3. Inventory Logs ({allMovementRecords.length})</span>
-            </button>
+            )}
           </div>
         </div>
+      </header>
 
-        {/* Right: Quick Active Filter Pills */}
-        <div className="flex items-center space-x-1.5 text-[11px] font-mono">
-          {customerFilter !== 'ALL' && (
-            <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Cust: {customerFilter}
-            </span>
-          )}
-          {statusFilter !== 'ALL' && (
-            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-              Filter: {statusFilter}
-            </span>
-          )}
-          {(dateFrom || dateTo) && (
-            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-              Dates: {dateFrom || 'Start'} → {dateTo || 'End'}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* =========================================================================
-          3. MAIN OPERATIONAL AREA: 3 TILES (GRID OR FOCUSED 100% FULL-WIDTH)
-          ========================================================================= */}
-      <div className="flex-1 overflow-auto p-4 sm:p-5 relative">
+      {/* MAIN CONTENT AREA: OCCUPIES 100% FULL WIDTH (GRID REMOVED) */}
+      <main className="flex-1 overflow-auto p-4 sm:p-5 relative">
         {/* =====================================================================
-            VIEW MODE A: UNIFIED OVERVIEW GRID (ALL 3 TILES IN 3 COLUMNS)
+            SECTION 1: INVENTORY (FLOOR STOCK & PALLET PICKING)
             ===================================================================== */}
-        {tileViewMode === 'grid' && (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 pb-20">
-            {/* TILE 1: INVENTORY (CARD IN GRID) */}
-            <div className="bg-surface border border-divider rounded-xl shadow-xs flex flex-col h-[750px] overflow-hidden">
-              <div className="p-3 border-b border-divider bg-surface-secondary/50 flex items-center justify-between shrink-0">
-                <div className="flex items-center space-x-2">
-                  <div className="w-6 h-6 rounded bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
-                    1
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-bold text-content-primary uppercase">Inventory Floor Stock</h2>
-                    <p className="text-[10px] text-content-muted font-mono">{availablePalletUnits.length} Ready Pallets</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setTileViewMode('inventory')}
-                  className="p-1 rounded text-content-secondary hover:text-content-primary hover:bg-surface border border-divider transition-colors cursor-pointer"
-                  title="Maximize Tile 1 to 100% full width"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="p-3 border-b border-divider/60 flex items-center justify-between text-xs bg-slate-50/50">
-                <button
-                  onClick={handleSelectAllForCustomer}
-                  className="px-2 py-1 rounded bg-surface hover:bg-surface-secondary border border-divider text-xs font-semibold text-brand-primary transition-colors cursor-pointer"
-                >
-                  Select All for Customer
-                </button>
-                {selectedPalletIds.size > 0 && (
-                  <button
-                    onClick={() => {
-                      setSelectedPalletIds(new Set());
-                      setSelectedDispatchCustomer('');
-                    }}
-                    className="text-xs text-rose-600 hover:underline cursor-pointer"
-                  >
-                    Clear ({selectedPalletIds.size})
-                  </button>
-                )}
-              </div>
-
-              {/* Scrollable Pallet Cards List */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {availablePalletUnits.length === 0 ? (
-                  <div className="text-center py-16 text-content-muted">
-                    <Boxes className="w-8 h-8 mx-auto mb-1 opacity-50" />
-                    <p className="text-xs">No active stock matches criteria.</p>
-                  </div>
-                ) : (
-                  availablePalletUnits.map(({ pallet, entry }) => {
-                    const isSelected = selectedPalletIds.has(pallet.id);
-                    return (
-                      <div
-                        key={pallet.id}
-                        onClick={() => togglePalletSelection(pallet.id, entry.customer)}
-                        className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-brand-primary-soft/60 border-brand-primary shadow-xs ring-1 ring-brand-primary/40'
-                            : 'bg-surface border-divider hover:border-brand-primary/40 shadow-xs'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-1.5">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {}}
-                              className="rounded border-divider text-brand-primary focus:ring-brand-primary"
-                            />
-                            <span className="font-mono text-xs font-bold text-brand-primary">
-                              PLT #{pallet.palletNumber}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-surface-secondary border border-divider text-content-secondary truncate max-w-[80px]">
-                            {pallet.model}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                          <span className="text-content-secondary truncate max-w-[120px]">{entry.customer}</span>
-                          <span className="font-bold text-content-primary">{pallet.receivedBatteries || pallet.invoicedBatteries} Units</span>
-                        </div>
-                        <div className="mt-0.5 flex items-center justify-between text-[10px] font-mono text-content-muted">
-                          <span>Inv: {entry.customInvoiceNo}</span>
-                          <span>{pallet.grossWeightKg} kg</span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* TILE 2: MONTHLY LIVE REPORTS (CARD IN GRID) */}
-            <div className="bg-surface border border-divider rounded-xl shadow-xs flex flex-col h-[750px] overflow-hidden">
-              <div className="p-3 border-b border-divider bg-surface-secondary/50 flex items-center justify-between shrink-0">
-                <div className="flex items-center space-x-2">
-                  <div className="w-6 h-6 rounded bg-indigo-100 text-indigo-800 flex items-center justify-center font-bold text-xs">
-                    2
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-bold text-content-primary uppercase">Monthly Live Reports</h2>
-                    <p className="text-[10px] text-content-muted font-mono">22-Col Stock &amp; 17-Col Carting</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <button
-                    onClick={() => exportCFSStockReportXlsx(entries, selectedMonth)}
-                    className="p-1 rounded text-emerald-700 hover:bg-surface border border-divider transition-colors cursor-pointer"
-                    title="Export 22-Col Stock Report (.xlsx)"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setTileViewMode('reports')}
-                    className="p-1 rounded text-content-secondary hover:text-content-primary hover:bg-surface border border-divider transition-colors cursor-pointer"
-                    title="Maximize Tile 2 to 100% full width"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Month Selector Pills in Grid */}
-              <div className="p-2 border-b border-divider bg-slate-50 flex items-center space-x-1 overflow-x-auto text-[11px] font-mono">
-                {CFS_MONTHS.slice(0, 7).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setSelectedMonth(m)}
-                    className={`px-1.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer ${
-                      selectedMonth === m
-                        ? 'bg-brand-primary text-white font-bold'
-                        : 'bg-surface hover:bg-slate-200 text-content-secondary border border-divider'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-                <span className="text-content-muted text-[10px]">...</span>
-              </div>
-
-              {/* Compact Invoices List Preview */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {filteredEntries.length === 0 ? (
-                  <div className="text-center py-16 text-content-muted">
-                    <FileSpreadsheet className="w-8 h-8 mx-auto mb-1 opacity-50" />
-                    <p className="text-xs">No records for selected month.</p>
-                  </div>
-                ) : (
-                  filteredEntries.map((e) => (
-                    <div
-                      key={e.id}
-                      onClick={() => setTileViewMode('reports')}
-                      className="p-2.5 rounded-lg border border-divider bg-surface hover:border-brand-primary transition-all cursor-pointer shadow-xs"
-                      title="Click to view full 22-column report"
-                    >
-                      <div className="flex items-center justify-between font-mono text-xs">
-                        <span className="font-bold text-brand-primary">{e.customInvoiceNo}</span>
-                        <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold">
-                          {e.month}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[11px] text-content-primary font-medium truncate">
-                        {e.customer}
-                      </div>
-                      <div className="mt-1.5 grid grid-cols-3 gap-1 text-[10px] font-mono text-center">
-                        <div className="bg-slate-50 p-1 rounded border border-divider/40">
-                          <span className="text-content-muted block text-[9px]">REC</span>
-                          <strong className="text-emerald-700">{e.actualReceivedPallets}p</strong>
-                        </div>
-                        <div className="bg-slate-50 p-1 rounded border border-divider/40">
-                          <span className="text-content-muted block text-[9px]">STUFF</span>
-                          <strong className="text-blue-700">{e.actualStuffedPallets}p</strong>
-                        </div>
-                        <div className="bg-slate-50 p-1 rounded border border-divider/40">
-                          <span className="text-content-muted block text-[9px]">BAL</span>
-                          <strong className="text-amber-700">{e.balancePallets}p</strong>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* TILE 3: INVENTORY LOGS (CARD IN GRID) */}
-            <div className="bg-surface border border-divider rounded-xl shadow-xs flex flex-col h-[750px] overflow-hidden">
-              <div className="p-3 border-b border-divider bg-surface-secondary/50 flex items-center justify-between shrink-0">
-                <div className="flex items-center space-x-2">
-                  <div className="w-6 h-6 rounded bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs">
-                    3
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-bold text-content-primary uppercase">Inventory Movement Logs</h2>
-                    <p className="text-[10px] text-content-muted font-mono">{filteredMovementRecords.length} Historical Records</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <button
-                    onClick={() => exportCFSMovementLogsXlsx(filteredMovementRecords)}
-                    className="p-1 rounded text-blue-700 hover:bg-surface border border-divider transition-colors cursor-pointer"
-                    title="Export Movement Logs (.xlsx)"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setTileViewMode('logs')}
-                    className="p-1 rounded text-content-secondary hover:text-content-primary hover:bg-surface border border-divider transition-colors cursor-pointer"
-                    title="Maximize Tile 3 to 100% full width"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Quick Direction Toggle */}
-              <div className="p-2 border-b border-divider bg-slate-50 flex items-center space-x-1 text-xs font-mono">
-                {(['ALL', 'STOCK_OUT', 'STOCK_IN'] as const).map((dir) => (
-                  <button
-                    key={dir}
-                    onClick={() => setLogDirectionFilter(dir)}
-                    className={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
-                      logDirectionFilter === dir
-                        ? 'bg-brand-primary text-white font-bold'
-                        : 'bg-surface hover:bg-slate-200 text-content-secondary border border-divider'
-                    }`}
-                  >
-                    {dir === 'ALL' ? 'All' : dir === 'STOCK_OUT' ? 'Out (Stuffed)' : 'In (Gate)'}
-                  </button>
-                ))}
-              </div>
-
-              {/* Scrollable Movement List */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {filteredMovementRecords.length === 0 ? (
-                  <div className="text-center py-16 text-content-muted">
-                    <History className="w-8 h-8 mx-auto mb-1 opacity-50" />
-                    <p className="text-xs">No movement records match.</p>
-                  </div>
-                ) : (
-                  filteredMovementRecords.slice(0, 30).map((r) => (
-                    <div
-                      key={r.id}
-                      className="p-2.5 rounded-lg border border-divider bg-surface shadow-xs space-y-1"
-                    >
-                      <div className="flex items-center justify-between text-xs font-mono">
-                        <span
-                          className={`px-1.5 py-0.2 rounded font-bold text-[10px] ${
-                            r.direction === 'STOCK_OUT'
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {r.direction === 'STOCK_OUT' ? 'OUT • DISPATCH' : 'IN • GATE-IN'}
-                        </span>
-                        <span className="text-content-muted text-[10px]">{r.movementDate}</span>
-                      </div>
-                      <div className="text-xs font-medium text-content-primary truncate">
-                        {r.customer}
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] font-mono">
-                        <span className="text-content-secondary">Inv: {r.customInvoiceNo}</span>
-                        <strong className="text-content-primary">{r.pallets} Plt / {r.batteries}u</strong>
-                      </div>
-                      {r.containerNo && r.containerNo !== '-' && (
-                        <div className="text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
-                          Cont: {r.containerNo} {r.sealNo && r.sealNo !== '-' ? `• Seal: ${r.sealNo}` : ''}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* =====================================================================
-            VIEW MODE B: FOCUSED 100% FULL-WIDTH TILE 1 — INVENTORY
-            ===================================================================== */}
-        {tileViewMode === 'inventory' && (
+        {activeSection === 'inventory' && (
           <div className="space-y-4 pb-24">
-            {/* Tile 1 Header Strip */}
+            {/* Filter & Status Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface border border-divider rounded-xl p-3 shadow-xs">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm">
-                  1
-                </div>
-                <div>
-                  <h2 className="text-xs font-bold text-content-primary uppercase">
-                    Tile 1: Active Warehouse Floor Stock &amp; 20' GP Pallet Picking
-                  </h2>
-                  <p className="text-[11px] text-content-secondary">
-                    {activeStockInvoices.length} active invoices • {availablePalletUnits.length} available pallets on floor
-                  </p>
-                </div>
+              <div>
+                <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
+                  Floor Stock &amp; Pallet Picking
+                </h2>
+                <p className="text-xs text-content-secondary mt-0.5">
+                  {activeStockInvoices.length} active invoices • {availablePalletUnits.length} available pallets on floor
+                </p>
               </div>
 
-              {/* Status Filters + Restore Grid Button */}
+              {/* Status Filter Buttons */}
               <div className="flex items-center space-x-1.5 text-xs font-mono">
                 {(['ALL', 'PENDING_GATE_IN', 'IN_WAREHOUSE', 'SHORTFALL'] as const).map((st) => {
                   const labels = {
-                    ALL: 'All Active Stock',
+                    ALL: 'All Active',
                     PENDING_GATE_IN: 'Pending Gate-In',
-                    IN_WAREHOUSE: 'In Warehouse Ready',
-                    SHORTFALL: 'With Shortfall'
+                    IN_WAREHOUSE: 'Ready in Warehouse',
+                    SHORTFALL: 'Shortfall'
                   };
                   return (
                     <button
                       key={st}
                       onClick={() => setInventoryStatusFilter(st)}
-                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer font-sans text-xs ${
                         inventoryStatusFilter === st
-                          ? 'bg-brand-primary text-white font-bold'
+                          ? 'bg-brand-primary text-white font-semibold'
                           : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
                       }`}
                     >
@@ -1283,24 +733,15 @@ export function WarehouseInventoryHub({
                     </button>
                   );
                 })}
-
-                <button
-                  onClick={() => setTileViewMode('grid')}
-                  className="px-2.5 py-1 rounded-md bg-surface-secondary hover:bg-surface border border-divider font-medium text-content-primary flex items-center space-x-1 cursor-pointer ml-2"
-                  title="Restore 3-tile grid"
-                >
-                  <Minimize2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Restore Grid</span>
-                </button>
               </div>
             </div>
 
-            {/* Invoice Grouped Stock Position Cards */}
+            {/* Invoices List */}
             {activeStockInvoices.length === 0 ? (
               <div className="text-center py-20 bg-surface border border-dashed border-divider rounded-xl p-8">
                 <Boxes className="w-10 h-10 text-content-muted mx-auto mb-2 opacity-60" />
                 <h3 className="text-xs font-semibold text-content-secondary">No active stock matching selected filters</h3>
-                <p className="text-[11px] text-content-muted mt-1">Adjust search or filters above to reveal inventory</p>
+                <p className="text-xs text-content-muted mt-1">Try adjusting your customer filter or search query</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1314,7 +755,7 @@ export function WarehouseInventoryHub({
                       key={entry.id}
                       className="bg-surface border border-divider rounded-xl overflow-hidden shadow-xs transition-all"
                     >
-                      {/* Invoice Summary Header Row */}
+                      {/* Invoice Summary Header */}
                       <div className="p-3 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-surface-secondary/40 border-b border-divider/60">
                         <div className="flex items-center space-x-3">
                           <button
@@ -1343,116 +784,155 @@ export function WarehouseInventoryHub({
                                 {entry.customer}
                               </span>
                             </div>
-                            <div className="mt-1 flex items-center space-x-2 text-[11px] font-mono text-content-secondary">
+                            <div className="mt-1 flex items-center space-x-2 text-xs font-mono text-content-secondary">
                               <span>POD: <strong className="text-content-primary">{entry.pod || '-'}</strong></span>
                               <span>•</span>
                               <span>Invoiced: <strong className="text-content-primary">{entry.invoicedPallets} Plt</strong></span>
                               <span>•</span>
-                              <span>Floor Balance: <strong className="text-amber-700 font-bold">{entry.balancePallets} Plt ({entry.balanceBatteries} Units)</strong></span>
+                              <span>Gross Wt: <strong className="text-content-primary">{entry.invoicedGrossWeightKg} kg</strong></span>
                             </div>
                           </div>
                         </div>
 
-                        {/* Inline Gate-In Controls */}
-                        <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-                          <div className="flex items-center space-x-1 bg-surface border border-divider rounded-md px-2 py-1">
-                            <span className="text-[10px] text-content-muted">Rec Plt:</span>
-                            <InlineCell
-                              value={entry.actualReceivedPallets}
-                              type="number"
-                              align="right"
-                              className="w-10 font-bold text-emerald-700"
-                              onChange={(val) => {
-                                addOrUpdateCFSEntry({ ...entry, actualReceivedPallets: Number(val) || 0 });
-                                reloadEntries();
-                              }}
-                            />
+                        {/* Status & Gate-In Controls */}
+                        <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                          {/* Live Balance */}
+                          <div className="px-2.5 py-1 rounded-lg bg-surface border border-divider text-xs font-mono">
+                            <span className="text-content-secondary">Floor Balance: </span>
+                            <strong className="text-emerald-700 font-bold">{entry.balancePallets} Plt</strong>
+                            <span className="text-content-muted"> / </span>
+                            <strong className="text-indigo-700 font-bold">{entry.balanceBatteries} Units</strong>
                           </div>
 
-                          <div className="flex items-center space-x-1 bg-surface border border-divider rounded-md px-2 py-1">
-                            <span className="text-[10px] text-content-muted">Carting:</span>
-                            <InlineCell
-                              value={entry.cartingInDate}
-                              align="center"
-                              className="w-20"
-                              onChange={(val) => {
-                                addOrUpdateCFSEntry({ ...entry, cartingInDate: val });
-                                reloadEntries();
-                              }}
-                            />
-                          </div>
+                          {/* Gate-in status badge */}
+                          {entry.actualReceivedPallets < entry.invoicedPallets ? (
+                            <button
+                              onClick={() => handleConfirmFullGateIn(entry.id)}
+                              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                              title="Click to confirm full gate-in receipt"
+                            >
+                              <span>Pending Gate-In ({entry.actualReceivedPallets}/{entry.invoicedPallets})</span>
+                              <span className="underline ml-1 font-bold">Confirm</span>
+                            </button>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold flex items-center space-x-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>100% Received</span>
+                            </span>
+                          )}
 
-                          <div className="flex items-center space-x-1 bg-surface border border-divider rounded-md px-2 py-1">
-                            <span className="text-[10px] text-content-muted">Truck:</span>
-                            <InlineCell
-                              value={entry.vehicleNo}
-                              className="w-24 uppercase"
-                              onChange={(val) => {
-                                addOrUpdateCFSEntry({ ...entry, vehicleNo: val.toUpperCase() });
-                                reloadEntries();
-                              }}
-                            />
-                          </div>
-
-                          <button
-                            onClick={() => handleConfirmFullGateIn(entry.id)}
-                            className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-semibold transition-colors cursor-pointer text-xs"
-                            title="Confirm 100% Pallets Received from Factory"
-                          >
-                            Confirm Full Gate-In
-                          </button>
-
+                          {/* Select All for Invoice */}
                           {availableUnits.length > 0 && (
                             <button
                               onClick={() => toggleSelectAllForInvoice(entry)}
-                              className={`px-2.5 py-1 rounded border text-xs font-semibold transition-colors cursor-pointer ${
+                              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
                                 allSelected
                                   ? 'bg-brand-primary text-white border-brand-primary'
-                                  : 'bg-surface hover:bg-surface-secondary text-content-secondary border-divider'
+                                  : 'bg-surface hover:bg-surface-secondary text-content-primary border-divider'
                               }`}
                             >
-                              {allSelected ? 'Deselect Invoice' : `Select All (${availableUnits.length}p)`}
+                              {allSelected ? 'Deselect Invoice' : `Select All (${availableUnits.length} Plt)`}
                             </button>
                           )}
                         </div>
                       </div>
 
-                      {/* Expandable Pallet Drawer */}
+                      {/* Gate-In Edit Strip */}
+                      <div className="px-4 py-2 bg-slate-50 border-b border-divider text-xs flex flex-wrap items-center gap-4 text-content-secondary">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-medium">Carting Date:</span>
+                          <InlineCell
+                            value={entry.cartingInDate}
+                            className="w-24 bg-surface"
+                            onChange={(val) => {
+                              addOrUpdateCFSEntry({ ...entry, cartingInDate: val });
+                              reloadEntries();
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-medium">Vehicle No:</span>
+                          <InlineCell
+                            value={entry.vehicleNo}
+                            className="w-28 bg-surface"
+                            onChange={(val) => {
+                              addOrUpdateCFSEntry({ ...entry, vehicleNo: val });
+                              reloadEntries();
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-medium">Received Pallets:</span>
+                          <InlineCell
+                            value={entry.actualReceivedPallets}
+                            type="number"
+                            className="w-14 bg-surface text-right"
+                            onChange={(val) => {
+                              const num = parseInt(val, 10) || 0;
+                              addOrUpdateCFSEntry({ ...entry, actualReceivedPallets: num });
+                              reloadEntries();
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-1.5">
+                          <span className="font-medium">Received Units:</span>
+                          <InlineCell
+                            value={entry.actualReceivedBatteries}
+                            type="number"
+                            className="w-16 bg-surface text-right"
+                            onChange={(val) => {
+                              const num = parseInt(val, 10) || 0;
+                              addOrUpdateCFSEntry({ ...entry, actualReceivedBatteries: num });
+                              reloadEntries();
+                            }}
+                          />
+                        </div>
+
+                        {(entry.shortfallPallets > 0 || entry.shortfallBatteries > 0) && (
+                          <div className="text-rose-700 font-bold ml-auto">
+                            Shortfall: {entry.shortfallPallets} Plt / {entry.shortfallBatteries} Units
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Expandable Pallets Grid */}
                       {isExpanded && (
-                        <div className="p-3 sm:p-4 bg-surface border-t border-divider">
-                          <div className="flex items-center justify-between text-xs mb-2">
-                            <span className="font-mono text-content-secondary font-bold text-[11px] uppercase">
-                              Individual Pallet Units ({entry.pallets?.length || 0})
-                            </span>
-                            <span className="text-content-muted text-[10px]">
-                              Click any card to select for 20' GP container stuffing
-                            </span>
+                        <div className="p-3 sm:p-4 bg-surface border-t border-divider/60">
+                          <div className="text-xs font-semibold text-content-secondary mb-2 flex items-center justify-between">
+                            <span>Pallet Units ({entry.pallets?.length || 0} Total • {availableUnits.length} Ready in Warehouse):</span>
+                            <span className="text-content-muted font-normal">Click a pallet to select for container loading</span>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-                            {(entry.pallets || []).map((p) => {
-                              const isSelected = selectedPalletIds.has(p.id);
-                              const isStuffed = p.status === 'STUFFED_DISPATCHED';
-                              const isPending = p.status === 'PENDING_GATE_IN';
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 font-mono">
+                            {(entry.pallets || []).map((pallet) => {
+                              const isSelected = selectedPalletIds.has(pallet.id);
+                              const isStuffed = pallet.status === 'STUFFED_DISPATCHED';
+                              const isPending = pallet.status === 'PENDING_GATE_IN';
 
                               return (
                                 <div
-                                  key={p.id}
+                                  key={pallet.id}
                                   onClick={() => {
-                                    if (isStuffed) return;
-                                    togglePalletSelection(p.id, entry.customer);
+                                    if (!isStuffed && !isPending) {
+                                      togglePalletSelection(pallet.id, entry.customer);
+                                    }
                                   }}
-                                  className={`p-2.5 rounded-lg border text-xs transition-all select-none ${
+                                  className={`p-2 rounded-lg border text-xs transition-all ${
                                     isStuffed
-                                      ? 'bg-slate-100/70 border-slate-200 text-content-muted opacity-60 cursor-not-allowed'
+                                      ? 'bg-slate-100 text-content-muted border-slate-200 cursor-not-allowed opacity-75'
+                                      : isPending
+                                      ? 'bg-amber-50/50 text-amber-900 border-amber-200 cursor-not-allowed'
                                       : isSelected
-                                      ? 'bg-brand-primary-soft/60 border-brand-primary shadow-xs ring-1 ring-brand-primary/40 cursor-pointer'
-                                      : 'bg-surface border-divider hover:border-brand-primary/40 shadow-xs cursor-pointer'
+                                      ? 'bg-brand-primary-soft border-brand-primary ring-1 ring-brand-primary cursor-pointer shadow-xs'
+                                      : 'bg-surface border-divider hover:border-brand-primary cursor-pointer'
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-1.5 font-mono font-bold text-xs">
-                                      {!isStuffed && (
+                                    <div className="flex items-center space-x-1.5">
+                                      {!isStuffed && !isPending && (
                                         <input
                                           type="checkbox"
                                           checked={isSelected}
@@ -1460,34 +940,25 @@ export function WarehouseInventoryHub({
                                           className="rounded border-divider text-brand-primary focus:ring-brand-primary"
                                         />
                                       )}
-                                      <span className={isStuffed ? 'text-content-muted' : 'text-brand-primary'}>
-                                        PLT #{p.palletNumber}
+                                      <span className="font-bold text-brand-primary">
+                                        PLT #{pallet.palletNumber}
                                       </span>
                                     </div>
-                                    <span className="text-[10px] font-mono px-1 rounded bg-surface-secondary border border-divider text-content-secondary truncate max-w-[65px]">
-                                      {p.model}
+                                    <span className="text-[10px] px-1 py-0.2 rounded bg-surface-secondary border border-divider text-content-secondary truncate max-w-[70px]">
+                                      {pallet.model}
                                     </span>
                                   </div>
 
-                                  <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                                    <span className="text-content-secondary">STATUS:</span>
-                                    <span
-                                      className={`font-semibold text-[10px] ${
-                                        isStuffed ? 'text-blue-700' : isPending ? 'text-amber-700' : 'text-emerald-700'
-                                      }`}
-                                    >
-                                      {isStuffed ? 'STUFFED' : isPending ? 'PENDING' : 'FLOOR'}
+                                  <div className="mt-1 flex items-center justify-between text-[11px]">
+                                    <span className="text-content-secondary">Qty:</span>
+                                    <strong className="text-content-primary">{pallet.receivedBatteries || pallet.invoicedBatteries} u</strong>
+                                  </div>
+
+                                  <div className="mt-0.5 flex items-center justify-between text-[10px] text-content-muted">
+                                    <span>{pallet.grossWeightKg} kg</span>
+                                    <span className="uppercase font-semibold">
+                                      {isStuffed ? 'Shipped' : isPending ? 'Pending' : 'Ready'}
                                     </span>
-                                  </div>
-
-                                  <div className="mt-0.5 flex items-center justify-between text-[11px] font-mono">
-                                    <span className="text-content-secondary">QTY:</span>
-                                    <strong className="text-content-primary">{p.receivedBatteries || p.invoicedBatteries}u</strong>
-                                  </div>
-
-                                  <div className="mt-0.5 flex items-center justify-between text-[10px] font-mono text-content-muted">
-                                    <span>Gross Wt:</span>
-                                    <span>{p.grossWeightKg} kg</span>
                                   </div>
                                 </div>
                               );
@@ -1501,35 +972,51 @@ export function WarehouseInventoryHub({
               </div>
             )}
 
-            {/* Floating Bottom Docked Action Bar */}
-            {selectedPalletsStats.count > 0 && (
-              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface/95 backdrop-blur border border-divider shadow-2xl rounded-2xl px-5 py-3 flex items-center space-x-6 text-xs animate-slide-up">
-                <div className="font-mono tabular-nums space-x-2">
-                  <span className="text-content-secondary">Selected:</span>
-                  <strong className="text-content-primary">{selectedPalletsStats.count} Pallets</strong>
-                  <span className="text-content-muted">•</span>
-                  <strong className="text-indigo-600">{selectedPalletsStats.batteries} Units</strong>
-                  <span className="text-content-muted">•</span>
-                  <strong className="text-slate-700">{selectedPalletsStats.grossKg} kg</strong>
-                  <span className="text-content-muted">•</span>
-                  <strong className="text-emerald-700">Requires {selectedPalletsStats.required20GP} × 20' GP (Max 22 Plt / 25t)</strong>
+            {/* Bottom Docked Pallet Action Bar */}
+            {selectedPalletIds.size > 0 && (
+              <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface border-t border-divider p-3 sm:p-4 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
+                <div className="flex items-center space-x-3 text-xs font-mono">
+                  <span className="px-2.5 py-1 rounded-md bg-brand-primary text-white font-bold">
+                    Selected: {selectedPalletsStats.count} Pallets
+                  </span>
+                  <span className="text-content-secondary">
+                    {selectedPalletsStats.batteries.toLocaleString()} Units • {selectedPalletsStats.grossKg.toLocaleString()} kg
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold hidden md:inline">
+                    Requires {selectedPalletsStats.required20GP} × 20' GP
+                  </span>
+                  {selectedDispatchCustomer && (
+                    <span className="text-content-muted hidden lg:inline">
+                      Customer: <strong className="text-content-primary font-sans">{selectedDispatchCustomer}</strong>
+                    </span>
+                  )}
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 text-xs">
+                  <button
+                    onClick={() => {
+                      setSelectedPalletIds(new Set());
+                      setSelectedDispatchCustomer('');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary border border-divider cursor-pointer"
+                  >
+                    Clear
+                  </button>
+
                   <button
                     onClick={handleLoadSelectedIntoWorkspace}
-                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-brand-primary border border-brand-primary font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs"
                   >
-                    <span>Load into 20' GP &amp; Open Workspace</span>
+                    <span>Load into 20' GP Workspace</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
 
                   <button
                     onClick={() => setShowDispatchModal(true)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Confirm Dispatch (Mark Stock-Out)</span>
+                    <span>Confirm Dispatch (Stock-Out)</span>
                   </button>
                 </div>
               </div>
@@ -1538,28 +1025,25 @@ export function WarehouseInventoryHub({
         )}
 
         {/* =====================================================================
-            VIEW MODE C: FOCUSED 100% FULL-WIDTH TILE 2 — MONTHLY LIVE REPORTS
+            SECTION 2: MONTHLY LIVE REPORTS (22-COL STOCK & 17-COL CARTING)
             ===================================================================== */}
-        {tileViewMode === 'reports' && (
-          <div className="space-y-3 pb-20">
-            {/* Date & Month Filter Bar */}
-            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs space-y-2.5">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                {/* Left: Report View Toggle & Title */}
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-800 flex items-center justify-center font-bold text-sm">
-                    2
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-bold text-content-primary uppercase">
-                      Tile 2: Monthly Live Reports
-                    </h2>
-                    <p className="text-[11px] text-content-secondary">
-                      {reportType === 'stock_22' ? '22-Column CFS Stock Report' : '17-Column CFS Carting Gate-In Report'}
-                    </p>
-                  </div>
+        {activeSection === 'reports' && (
+          <div className="space-y-4 pb-20">
+            {/* Reports Control Bar */}
+            <div className="bg-surface border border-divider rounded-xl p-3 sm:p-4 shadow-xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
+                    Monthly Live Reports
+                  </h2>
+                  <p className="text-xs text-content-secondary mt-0.5">
+                    {reportType === 'stock_22' ? '22-Column CFS Stock Report' : '17-Column CFS Carting Gate-In Report'}
+                  </p>
+                </div>
 
-                  <div className="bg-surface-secondary border border-divider p-0.5 rounded-lg flex items-center space-x-0.5 text-xs font-semibold ml-2">
+                {/* Report Type Switcher + Export Buttons */}
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <div className="bg-surface-secondary border border-divider p-0.5 rounded-lg flex items-center space-x-0.5 font-semibold">
                     <button
                       onClick={() => setReportType('stock_22')}
                       className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
@@ -1581,10 +1065,7 @@ export function WarehouseInventoryHub({
                       17-Col Carting Report
                     </button>
                   </div>
-                </div>
 
-                {/* Right: Export & Print Buttons + Restore Grid */}
-                <div className="flex items-center space-x-2 text-xs">
                   <button
                     onClick={() => exportCFSStockReportXlsx(entries, selectedMonth)}
                     className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
@@ -1606,26 +1087,17 @@ export function WarehouseInventoryHub({
                   <button
                     onClick={() => window.print()}
                     className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                    title="Print active report table"
+                    title="Print active report"
                   >
                     <Printer className="w-3.5 h-3.5 text-slate-700" />
                     <span>Print / PDF</span>
                   </button>
-
-                  <button
-                    onClick={() => setTileViewMode('grid')}
-                    className="px-2.5 py-1.5 rounded-lg bg-surface-secondary hover:bg-surface border border-divider font-medium text-content-primary flex items-center space-x-1 cursor-pointer ml-1"
-                    title="Restore 3-tile grid"
-                  >
-                    <Minimize2 className="w-3.5 h-3.5" />
-                    <span>Restore Grid</span>
-                  </button>
                 </div>
               </div>
 
-              {/* Fiscal Month Selector Pills & Date Range Filter */}
+              {/* Month Selector Pills & Custom Date Range */}
               <div className="pt-2 border-t border-divider/60 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
-                {/* Month Selector Pills */}
+                {/* Month Pills */}
                 <div className="flex items-center space-x-1 overflow-x-auto pb-1 font-mono text-[11px]">
                   <span className="text-content-secondary font-sans text-xs mr-1 shrink-0 font-medium">Month:</span>
                   {CFS_MONTHS.map((m) => {
@@ -1646,22 +1118,22 @@ export function WarehouseInventoryHub({
                   })}
                 </div>
 
-                {/* Custom Date Range Filter */}
+                {/* Custom Date Range */}
                 <div className="flex items-center space-x-1.5 font-mono text-xs">
-                  <span className="text-content-secondary font-sans mr-0.5 font-medium">Range:</span>
+                  <span className="text-content-secondary font-sans text-xs mr-1 shrink-0 font-medium">Date Range:</span>
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="px-2 py-1 bg-surface border border-divider rounded-md text-xs text-content-primary focus:outline-none focus:border-brand-primary"
+                    className="px-2 py-1 rounded bg-surface border border-divider text-xs text-content-primary focus:outline-none focus:border-brand-primary"
                     title="From Date"
                   />
-                  <span className="text-content-muted">—</span>
+                  <span className="text-content-muted">–</span>
                   <input
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="px-2 py-1 bg-surface border border-divider rounded-md text-xs text-content-primary focus:outline-none focus:border-brand-primary"
+                    className="px-2 py-1 rounded bg-surface border border-divider text-xs text-content-primary focus:outline-none focus:border-brand-primary"
                     title="To Date"
                   />
                   {(dateFrom || dateTo) && (
@@ -1670,195 +1142,179 @@ export function WarehouseInventoryHub({
                         setDateFrom('');
                         setDateTo('');
                       }}
-                      className="text-xs text-rose-600 hover:underline px-1 cursor-pointer font-sans"
+                      className="text-xs text-rose-600 hover:underline cursor-pointer ml-1"
                     >
-                      Clear Dates
+                      Clear
                     </button>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Sub-view 1: 22-Column CFS Stock Report */}
+            {/* REPORT VIEW 1: 22-COLUMN STOCK REPORT */}
             {reportType === 'stock_22' && (
-              <div className="bg-surface border border-divider rounded-xl overflow-hidden shadow-xs">
-                <div className="overflow-x-auto max-h-[calc(100vh-250px)]">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur shadow-2xs">
-                      {/* Row 1: Merged Group Headers */}
-                      <tr className="text-[10px] uppercase font-mono tracking-wider border-b border-divider text-content-secondary">
-                        <th colSpan={2} className="px-3 py-1.5 border-r border-divider text-center">
-                          Invoice Identification
+              <div className="bg-surface border border-divider rounded-xl shadow-xs overflow-hidden">
+                <div className="overflow-x-auto max-h-[700px]">
+                  <table className="w-full text-xs font-mono border-collapse select-text">
+                    {/* Color-coded Group Headers */}
+                    <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
+                      <tr className="text-[10px] uppercase font-bold text-content-secondary text-center tracking-wider">
+                        <th colSpan={4} className="py-1 border-r border-divider bg-slate-100">
+                          Shipment Details
                         </th>
-                        <th colSpan={2} className="px-3 py-1.5 text-indigo-700 bg-indigo-50/70 border-r border-divider text-center">
-                          As Received from EIL-Export
+                        <th colSpan={2} className="py-1 border-r border-divider bg-blue-50 text-blue-900">
+                          As Received (Invoice)
                         </th>
-                        <th colSpan={2} className="px-3 py-1.5 text-emerald-700 bg-emerald-50/70 border-r border-divider text-center">
-                          Actual Received from Factory
+                        <th colSpan={3} className="py-1 border-r border-divider bg-emerald-50 text-emerald-900">
+                          Actual Received
                         </th>
-                        <th colSpan={2} className="px-3 py-1.5 text-rose-700 bg-rose-50/70 border-r border-divider text-center">
-                          Short Fall (Pending)
+                        <th colSpan={2} className="py-1 border-r border-divider bg-rose-50 text-rose-900">
+                          Short Fall
                         </th>
-                        <th className="px-3 py-1.5 border-r border-divider text-center">
-                          Carting Date
+                        <th colSpan={2} className="py-1 border-r border-divider bg-purple-50 text-purple-900">
+                          Actual Stuffed
                         </th>
-                        <th colSpan={2} className="px-3 py-1.5 text-blue-700 bg-blue-50/70 border-r border-divider text-center">
-                          Actual Stuffed Qty
+                        <th colSpan={2} className="py-1 border-r border-divider bg-amber-50 text-amber-900">
+                          Balance
                         </th>
-                        <th colSpan={2} className="px-3 py-1.5 text-amber-700 bg-amber-50/70 border-r border-divider text-center">
-                          Balance Qty (CFS Floor)
+                        <th colSpan={2} className="py-1 border-r border-divider bg-indigo-50 text-indigo-900">
+                          Shipping Bill
                         </th>
-                        <th colSpan={2} className="px-3 py-1.5 border-r border-divider text-center">
-                          Customs Shipping Bill
+                        <th colSpan={4} className="py-1 border-r border-divider bg-slate-100">
+                          Container &amp; Gate-In
                         </th>
-                        <th colSpan={2} className="px-3 py-1.5 border-r border-divider text-center">
-                          Equipment
+                        <th className="py-1 bg-slate-200 text-slate-800">
+                          CFS
                         </th>
-                        <th colSpan={3} className="px-3 py-1.5 border-r border-divider text-center">
-                          Logistics Dates
-                        </th>
-                        <th className="px-3 py-1.5 border-r border-divider text-center">
-                          CFS Ageing
-                        </th>
-                        <th className="px-3 py-1.5 text-center">Remarks</th>
                       </tr>
 
-                      {/* Row 2: 22 Column Sub-headers */}
-                      <tr className="text-[11px] font-semibold text-content-primary border-b border-divider">
-                        <th className="px-3 py-2 border-r border-divider/60">Customer</th>
-                        <th className="px-3 py-2 border-r border-divider">Custom Invoice No</th>
+                      {/* 22 Column Sub-headers */}
+                      <tr className="text-[11px] font-semibold text-content-primary border-b border-divider bg-surface text-left">
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Month</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap min-w-[140px]">Customer</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Invoice No</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">POD</th>
 
-                        <th className="px-2 py-2 text-right font-mono bg-indigo-50/30">Pallets</th>
-                        <th className="px-2 py-2 text-right font-mono bg-indigo-50/30 border-r border-divider">Batteries</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-blue-50/40">Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-blue-50/40">Units</th>
 
-                        <th className="px-2 py-2 text-right font-mono bg-emerald-50/30">Pallets</th>
-                        <th className="px-2 py-2 text-right font-mono bg-emerald-50/30 border-r border-divider">Batteries</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50/40">Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50/40">Units</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/40">Recd Date</th>
 
-                        <th className="px-2 py-2 text-right font-mono bg-rose-50/30">Pallets</th>
-                        <th className="px-2 py-2 text-right font-mono bg-rose-50/30 border-r border-divider">Batteries</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50/40">Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50/40">Units</th>
 
-                        <th className="px-2.5 py-2 font-mono border-r border-divider text-center">Carting Date</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-purple-50/40">Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-purple-50/40">Units</th>
 
-                        <th className="px-2 py-2 text-right font-mono bg-blue-50/30">Pallets</th>
-                        <th className="px-2 py-2 text-right font-mono bg-blue-50/30 border-r border-divider">Batteries</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/40 font-bold text-emerald-700">Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/40 font-bold text-indigo-700">Units</th>
 
-                        <th className="px-2 py-2 text-right font-mono font-bold text-amber-700 bg-amber-50/40">Pallets</th>
-                        <th className="px-2 py-2 text-right font-mono font-bold text-amber-700 bg-amber-50/40 border-r border-divider">Batteries</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/40">SB No</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/40">SB Date</th>
 
-                        <th className="px-2.5 py-2 border-r border-divider/60">SB No.</th>
-                        <th className="px-2 py-2 border-r border-divider text-center">Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Container No</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Stuffing Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Pickup Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Port Gate-In</th>
 
-                        <th className="px-2.5 py-2 border-r border-divider/60">Container No</th>
-                        <th className="px-2 py-2 border-r border-divider">Seal No</th>
-
-                        <th className="px-2 py-2 text-center">Stuffing</th>
-                        <th className="px-2 py-2 text-center">Pick-up</th>
-                        <th className="px-2 py-2 border-r border-divider text-center">Gate-in</th>
-
-                        <th className="px-2.5 py-2 text-right font-mono border-r border-divider">Days in CFS</th>
-                        <th className="px-3 py-2 text-center">Remarks</th>
+                        <th className="p-2 text-center whitespace-nowrap bg-slate-50">Days</th>
                       </tr>
                     </thead>
 
                     <tbody className="divide-y divide-divider/60">
                       {filteredEntries.length === 0 ? (
                         <tr>
-                          <td colSpan={22} className="px-4 py-12 text-center text-content-muted">
-                            No CFS Stock entries match criteria.
+                          <td colSpan={22} className="p-12 text-center text-content-muted">
+                            No stock records found matching filters.
                           </td>
                         </tr>
                       ) : (
                         filteredEntries.map((e) => (
-                          <tr key={e.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-3 py-1.5 font-medium text-content-primary border-r border-divider/60 truncate max-w-[130px]">
+                          <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-2 border-r border-divider whitespace-nowrap text-content-secondary font-medium">
+                              {e.month}
+                            </td>
+                            <td className="p-2 border-r border-divider whitespace-nowrap text-content-primary font-sans font-medium max-w-[160px] truncate" title={e.customer}>
                               {e.customer}
                             </td>
-                            <td className="px-3 py-1.5 font-mono text-brand-primary font-bold border-r border-divider">
+                            <td className="p-2 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
                               {e.customInvoiceNo}
+                            </td>
+                            <td className="p-2 border-r border-divider whitespace-nowrap text-content-secondary">
+                              {e.pod || '-'}
                             </td>
 
                             {/* Invoiced */}
-                            <td className="px-2 py-1.5 text-right font-mono bg-indigo-50/20">{e.invoicedPallets}</td>
-                            <td className="px-2 py-1.5 text-right font-mono bg-indigo-50/20 border-r border-divider">{e.invoicedBatteries}</td>
+                            <td className="p-2 border-r border-divider text-right bg-blue-50/20">
+                              {e.invoicedPallets}
+                            </td>
+                            <td className="p-2 border-r border-divider text-right bg-blue-50/20">
+                              {e.invoicedBatteries.toLocaleString()}
+                            </td>
 
-                            {/* Received */}
-                            <td className="px-1 py-1.5 bg-emerald-50/20">
+                            {/* Actual Received */}
+                            <td className="p-2 border-r border-divider text-right bg-emerald-50/20">
                               <InlineCell
                                 value={e.actualReceivedPallets}
-                                align="right"
                                 type="number"
+                                align="right"
                                 onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, actualReceivedPallets: Number(val) || 0 });
+                                  const v = parseInt(val, 10) || 0;
+                                  addOrUpdateCFSEntry({ ...e, actualReceivedPallets: v });
                                   reloadEntries();
                                 }}
                               />
                             </td>
-                            <td className="px-1 py-1.5 bg-emerald-50/20 border-r border-divider">
+                            <td className="p-2 border-r border-divider text-right bg-emerald-50/20">
                               <InlineCell
                                 value={e.actualReceivedBatteries}
-                                align="right"
                                 type="number"
+                                align="right"
                                 onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, actualReceivedBatteries: Number(val) || 0 });
+                                  const v = parseInt(val, 10) || 0;
+                                  addOrUpdateCFSEntry({ ...e, actualReceivedBatteries: v });
+                                  reloadEntries();
+                                }}
+                              />
+                            </td>
+                            <td className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/20">
+                              <InlineCell
+                                value={e.lastPltRecdDate || e.cartingInDate}
+                                onChange={(val) => {
+                                  addOrUpdateCFSEntry({ ...e, lastPltRecdDate: val });
                                   reloadEntries();
                                 }}
                               />
                             </td>
 
-                            {/* Shortfall */}
-                            <td className={`px-2 py-1.5 text-right font-mono font-bold bg-rose-50/20 ${e.shortfallPallets > 0 ? 'text-rose-600' : 'text-content-muted'}`}>
-                              {e.shortfallPallets}
+                            {/* Short Fall */}
+                            <td className="p-2 border-r border-divider text-right bg-rose-50/20 font-bold text-rose-700">
+                              {e.shortfallPallets || 0}
                             </td>
-                            <td className={`px-2 py-1.5 text-right font-mono font-bold bg-rose-50/20 border-r border-divider ${e.shortfallBatteries > 0 ? 'text-rose-600' : 'text-content-muted'}`}>
-                              {e.shortfallBatteries}
-                            </td>
-
-                            {/* Carting Date */}
-                            <td className="px-1 py-1.5 border-r border-divider text-center">
-                              <InlineCell
-                                value={e.cartingInDate}
-                                align="center"
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, cartingInDate: val });
-                                  reloadEntries();
-                                }}
-                              />
+                            <td className="p-2 border-r border-divider text-right bg-rose-50/20 text-rose-700">
+                              {e.shortfallBatteries || 0}
                             </td>
 
-                            {/* Stuffed */}
-                            <td className="px-1 py-1.5 bg-blue-50/20">
-                              <InlineCell
-                                value={e.actualStuffedPallets}
-                                align="right"
-                                type="number"
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, actualStuffedPallets: Number(val) || 0 });
-                                  reloadEntries();
-                                }}
-                              />
+                            {/* Actual Stuffed */}
+                            <td className="p-2 border-r border-divider text-right bg-purple-50/20 font-semibold">
+                              {e.actualStuffedPallets || 0}
                             </td>
-                            <td className="px-1 py-1.5 bg-blue-50/20 border-r border-divider">
-                              <InlineCell
-                                value={e.actualStuffedBatteries}
-                                align="right"
-                                type="number"
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, actualStuffedBatteries: Number(val) || 0 });
-                                  reloadEntries();
-                                }}
-                              />
+                            <td className="p-2 border-r border-divider text-right bg-purple-50/20">
+                              {(e.actualStuffedBatteries || 0).toLocaleString()}
                             </td>
 
                             {/* Balance */}
-                            <td className="px-2 py-1.5 text-right font-mono font-extrabold text-amber-700 bg-amber-50/30">
+                            <td className="p-2 border-r border-divider text-right bg-amber-50/30 font-bold text-emerald-700">
                               {e.balancePallets}
                             </td>
-                            <td className="px-2 py-1.5 text-right font-mono font-extrabold text-amber-700 bg-amber-50/30 border-r border-divider">
-                              {e.balanceBatteries}
+                            <td className="p-2 border-r border-divider text-right bg-amber-50/30 font-bold text-indigo-700">
+                              {e.balanceBatteries.toLocaleString()}
                             </td>
 
-                            {/* Customs */}
-                            <td className="px-1 py-1.5 border-r border-divider/60">
+                            {/* Shipping Bill */}
+                            <td className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/20">
                               <InlineCell
                                 value={e.shippingBillNo}
                                 onChange={(val) => {
@@ -1867,10 +1323,9 @@ export function WarehouseInventoryHub({
                                 }}
                               />
                             </td>
-                            <td className="px-1 py-1.5 border-r border-divider text-center">
+                            <td className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/20">
                               <InlineCell
                                 value={e.shippingBillDate}
-                                align="center"
                                 onChange={(val) => {
                                   addOrUpdateCFSEntry({ ...e, shippingBillDate: val });
                                   reloadEntries();
@@ -1878,53 +1333,37 @@ export function WarehouseInventoryHub({
                               />
                             </td>
 
-                            {/* Equipment */}
-                            <td className="px-1 py-1.5 border-r border-divider/60">
+                            {/* Container & Logistics */}
+                            <td className="p-2 border-r border-divider whitespace-nowrap font-bold text-blue-700">
                               <InlineCell
                                 value={e.containerNo}
-                                className="uppercase font-bold"
                                 onChange={(val) => {
                                   addOrUpdateCFSEntry({ ...e, containerNo: val.toUpperCase() });
                                   reloadEntries();
                                 }}
                               />
                             </td>
-                            <td className="px-1 py-1.5 border-r border-divider">
-                              <InlineCell
-                                value={e.sealNo}
-                                className="uppercase"
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, sealNo: val.toUpperCase() });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-
-                            {/* Logistics Dates */}
-                            <td className="px-1 py-1.5 text-center">
+                            <td className="p-2 border-r border-divider whitespace-nowrap">
                               <InlineCell
                                 value={e.stuffingDate}
-                                align="center"
                                 onChange={(val) => {
                                   addOrUpdateCFSEntry({ ...e, stuffingDate: val });
                                   reloadEntries();
                                 }}
                               />
                             </td>
-                            <td className="px-1 py-1.5 text-center">
+                            <td className="p-2 border-r border-divider whitespace-nowrap">
                               <InlineCell
                                 value={e.pickupDate}
-                                align="center"
                                 onChange={(val) => {
                                   addOrUpdateCFSEntry({ ...e, pickupDate: val });
                                   reloadEntries();
                                 }}
                               />
                             </td>
-                            <td className="px-1 py-1.5 border-r border-divider text-center">
+                            <td className="p-2 border-r border-divider whitespace-nowrap">
                               <InlineCell
                                 value={e.portGateInDate}
-                                align="center"
                                 onChange={(val) => {
                                   addOrUpdateCFSEntry({ ...e, portGateInDate: val });
                                   reloadEntries();
@@ -1933,19 +1372,8 @@ export function WarehouseInventoryHub({
                             </td>
 
                             {/* Days in CFS */}
-                            <td className="px-2.5 py-1.5 text-right font-mono border-r border-divider font-semibold">
-                              {e.daysInCFS}
-                            </td>
-
-                            {/* Remarks */}
-                            <td className="px-1 py-1.5">
-                              <InlineCell
-                                value={e.remarks}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, remarks: val });
-                                  reloadEntries();
-                                }}
-                              />
+                            <td className="p-2 text-center whitespace-nowrap font-bold bg-slate-50">
+                              {e.daysInCFS || 0}
                             </td>
                           </tr>
                         ))
@@ -1956,196 +1384,164 @@ export function WarehouseInventoryHub({
               </div>
             )}
 
-            {/* Sub-view 2: 17-Column CFS Carting Report */}
+            {/* REPORT VIEW 2: 17-COLUMN CARTING GATE-IN REPORT */}
             {reportType === 'carting_17' && (
-              <div className="bg-surface border border-divider rounded-xl overflow-hidden shadow-xs">
-                <div className="overflow-x-auto max-h-[calc(100vh-250px)]">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur shadow-2xs">
-                      <tr className="text-[11px] font-semibold text-content-primary border-b border-divider">
-                        <th className="px-3 py-2 border-r border-divider/60">INVOICE NO.</th>
-                        <th className="px-3 py-2 border-r border-divider/60">CONSIGNEE</th>
-                        <th className="px-3 py-2 border-r border-divider/60">POD</th>
-                        <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60">GROSS WEIGHT</th>
-                        <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60">TOTAL BATTERIES</th>
-                        <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60">Total Pallet Quantity</th>
-                        <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60 text-emerald-700">Received pallets</th>
-                        <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60 text-rose-700">pending plt qty</th>
-                        <th className="px-2 py-2 text-center font-mono border-r border-divider/60">STATUS</th>
-                        <th className="px-2.5 py-2 font-mono border-r border-divider/60 text-center">CARTING DATE</th>
-                        <th className="px-2.5 py-2 font-mono border-r border-divider/60">VEHICLE NO.</th>
-                        <th className="px-2.5 py-2 font-mono border-r border-divider/60 text-center">LAST PLT RECD</th>
-                        <th className="px-2.5 py-2 font-mono border-r border-divider/60 text-center">DATE (TRIP 2)</th>
-                        <th className="px-2.5 py-2 font-mono border-r border-divider/60">VEHICLE NO (TRIP 2)</th>
-                        <th className="px-3 py-2 text-center">ACTIONS</th>
+              <div className="bg-surface border border-divider rounded-xl shadow-xs overflow-hidden">
+                <div className="overflow-x-auto max-h-[700px]">
+                  <table className="w-full text-xs font-mono border-collapse select-text">
+                    <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
+                      <tr className="text-[11px] font-semibold text-content-primary border-b border-divider text-left">
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Month</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Carting In Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Vehicle No</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap min-w-[140px]">Customer</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Invoice No</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Invoice Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">POD</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap">Inv Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap">Inv Qty</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap">Gross Wt (kg)</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50 text-emerald-900 font-bold">Recd Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50 text-emerald-900 font-bold">Recd Qty</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50 text-rose-900">Short Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50 text-rose-900">Short Qty</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Last Plt Recd</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Model Breakdown</th>
+                        <th className="p-2 text-center whitespace-nowrap">Pallet Details</th>
                       </tr>
                     </thead>
 
                     <tbody className="divide-y divide-divider/60">
                       {filteredEntries.length === 0 ? (
                         <tr>
-                          <td colSpan={15} className="px-4 py-12 text-center text-content-muted">
-                            No Carting Gate-In entries available.
+                          <td colSpan={17} className="p-12 text-center text-content-muted">
+                            No carting records found matching filters.
                           </td>
                         </tr>
                       ) : (
                         filteredEntries.map((e) => {
                           const isExpanded = expandedCartingInvoiceIds.has(e.id);
-                          const hasPallets = (e.pallets || []).length > 0;
                           return (
                             <React.Fragment key={e.id}>
-                              <tr className="hover:bg-slate-50 transition-colors">
-                                <td className="px-3 py-1.5 font-mono text-brand-primary font-bold border-r border-divider/60">
-                                  <div className="flex items-center space-x-1.5">
-                                    {hasPallets && (
-                                      <button
-                                        onClick={() => {
-                                          setExpandedCartingInvoiceIds((prev) => {
-                                            const next = new Set(prev);
-                                            if (next.has(e.id)) next.delete(e.id);
-                                            else next.add(e.id);
-                                            return next;
-                                          });
-                                        }}
-                                        className="text-content-muted hover:text-content-primary cursor-pointer"
-                                      >
-                                        {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                      </button>
-                                    )}
-                                    <span>{e.customInvoiceNo}</span>
-                                  </div>
-                                </td>
-                                <td className="px-3 py-1.5 font-medium text-content-primary border-r border-divider/60 truncate max-w-[130px]">
-                                  {e.customer}
-                                </td>
-                                <td className="px-3 py-1.5 text-content-secondary border-r border-divider/60">
-                                  {e.pod || '-'}
-                                </td>
-                                <td className="px-2.5 py-1.5 text-right font-mono text-content-secondary border-r border-divider/60">
-                                  {e.invoicedGrossWeightKg} kg
-                                </td>
-                                <td className="px-2.5 py-1.5 text-right font-mono text-content-secondary border-r border-divider/60">
-                                  {e.invoicedBatteries}
-                                </td>
-                                <td className="px-2.5 py-1.5 text-right font-mono text-content-secondary border-r border-divider/60">
-                                  {e.invoicedPallets}
-                                </td>
-                                <td className="px-1 py-1.5 border-r border-divider/60 bg-emerald-50/20">
-                                  <InlineCell
-                                    value={e.actualReceivedPallets}
-                                    align="right"
-                                    type="number"
-                                    onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, actualReceivedPallets: Number(val) || 0 });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
-                                <td className={`px-2.5 py-1.5 text-right font-mono font-bold border-r border-divider/60 ${e.shortfallPallets > 0 ? 'text-rose-600' : 'text-content-muted'}`}>
-                                  {e.shortfallPallets}
-                                </td>
-                                <td className="px-2 py-1.5 text-center font-mono border-r border-divider/60">
-                                  <InlineCell
-                                    value={e.gateInStatus || '1'}
-                                    align="center"
-                                    onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, gateInStatus: val });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
-                                <td className="px-1 py-1.5 border-r border-divider/60 text-center">
+                              <tr className="hover:bg-slate-50/80 transition-colors">
+                                <td className="p-2 border-r border-divider whitespace-nowrap">{e.month}</td>
+                                <td className="p-2 border-r border-divider whitespace-nowrap font-bold">
                                   <InlineCell
                                     value={e.cartingInDate}
-                                    align="center"
                                     onChange={(val) => {
                                       addOrUpdateCFSEntry({ ...e, cartingInDate: val });
                                       reloadEntries();
                                     }}
                                   />
                                 </td>
-                                <td className="px-1 py-1.5 border-r border-divider/60">
+                                <td className="p-2 border-r border-divider whitespace-nowrap">
                                   <InlineCell
                                     value={e.vehicleNo}
                                     onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, vehicleNo: val.toUpperCase() });
+                                      addOrUpdateCFSEntry({ ...e, vehicleNo: val });
                                       reloadEntries();
                                     }}
                                   />
                                 </td>
-                                <td className="px-1 py-1.5 border-r border-divider/60 text-center">
+                                <td className="p-2 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary">
+                                  {e.customer}
+                                </td>
+                                <td className="p-2 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
+                                  {e.customInvoiceNo}
+                                </td>
+                                <td className="p-2 border-r border-divider whitespace-nowrap">{e.createdAt ? formatToDDMMYYYY(new Date(e.createdAt)) : '-'}</td>
+                                <td className="p-2 border-r border-divider whitespace-nowrap">{e.pod || '-'}</td>
+
+                                <td className="p-2 border-r border-divider text-right">{e.invoicedPallets}</td>
+                                <td className="p-2 border-r border-divider text-right">{e.invoicedBatteries.toLocaleString()}</td>
+                                <td className="p-2 border-r border-divider text-right">{e.invoicedGrossWeightKg.toLocaleString()}</td>
+
+                                <td className="p-2 border-r border-divider text-right bg-emerald-50/30 font-bold text-emerald-800">
                                   <InlineCell
-                                    value={e.lastPltRecdDate}
-                                    align="center"
+                                    value={e.actualReceivedPallets}
+                                    type="number"
+                                    align="right"
+                                    onChange={(val) => {
+                                      const v = parseInt(val, 10) || 0;
+                                      addOrUpdateCFSEntry({ ...e, actualReceivedPallets: v });
+                                      reloadEntries();
+                                    }}
+                                  />
+                                </td>
+                                <td className="p-2 border-r border-divider text-right bg-emerald-50/30 font-bold text-emerald-800">
+                                  <InlineCell
+                                    value={e.actualReceivedBatteries}
+                                    type="number"
+                                    align="right"
+                                    onChange={(val) => {
+                                      const v = parseInt(val, 10) || 0;
+                                      addOrUpdateCFSEntry({ ...e, actualReceivedBatteries: v });
+                                      reloadEntries();
+                                    }}
+                                  />
+                                </td>
+
+                                <td className="p-2 border-r border-divider text-right bg-rose-50/30 font-bold text-rose-700">
+                                  {e.shortfallPallets || 0}
+                                </td>
+                                <td className="p-2 border-r border-divider text-right bg-rose-50/30 font-bold text-rose-700">
+                                  {e.shortfallBatteries || 0}
+                                </td>
+
+                                <td className="p-2 border-r border-divider whitespace-nowrap">
+                                  <InlineCell
+                                    value={e.lastPltRecdDate || e.cartingInDate}
                                     onChange={(val) => {
                                       addOrUpdateCFSEntry({ ...e, lastPltRecdDate: val });
                                       reloadEntries();
                                     }}
                                   />
                                 </td>
-                                <td className="px-1 py-1.5 border-r border-divider/60 text-center">
-                                  <InlineCell
-                                    value={e.secondVehicleDate || ''}
-                                    align="center"
-                                    onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, secondVehicleDate: val });
-                                      reloadEntries();
-                                    }}
-                                  />
+
+                                <td className="p-2 border-r border-divider text-[10px] max-w-[200px] truncate" title={Array.from(new Set((e.pallets || []).map((p) => p.model))).filter(Boolean).join(', ')}>
+                                  {Array.from(new Set((e.pallets || []).map((p) => p.model))).filter(Boolean).join(', ') || '-'}
                                 </td>
-                                <td className="px-1 py-1.5 border-r border-divider/60">
-                                  <InlineCell
-                                    value={e.secondVehicleNo || ''}
-                                    onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, secondVehicleNo: val.toUpperCase() });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
-                                <td className="px-3 py-1.5 text-center">
+
+                                <td className="p-2 text-center whitespace-nowrap">
                                   <button
-                                    onClick={() => handleConfirmFullGateIn(e.id)}
-                                    className="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 transition-colors cursor-pointer"
-                                    title="Confirm 100% Pallets Received"
+                                    onClick={() => {
+                                      setExpandedCartingInvoiceIds((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(e.id)) next.delete(e.id);
+                                        else next.add(e.id);
+                                        return next;
+                                      });
+                                    }}
+                                    className="px-2 py-0.5 rounded bg-surface hover:bg-surface-secondary border border-divider text-brand-primary font-semibold text-[11px] cursor-pointer"
                                   >
-                                    Confirm Gate-In
+                                    {isExpanded ? 'Hide' : `View (${e.pallets?.length || 0})`}
                                   </button>
                                 </td>
                               </tr>
 
-                              {/* Expandable Pallet Verification Rows */}
-                              {isExpanded && hasPallets && (
-                                <tr className="bg-surface-secondary/80">
-                                  <td colSpan={15} className="p-3 pl-10 border-b border-divider">
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={17} className="p-3 bg-surface-secondary/50 border-b border-divider">
                                     <div className="space-y-2">
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span className="font-mono text-brand-primary uppercase font-bold text-[11px]">
-                                          Pallet Verification Log ({e.pallets.length} Units)
-                                        </span>
-                                        <span className="text-content-muted text-[10px]">
-                                          Click QTY REC to adjust partial deliveries
-                                        </span>
+                                      <div className="text-xs font-semibold text-content-primary flex items-center justify-between">
+                                        <span>Gate-In Pallets for {e.customInvoiceNo}:</span>
+                                        <span className="text-content-muted text-[11px]">Click quantity to edit received counts</span>
                                       </div>
 
-                                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                                        {e.pallets.map((p) => {
-                                          const isShort = (p.receivedBatteries || 0) < p.invoicedBatteries;
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                                        {(e.pallets || []).map((p) => {
                                           return (
                                             <div
                                               key={p.id}
-                                              className={`p-2 rounded-lg border text-xs ${
-                                                isShort
-                                                  ? 'bg-rose-50/60 border-rose-300'
-                                                  : 'bg-surface border-divider'
-                                              }`}
+                                              className="p-2 rounded-lg bg-surface border border-divider shadow-xs space-y-1 text-xs"
                                             >
-                                              <div className="flex justify-between font-mono font-bold">
-                                                <span className="text-brand-primary">PLT #{p.palletNumber}</span>
-                                                <span className="text-[10px] text-content-secondary truncate max-w-[60px]">{p.model}</span>
+                                              <div className="flex items-center justify-between">
+                                                <span className="font-bold text-brand-primary">PLT #{p.palletNumber}</span>
+                                                <span className="text-[10px] px-1 py-0.2 rounded bg-surface-secondary text-content-secondary truncate max-w-[60px]">{p.model}</span>
                                               </div>
-                                              <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
-                                                <span className="text-content-secondary">ACTUAL:</span>
-                                                <span className="text-content-primary font-semibold">{p.invoicedBatteries}</span>
+                                              <div className="flex items-center justify-between text-[11px]">
+                                                <span className="text-content-secondary">INVOICED:</span>
+                                                <strong className="text-content-primary">{p.invoicedBatteries}u</strong>
                                               </div>
                                               <div className="mt-0.5 flex items-center justify-between text-[11px] font-mono">
                                                 <span className="text-content-secondary">QTY REC:</span>
@@ -2182,25 +1578,20 @@ export function WarehouseInventoryHub({
         )}
 
         {/* =====================================================================
-            VIEW MODE D: FOCUSED 100% FULL-WIDTH TILE 3 — INVENTORY LOGS
+            SECTION 3: INVENTORY LOGS (CUSTOMER-WISE AUDIT TRAIL)
             ===================================================================== */}
-        {tileViewMode === 'logs' && (
+        {activeSection === 'logs' && (
           <div className="space-y-4 pb-20">
-            {/* Tile 3 Header & Filter Strip */}
+            {/* Logs Header Strip */}
             <div className="bg-surface border border-divider rounded-xl p-3 sm:p-4 shadow-xs space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-sm">
-                    3
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-bold text-content-primary uppercase">
-                      Tile 3: Outgoing Stock History &amp; Customer-Wise Movement Ledger
-                    </h2>
-                    <p className="text-[11px] text-content-secondary">
-                      Chronological audit trail of outgoing dispatches (Stock-Out) and factory receipts (Stock-In)
-                    </p>
-                  </div>
+                <div>
+                  <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
+                    Inventory Movement Logs
+                  </h2>
+                  <p className="text-xs text-content-secondary mt-0.5">
+                    Chronological audit trail of outgoing dispatches (Stock-Out) and factory receipts (Stock-In)
+                  </p>
                 </div>
 
                 <div className="flex items-center space-x-2">
@@ -2210,21 +1601,12 @@ export function WarehouseInventoryHub({
                     title="Export movement logs to Excel"
                   >
                     <Download className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Export Movement Logs (.xlsx)</span>
-                  </button>
-
-                  <button
-                    onClick={() => setTileViewMode('grid')}
-                    className="px-2.5 py-1.5 rounded-lg bg-surface-secondary hover:bg-surface border border-divider font-medium text-content-primary text-xs flex items-center space-x-1 cursor-pointer"
-                    title="Restore 3-tile grid"
-                  >
-                    <Minimize2 className="w-3.5 h-3.5" />
-                    <span>Restore Grid</span>
+                    <span>Export Logs (.xlsx)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Customer-Wise Outgoing Summary Strip */}
+              {/* Customer Outgoing Summary Strip */}
               <div className="pt-2 border-t border-divider/60">
                 <div className="text-[10px] uppercase font-mono tracking-wider text-content-secondary font-bold mb-1.5">
                   Customer Outgoing Dispatched Summary (Stock-Out):
@@ -2250,151 +1632,106 @@ export function WarehouseInventoryHub({
                 </div>
               </div>
 
-              {/* Log Filter Controls */}
-              <div className="pt-2 border-t border-divider/60 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs font-mono">
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-content-secondary font-sans mr-1 font-medium">Movement:</span>
-                  {(['ALL', 'STOCK_OUT', 'STOCK_IN'] as const).map((dir) => (
-                    <button
-                      key={dir}
-                      onClick={() => setLogDirectionFilter(dir)}
-                      className={`px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer ${
-                        logDirectionFilter === dir
-                          ? 'bg-brand-primary text-white font-bold'
-                          : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
-                      }`}
-                    >
-                      {dir === 'ALL' ? 'All Movements' : dir === 'STOCK_OUT' ? 'Outgoing (Stock-Out) Only' : 'Incoming (Gate-In) Only'}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <span className="text-content-secondary font-sans font-medium">Date Range:</span>
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="px-2 py-0.5 bg-surface border border-divider rounded text-xs text-content-primary focus:outline-none"
-                    title="From Date"
-                  />
-                  <span>—</span>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="px-2 py-0.5 bg-surface border border-divider rounded text-xs text-content-primary focus:outline-none"
-                    title="To Date"
-                  />
-                  {(dateFrom || dateTo) && (
-                    <button
-                      onClick={() => {
-                        setDateFrom('');
-                        setDateTo('');
-                      }}
-                      className="text-xs text-rose-600 hover:underline px-1 font-sans cursor-pointer"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
+              {/* Direction Filter Buttons */}
+              <div className="pt-2 border-t border-divider/60 flex items-center space-x-1.5 text-xs font-mono">
+                <span className="text-content-secondary font-sans mr-1 font-medium">Movement:</span>
+                {(['ALL', 'STOCK_OUT', 'STOCK_IN'] as const).map((dir) => (
+                  <button
+                    key={dir}
+                    onClick={() => setLogDirectionFilter(dir)}
+                    className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer font-sans text-xs ${
+                      logDirectionFilter === dir
+                        ? 'bg-brand-primary text-white font-semibold'
+                        : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
+                    }`}
+                  >
+                    {dir === 'ALL' ? 'All Movements' : dir === 'STOCK_OUT' ? 'Stock-Out (Dispatched)' : 'Stock-In (Gate-In)'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Chronological Movement Ledger Table */}
-            <div className="bg-surface border border-divider rounded-xl overflow-hidden shadow-xs">
-              <div className="overflow-x-auto max-h-[calc(100vh-270px)]">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur shadow-2xs">
-                    <tr className="text-[11px] font-semibold text-content-primary border-b border-divider">
-                      <th className="px-3 py-2 border-r border-divider/60 font-mono text-center">Movement Date</th>
-                      <th className="px-3 py-2 border-r border-divider/60 text-center">Direction Badge</th>
-                      <th className="px-3 py-2 border-r border-divider/60">Customer / Consignee</th>
-                      <th className="px-3 py-2 border-r border-divider/60 font-mono">Custom Invoice No</th>
-                      <th className="px-3 py-2 border-r border-divider/60">Model / Description</th>
-                      <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60">Pallets</th>
-                      <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60">Batteries</th>
-                      <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60">Gross Weight</th>
-                      <th className="px-2.5 py-2 font-mono border-r border-divider/60">Container No</th>
-                      <th className="px-2.5 py-2 font-mono border-r border-divider/60">Seal No</th>
-                      <th className="px-2.5 py-2 font-mono border-r border-divider/60">Shipping Bill</th>
-                      <th className="px-2.5 py-2 font-mono border-r border-divider/60">Vehicle / Truck</th>
-                      <th className="px-2.5 py-2 text-right font-mono border-r border-divider/60">Remaining Balance</th>
-                      <th className="px-3 py-2">Remarks</th>
+            {/* Movement Logs Table */}
+            <div className="bg-surface border border-divider rounded-xl shadow-xs overflow-hidden">
+              <div className="overflow-x-auto max-h-[700px]">
+                <table className="w-full text-xs font-mono border-collapse select-text">
+                  <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
+                    <tr className="text-[11px] font-semibold text-content-primary border-b border-divider text-left">
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Date</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Direction</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap min-w-[140px]">Customer</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Invoice No</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Battery / Model</th>
+                      <th className="p-2.5 border-r border-divider text-right whitespace-nowrap">Pallets</th>
+                      <th className="p-2.5 border-r border-divider text-right whitespace-nowrap">Units</th>
+                      <th className="p-2.5 border-r border-divider text-right whitespace-nowrap">Gross kg</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Container No</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Seal No</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Shipping Bill</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Vehicle No</th>
+                      <th className="p-2.5 text-right whitespace-nowrap">Remaining Balance</th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-divider/60">
                     {filteredMovementRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={14} className="px-4 py-16 text-center text-content-muted">
-                          No inventory movement records match criteria.
+                        <td colSpan={13} className="p-12 text-center text-content-muted">
+                          <History className="w-8 h-8 mx-auto mb-1 opacity-50" />
+                          <p>No inventory movements recorded matching criteria.</p>
                         </td>
                       </tr>
                     ) : (
                       filteredMovementRecords.map((r) => {
-                        const isOut = r.direction === 'STOCK_OUT';
+                        const isStockOut = r.direction === 'STOCK_OUT';
                         return (
-                          <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-3 py-2 font-mono text-center text-content-primary border-r border-divider/60">
+                          <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap font-medium text-content-primary">
                               {r.movementDate}
                             </td>
-                            <td className="px-3 py-2 text-center border-r border-divider/60">
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap">
                               <span
-                                className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold ${
-                                  isOut
-                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
-                                    : 'bg-amber-50 text-amber-800 border border-amber-300'
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono tracking-wider ${
+                                  isStockOut
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
                                 }`}
                               >
-                                {isOut ? 'STOCK-OUT • DISPATCHED' : 'STOCK-IN • GATE RECEIPT'}
+                                {isStockOut ? 'STOCK-OUT' : 'STOCK-IN'}
                               </span>
                             </td>
-                            <td className="px-3 py-2 font-medium text-content-primary border-r border-divider/60 truncate max-w-[140px]">
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary max-w-[150px] truncate" title={r.customer}>
                               {r.customer}
                             </td>
-                            <td className="px-3 py-2 font-mono font-bold text-brand-primary border-r border-divider/60">
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
                               {r.customInvoiceNo}
                             </td>
-                            <td className="px-3 py-2 text-content-secondary border-r border-divider/60 truncate max-w-[150px]">
-                              {r.modelDescription}
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary max-w-[160px] truncate" title={r.modelDescription}>
+                              {r.modelDescription || '-'}
                             </td>
-                            <td className="px-2.5 py-2 text-right font-mono font-bold border-r border-divider/60">
-                              <span className={isOut ? 'text-emerald-700' : 'text-blue-700'}>{r.pallets} Plt</span>
+                            <td className="p-2.5 border-r border-divider text-right font-bold text-content-primary">
+                              {r.pallets}
                             </td>
-                            <td className="px-2.5 py-2 text-right font-mono border-r border-divider/60">
-                              {r.batteries.toLocaleString()}u
+                            <td className="p-2.5 border-r border-divider text-right text-content-primary">
+                              {r.batteries.toLocaleString()}
                             </td>
-                            <td className="px-2.5 py-2 text-right font-mono text-content-secondary border-r border-divider/60">
-                              {r.grossWeightKg ? `${r.grossWeightKg.toLocaleString()} kg` : '-'}
+                            <td className="p-2.5 border-r border-divider text-right text-content-secondary">
+                              {(r.grossWeightKg || 0).toLocaleString()}
                             </td>
-                            <td className="px-2.5 py-2 font-mono font-semibold text-content-primary border-r border-divider/60">
-                              {r.containerNo && r.containerNo !== '-' ? (
-                                <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                  {r.containerNo}
-                                </span>
-                              ) : (
-                                '-'
-                              )}
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap font-bold text-blue-700">
+                              {r.containerNo || '-'}
                             </td>
-                            <td className="px-2.5 py-2 font-mono text-content-secondary border-r border-divider/60">
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary">
                               {r.sealNo || '-'}
                             </td>
-                            <td className="px-2.5 py-2 font-mono text-content-secondary border-r border-divider/60">
-                              {r.shippingBillNo && r.shippingBillNo !== '-' ? (
-                                <span>{r.shippingBillNo} {r.shippingBillDate && r.shippingBillDate !== '-' ? `(${r.shippingBillDate})` : ''}</span>
-                              ) : (
-                                '-'
-                              )}
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary">
+                              {r.shippingBillNo ? `${r.shippingBillNo} (${r.shippingBillDate || '-'})` : '-'}
                             </td>
-                            <td className="px-2.5 py-2 font-mono text-content-secondary border-r border-divider/60">
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary">
                               {r.vehicleNo || '-'}
                             </td>
-                            <td className="px-2.5 py-2 text-right font-mono font-bold text-amber-700 border-r border-divider/60">
-                              {r.remainingBalancePallets} Plt ({r.remainingBalanceBatteries}u)
-                            </td>
-                            <td className="px-3 py-2 text-content-muted text-[11px] truncate max-w-[120px]">
-                              {r.remarks || '-'}
+                            <td className="p-2.5 text-right whitespace-nowrap font-bold text-emerald-700">
+                              {r.remainingBalancePallets} Plt / {r.remainingBalanceBatteries}u
                             </td>
                           </tr>
                         );
@@ -2406,7 +1743,7 @@ export function WarehouseInventoryHub({
             </div>
           </div>
         )}
-      </div>
+      </main>
 
       {/* Stuffing & Dispatch Modal */}
       {showDispatchModal && (
@@ -2415,7 +1752,7 @@ export function WarehouseInventoryHub({
             <div className="flex items-center justify-between pb-2 border-b border-divider">
               <div className="flex items-center space-x-2 text-sm font-bold text-content-primary">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Confirm Stuffing &amp; Stock-Out Dispatch</span>
+                <span>Confirm Dispatch (Stock-Out)</span>
               </div>
               <button
                 onClick={() => setShowDispatchModal(false)}
@@ -2426,7 +1763,7 @@ export function WarehouseInventoryHub({
             </div>
 
             <p className="text-xs text-content-secondary leading-relaxed">
-              Deduct <strong className="font-mono text-content-primary font-bold">{selectedPalletsStats.count} pallets</strong> ({selectedPalletsStats.batteries} batteries) from CFS floor balance for <strong className="text-content-primary">{selectedDispatchCustomer}</strong>.
+              Deduct <strong className="font-mono text-content-primary font-bold">{selectedPalletsStats.count} pallets</strong> ({selectedPalletsStats.batteries} units) from warehouse balance for <strong className="text-content-primary">{selectedDispatchCustomer}</strong>.
             </p>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
@@ -2486,7 +1823,7 @@ export function WarehouseInventoryHub({
               </div>
 
               <div>
-                <label className="block text-content-secondary mb-1">Port Gate-in Date</label>
+                <label className="block text-content-secondary mb-1">Port Gate-In Date</label>
                 <input
                   type="text"
                   value={dispatchDetails.portGateInDate}
