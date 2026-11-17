@@ -517,30 +517,42 @@ export function WorkspacePage({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-divider">
-                        {shipmentJson.pallets.map((p, idx) => (
-                          <tr key={p.palletNumber || idx} className="hover:bg-surface-secondary text-[11px]">
-                            <td className="px-4 py-2 text-brand-primary font-bold">{p.palletNumber}</td>
-                            <td className="px-4 py-2 text-content-primary">
-                              <div className="flex items-center space-x-1.5 flex-wrap">
-                                <span>{p.modelCode || '—'}</span>
-                                {p.brand && (
-                                  <span className="font-mono text-[10px] font-medium tracking-tight px-1.5 py-0.2 rounded border bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700">
-                                    {p.brand}
-                                  </span>
-                                )}
-                                {p.invoiceNumber && (
-                                  <span className="font-mono text-[10px] font-medium tracking-tight px-1.5 py-0.2 rounded border bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800">
-                                    {p.invoiceNumber.toUpperCase().startsWith('INV') ? p.invoiceNumber : `INV: ${p.invoiceNumber}`}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2 text-right text-content-primary">{p.boxCount}</td>
-                            <td className="px-4 py-2 text-right text-content-primary">{p.grossWeightKg.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right text-content-primary">{p.netWeightKg.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-content-muted truncate max-w-xs">{p.sourceFile || '—'}</td>
-                          </tr>
-                        ))}
+                        {shipmentJson.pallets.map((p, idx) => {
+                          const pBrand = (p.brand || shipmentJson.brandName || '').trim();
+                          const pInvoice = (
+                            p.invoiceNumber ||
+                            (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length === 1 ? shipmentJson.invoiceNumbers[0] : undefined) ||
+                            (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length > 1 && p.sourceFile
+                              ? shipmentJson.invoiceNumbers.find((inv) => p.sourceFile?.toLowerCase().includes(inv.toLowerCase()))
+                              : undefined) ||
+                            ''
+                          ).trim();
+
+                          return (
+                            <tr key={p.palletNumber || idx} className="hover:bg-surface-secondary text-[11px]">
+                              <td className="px-4 py-2 text-brand-primary font-bold">{p.palletNumber}</td>
+                              <td className="px-4 py-2 text-content-primary">
+                                <div className="flex items-center space-x-1.5 flex-wrap">
+                                  <span>{p.modelCode || '—'}</span>
+                                  {pBrand && (
+                                    <span className="font-mono text-[10px] font-medium tracking-tight px-1.5 py-0.2 rounded border bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700">
+                                      {pBrand}
+                                    </span>
+                                  )}
+                                  {pInvoice && (
+                                    <span className="font-mono text-[10px] font-medium tracking-tight px-1.5 py-0.2 rounded border bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800">
+                                      {pInvoice.toUpperCase().startsWith('INV') ? pInvoice : `INV: ${pInvoice}`}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-2 text-right text-content-primary">{p.boxCount}</td>
+                              <td className="px-4 py-2 text-right text-content-primary">{p.grossWeightKg.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-right text-content-primary">{p.netWeightKg.toLocaleString()}</td>
+                              <td className="px-4 py-2 text-content-muted truncate max-w-xs">{p.sourceFile || '—'}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   )}

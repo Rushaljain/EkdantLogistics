@@ -46,7 +46,24 @@ export function ContainerBayWorkspace({
   registerSyncHandler
 }: ContainerBayWorkspaceProps): React.JSX.Element {
   // Hard-locked 20' GP container type and default tare
-  const initialPallets = shipmentJson.pallets || [];
+  const initialPallets: ExtractedPallet[] = useMemo(() => {
+    return (shipmentJson.pallets || []).map((p) => {
+      const pBrand = (p.brand || shipmentJson.brandName || '').trim();
+      const pInv = (
+        p.invoiceNumber ||
+        (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length === 1 ? shipmentJson.invoiceNumbers[0] : undefined) ||
+        (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length > 1 && p.sourceFile
+          ? shipmentJson.invoiceNumbers.find((inv) => p.sourceFile?.toLowerCase().includes(inv.toLowerCase()))
+          : undefined) ||
+        ''
+      ).trim();
+      return {
+        ...p,
+        brand: pBrand || undefined,
+        invoiceNumber: pInv || undefined
+      };
+    });
+  }, [shipmentJson.pallets, shipmentJson.brandName, shipmentJson.invoiceNumbers]);
 
   // Deterministic 20' GP multi-container allocation (Max 22 Pallets / 25,000 kg)
   const initialContainers: ContainerItem[] = useMemo(() => {
@@ -399,8 +416,14 @@ export function ContainerBayWorkspace({
     setPalletForm({
       palletNumber: target.palletNumber,
       modelCode: target.modelCode,
-      brand: target.brand || '',
-      invoiceNumber: target.invoiceNumber || '',
+      brand: target.brand || shipmentJson.brandName || '',
+      invoiceNumber:
+        target.invoiceNumber ||
+        (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length === 1 ? shipmentJson.invoiceNumbers[0] : '') ||
+        (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length > 1 && target.sourceFile
+          ? shipmentJson.invoiceNumbers.find((inv) => target.sourceFile?.toLowerCase().includes(inv.toLowerCase())) || ''
+          : '') ||
+        '',
       boxCount: target.boxCount,
       grossWeightKg: target.grossWeightKg,
       netWeightKg: target.netWeightKg
@@ -720,6 +743,16 @@ export function ContainerBayWorkspace({
                   ? containers.find((c) => c.id === assignedContId)
                   : null;
 
+                const cardBrand = (p.brand || shipmentJson.brandName || '').trim();
+                const cardInvoice = (
+                  p.invoiceNumber ||
+                  (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length === 1 ? shipmentJson.invoiceNumbers[0] : undefined) ||
+                  (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length > 1 && p.sourceFile
+                    ? shipmentJson.invoiceNumbers.find((inv) => p.sourceFile?.toLowerCase().includes(inv.toLowerCase()))
+                    : undefined) ||
+                  ''
+                ).trim();
+
                 return (
                   <div
                     key={p.palletNumber || idx}
@@ -768,20 +801,20 @@ export function ContainerBayWorkspace({
                             {p.modelCode}
                           </span>
                         )}
-                        {p.brand && (
+                        {cardBrand && (
                           <span
                             className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200/90 dark:border-slate-700 truncate max-w-[130px] shrink-0"
-                            title={`Brand: ${p.brand}`}
+                            title={`Brand: ${cardBrand}`}
                           >
-                            {p.brand}
+                            {cardBrand}
                           </span>
                         )}
-                        {p.invoiceNumber && (
+                        {cardInvoice && (
                           <span
                             className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/70 dark:border-indigo-800/60 truncate max-w-[130px] shrink-0"
-                            title={`Invoice: ${p.invoiceNumber}`}
+                            title={`Invoice: ${cardInvoice}`}
                           >
-                            {p.invoiceNumber.toUpperCase().startsWith('INV') ? p.invoiceNumber : `INV: ${p.invoiceNumber}`}
+                            {cardInvoice.toUpperCase().startsWith('INV') ? cardInvoice : `INV: ${cardInvoice}`}
                           </span>
                         )}
                         {(() => {
