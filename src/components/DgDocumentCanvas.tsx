@@ -294,14 +294,43 @@ export function DgDocumentCanvas({
           ========================================================================= */}
       {isAnlGrid ? (
         <div className="bg-white text-slate-900 shadow-2xl border-2 border-slate-900 rounded-sm p-6 sm:p-8 font-sans">
-          {/* Document Header */}
-          <div className="border-b-2 border-slate-900 pb-2 mb-3 text-center">
-            <h1 className="text-base sm:text-lg font-black uppercase tracking-tight text-slate-950">
-              IMO DANGEROUS GOODS DECLARATION
-            </h1>
-            <p className="text-[8.5px] text-slate-700 font-medium max-w-2xl mx-auto leading-tight mt-1">
-              This form meets the requirements of SOLAS 74 chapter VII, regulation 5 MARPOL 73/78 Annex III, regulation 4 and the IMDG Code, General Introduction, section 9.
-            </p>
+          {/* Document Header with Carrier Branding */}
+          <div className="border-b-2 border-slate-900 pb-3 mb-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex-shrink-0 flex items-center justify-center min-w-[120px]">
+              {isCmaCgm ? (
+                <img
+                  src="/images/carriers/cma_cgm_logo.png"
+                  alt="CMA CGM"
+                  className="h-10 sm:h-12 w-auto object-contain"
+                  onError={(e) => {
+                    // Fallback to text logo if image fails
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : isKmtc ? (
+                <img
+                  src="/images/carriers/kmtc_logo.png"
+                  alt="KMTC"
+                  className="h-9 sm:h-11 w-auto object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="text-xs font-black tracking-widest text-slate-800">CMA CGM / ANL</div>
+              )}
+            </div>
+            <div className="flex-1 text-center">
+              <h1 className="text-base sm:text-lg font-black uppercase tracking-tight text-slate-950">
+                IMO DANGEROUS GOODS DECLARATION
+              </h1>
+              <p className="text-[8px] sm:text-[8.5px] text-slate-700 font-medium max-w-2xl mx-auto leading-tight mt-1">
+                This form meets the requirements of SOLAS 74 chapter VII, regulation 5 MARPOL 73/78 Annex III, regulation 4 and the IMDG Code, General Introduction, section 9.
+              </p>
+            </div>
+            <div className="hidden sm:block min-w-[100px] text-right text-[9px] font-mono text-slate-500 font-bold">
+              {activeTemplateId}
+            </div>
           </div>
 
           <div className="border border-slate-900 divide-y divide-slate-900 text-[10px]">
@@ -398,10 +427,16 @@ export function DgDocumentCanvas({
                     value={getVal('box_22_place_date', activeShipment.dgDeclarationPlaceAndDate || '')}
                     onChange={(val) => handleUpdate('box_22_place_date', val, 'dgDeclarationPlaceAndDate')}
                   />
-                  <div className="p-2 flex flex-col justify-between">
+                  <div className="p-2 flex flex-col justify-between relative min-h-[56px]">
                     <span className="text-[7.5px] font-bold text-slate-700 uppercase">Signature on Behalf of Packer</span>
-                    <div className="border-t border-dotted border-slate-400 pt-1 text-[7.5px] text-slate-400">
-                      Authorized Signature
+                    <div className="flex items-center space-x-2 pt-1">
+                      <img
+                        src="/images/carriers/signatory_stamp.jpg"
+                        alt="Signature Stamp"
+                        className="h-9 w-auto object-contain mix-blend-multiply opacity-90"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                      <span className="text-[7px] text-slate-500 font-mono italic">Authorized Signatory</span>
                     </div>
                   </div>
                 </div>
@@ -459,32 +494,45 @@ export function DgDocumentCanvas({
               />
             </div>
 
-            {/* 3-Column KMTC Cargo Table */}
+            {/* 3-Column KMTC/CMA Cargo Table */}
             <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-slate-900">
-              {/* Col 1: Qty, Type, and Kind of Packages (col-span-3) */}
-              <div className="md:col-span-3 p-2 bg-slate-50 flex flex-col justify-between">
+              {/* Col 1: Qty., Type, and Kind of Packages (col-span-3) */}
+              <div className="md:col-span-3 p-2 bg-slate-50 flex flex-col justify-between space-y-2">
                 <div>
-                  <span className="text-[8px] font-bold text-slate-800 uppercase tracking-wider block mb-2">
+                  <span className="text-[8px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
                     Qty., Type, and Kind of Packages
                   </span>
+                  <div className="inline-block bg-slate-900 text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-sm mb-2">
+                    {activeShipment.containerType || "1x20'FT"}
+                  </div>
                   <div className="space-y-1.5 font-mono text-[9px] text-slate-900 font-semibold">
-                    <div className="font-bold">NO OF PACKAGES</div>
-                    <div>OUTER PACKAGES :- {activePallets} PALLETS</div>
-                    <div>INNER PACKING :- {activeBoxes} BOXES</div>
+                    <div className="text-[8px] text-slate-500 font-bold uppercase">OUTER PACKAGES :-</div>
+                    <div className="pl-1.5 border-l-2 border-slate-400">
+                      {activePallets > 0 ? `${activeBoxes} FIBREBOARD BOXES IN ${activePallets} PALLETS` : `${activeBoxes} PACKAGES`}
+                    </div>
+                    <div className="text-[8px] text-slate-500 font-bold uppercase mt-2">INNER PACKING :-</div>
+                    <div className="pl-1.5 border-l-2 border-slate-400 text-slate-700">
+                      EACH BOX HAS 1 BATTERY ({activeBoxes} BOXES)
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Col 2: Description (Proper Shipping Name, Class, UN, Packing Group) (col-span-6) */}
-              <div className="md:col-span-6 p-2 bg-white flex flex-col space-y-1">
-                <span className="text-[8px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
-                  Description (Proper Shipping Name, Class, UN, Packing Group)
-                </span>
+              <div className="md:col-span-6 p-2 bg-white flex flex-col space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[8px] font-bold text-slate-800 uppercase tracking-wider">
+                    Description (Proper Shipping Name, Class, UN, Packing Group)
+                  </span>
+                  <span className="text-[7.5px] font-bold text-slate-400 uppercase tracking-wide">
+                    IMDG CODE REQUISITE
+                  </span>
+                </div>
                 <textarea
-                  rows={10}
+                  rows={9}
                   value={getVal('box_14_shipping_marks', cargoBlockText)}
                   onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value, 'shippingMarks')}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-[9px] font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-tight"
+                  className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-[9px] font-mono font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed tracking-tight"
                 />
               </div>
 
@@ -495,8 +543,14 @@ export function DgDocumentCanvas({
                     Gross &amp; Net Weights
                   </span>
                   <div className="space-y-2 font-mono text-[9px] text-slate-900 font-bold">
-                    <div>GR WT : {activeGrossWeight.toLocaleString()} KGS</div>
-                    <div>NT WT : {activeNetWeight.toLocaleString()} KGS</div>
+                    <div className="bg-white border border-slate-200 p-1.5 rounded shadow-xs">
+                      <span className="text-slate-500 text-[8px] block font-semibold">GROSS MASS:</span>
+                      GR WT : {activeGrossWeight.toLocaleString()} KGS
+                    </div>
+                    <div className="bg-white border border-slate-200 p-1.5 rounded shadow-xs">
+                      <span className="text-slate-500 text-[8px] block font-semibold">NET MASS:</span>
+                      NT WT : {activeNetWeight.toLocaleString()} KGS
+                    </div>
                   </div>
                 </div>
                 <div className="mt-4 pt-2 border-t border-slate-300">
@@ -538,10 +592,16 @@ export function DgDocumentCanvas({
                     value={getVal('box_22_place_date', activeShipment.dgDeclarationPlaceAndDate || '')}
                     onChange={(val) => handleUpdate('box_22_place_date', val, 'dgDeclarationPlaceAndDate')}
                   />
-                  <div className="p-2 flex flex-col justify-between">
+                  <div className="p-2 flex flex-col justify-between relative min-h-[56px]">
                     <span className="text-[7.5px] font-bold text-slate-700 uppercase">Signature on Behalf of Shipper</span>
-                    <div className="border-t border-dotted border-slate-400 pt-1 text-[7.5px] text-slate-400">
-                      Authorized Signature
+                    <div className="flex items-center space-x-2 pt-1">
+                      <img
+                        src="/images/carriers/signatory_stamp.jpg"
+                        alt="Signature Stamp"
+                        className="h-9 w-auto object-contain mix-blend-multiply opacity-90"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                      <span className="text-[7px] text-slate-500 font-mono italic">Authorized Signatory</span>
                     </div>
                   </div>
                 </div>

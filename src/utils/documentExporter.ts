@@ -1281,7 +1281,10 @@ export async function exportManifestToDocx(
         const carrier = val('box_7_carrier', shipment.carrierName || carrierDefault);
         const declarant = val(
           'box_22_declarant_details',
-          shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY'
+          val(
+            'box_20_container_packing_certificate',
+            shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY'
+          )
         );
         const placeDate = val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || '');
 
@@ -1295,7 +1298,7 @@ export async function exportManifestToDocx(
           consigneeAddressLine2: cLines.length > 2 ? cLines[2] : '',
           consigneeAddressLine3: cLines.length > 3 ? cLines.slice(3).join(', ') : '',
           shipperRef: val('box_4_shipper_reference', shipment.shipperReference || shipment.invoiceNumbers?.[0] || ''),
-          emergencyContact: val('box_21_emergency_contact', shipment.emergencyContactPhone || ''),
+          emergencyContact: val('box_21_emergency_contact', val('box_9_place_of_receipt', shipment.emergencyContactPhone || '')),
           carrierName: carrier,
           bookingNo: val('box_2_transport_document_number', shipment.bookingNumber || ''),
           declarantName: declarant,
@@ -1305,17 +1308,18 @@ export async function exportManifestToDocx(
             shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : ''
           ),
           portOfLoading: val('box_11_port_of_loading', shipment.portOfLoading || ''),
-          containerNo: val('box_19_container_number', shipment.containerNumber || ''),
+          containerNo: val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || '')),
           sealNo: val('box_16_seal_number', shipment.sealNumber || ''),
+          containerType: val('box_17_container_size_type', shipment.containerType || "1x20'FT"),
           portOfDischarge: val('box_12_port_of_discharge', shipment.portOfDischarge || ''),
           destination: val('box_13_destination', shipment.finalDestination || shipment.portOfDischarge || ''),
           unNumber: unNo,
-          grossMass: val('box_16_gross_mass', shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : ''),
-          netMass: val('box_17_net_mass', shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : ''),
+          grossMass: val('box_16_gross_mass_kg', val('box_16_gross_mass', shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '')),
+          netMass: val('box_17_net_mass_kg', val('box_17_net_mass', shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '')),
           properShippingName: psn,
           technicalName: techName,
-          outerPackages: `${outerCount} PALLETS`,
-          innerPackages: `${innerCount} BOXES`,
+          outerPackages: outerCount > 0 ? (innerCount > 0 ? `${innerCount} FIBREBOARD BOXES IN ${outerCount} PALLETS` : `${outerCount} PALLETS`) : '',
+          innerPackages: innerCount > 0 ? `${innerCount} BOXES` : 'EACH BOX HAS 1 BATTERY',
           hazardClass: imoClass,
           subsidiaryRisk: 'NA',
           packingGroup: pg,
