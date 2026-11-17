@@ -32,4 +32,7 @@ dist-ssr
 .vercel
 .env*
 
+Inputs/
+Files/
+
 CODEBASE_SNAPSHOT.md

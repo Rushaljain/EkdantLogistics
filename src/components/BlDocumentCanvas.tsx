@@ -392,56 +392,158 @@ export function BlDocumentCanvas({
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="px-2.5 py-1 font-bold text-slate-900">
-                      <div className="flex items-center space-x-1">
+                  {shipmentJson.containers && shipmentJson.containers.length > 1 ? (
+                    <>
+                      {shipmentJson.containers.map((cont, cIdx) => {
+                        const cPallets = cont.palletIndices && cont.palletIndices.length > 0
+                          ? cont.palletIndices.map((i) => shipmentJson.pallets[i]).filter(Boolean)
+                          : [];
+                        const cGross = cPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0);
+                        const cTare = cont.tareWeightKg || 2150;
+                        const cVgm = cGross + cTare;
+
+                        return (
+                          <tr key={cont.id} className="border-b border-slate-200 hover:bg-slate-50">
+                            <td className="px-2.5 py-1 font-bold text-slate-900">
+                              <div className="flex items-center space-x-1">
+                                <input
+                                  type="text"
+                                  value={cont.containerNumber || ''}
+                                  placeholder={`Container ${cIdx + 1} No`}
+                                  onChange={(e) => {
+                                    const val = e.target.value.toUpperCase();
+                                    const nextContainers = shipmentJson.containers!.map((item) =>
+                                      item.id === cont.id ? { ...item, containerNumber: val } : item
+                                    );
+                                    onUpdateShipment({
+                                      ...shipmentJson,
+                                      containers: nextContainers,
+                                      containerNumber: nextContainers.map((c) => c.containerNumber).filter(Boolean).join(', ')
+                                    });
+                                  }}
+                                  className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded font-mono text-[10px]"
+                                />
+                                <span className="text-slate-400 font-mono text-[9px]">/ SEAL:</span>
+                                <input
+                                  type="text"
+                                  value={cont.sealNumber || ''}
+                                  placeholder="Seal No"
+                                  onChange={(e) => {
+                                    const val = e.target.value.toUpperCase();
+                                    const nextContainers = shipmentJson.containers!.map((item) =>
+                                      item.id === cont.id ? { ...item, sealNumber: val } : item
+                                    );
+                                    onUpdateShipment({
+                                      ...shipmentJson,
+                                      containers: nextContainers,
+                                      sealNumber: nextContainers.map((c) => c.sealNumber).filter(Boolean).join(', ')
+                                    });
+                                  }}
+                                  className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded font-mono text-[10px]"
+                                />
+                              </div>
+                            </td>
+                            <td className="px-2.5 py-1 text-slate-700 font-mono text-[10px]">
+                              1x20&apos; GP
+                            </td>
+                            <td className="px-2.5 py-1 text-right font-semibold text-slate-800">
+                              <input
+                                type="text"
+                                value={cTare > 0 ? cTare : ''}
+                                placeholder="2150"
+                                onChange={(e) => {
+                                  const num = parseFloat(e.target.value.replace(/[^\d.]/g, '')) || 0;
+                                  const nextContainers = shipmentJson.containers!.map((item) =>
+                                    item.id === cont.id ? { ...item, tareWeightKg: num } : item
+                                  );
+                                  onUpdateShipment({
+                                    ...shipmentJson,
+                                    containers: nextContainers
+                                  });
+                                }}
+                                className="w-full text-right bg-transparent font-semibold text-slate-800 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded font-mono text-[10px]"
+                              />
+                            </td>
+                            <td className="px-2.5 py-1 text-right font-semibold text-slate-800 font-mono text-[10px]">
+                              {cGross.toLocaleString()} kg
+                            </td>
+                            <td className="px-2.5 py-1 text-right font-extrabold text-emerald-950 bg-emerald-50/70 font-mono text-[10px]">
+                              {cVgm.toLocaleString()} kg
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {/* Summary / Total Row */}
+                      <tr className="bg-slate-100 font-bold border-t-2 border-slate-900 text-[10px]">
+                        <td className="px-2.5 py-1.5 text-slate-900 uppercase">
+                          Total ({shipmentJson.containers.length} Containers)
+                        </td>
+                        <td className="px-2.5 py-1.5 text-slate-700">
+                          {shipmentJson.containers.length} x 20&apos; GP
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right text-slate-800">
+                          {shipmentJson.containers.reduce((s, c) => s + (c.tareWeightKg || 2150), 0).toLocaleString()} kg
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right text-slate-900 font-extrabold">
+                          {shipmentJson.grossWeightKg.toLocaleString()} kg
+                        </td>
+                        <td className="px-2.5 py-1.5 text-right font-extrabold text-emerald-950 bg-emerald-100">
+                          {(shipmentJson.grossWeightKg + shipmentJson.containers.reduce((s, c) => s + (c.tareWeightKg || 2150), 0)).toLocaleString()} kg
+                        </td>
+                      </tr>
+                    </>
+                  ) : (
+                    <tr>
+                      <td className="px-2.5 py-1 font-bold text-slate-900">
+                        <div className="flex items-center space-x-1">
+                          <input
+                            id="stage2-containerNumber"
+                            type="text"
+                            value={shipmentJson.containerNumber || ''}
+                            placeholder="Container No"
+                            onChange={(e) => handleUpdate('container_number', e.target.value, 'containerNumber')}
+                            className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                          />
+                          <span className="text-slate-400 font-mono text-[9px]">/ SEAL:</span>
+                          <input
+                            id="stage2-sealNumber"
+                            type="text"
+                            value={shipmentJson.sealNumber || ''}
+                            placeholder="Seal No"
+                            onChange={(e) => handleUpdate('seal_number', e.target.value, 'sealNumber')}
+                            className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                          />
+                        </div>
+                      </td>
+                      <td className="px-2.5 py-1 text-slate-700">
                         <input
-                          id="stage2-containerNumber"
                           type="text"
-                          value={shipmentJson.containerNumber || ''}
-                          placeholder="Container No"
-                          onChange={(e) => handleUpdate('container_number', e.target.value, 'containerNumber')}
-                          className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                          value={shipmentJson.containerType || "20' GP"}
+                          placeholder="Type"
+                          onChange={(e) => handleUpdate('container_type', e.target.value, 'containerType')}
+                          className="w-full bg-transparent text-slate-700 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
                         />
-                        <span className="text-slate-400 font-mono text-[9px]">/ SEAL:</span>
+                      </td>
+                      <td className="px-2.5 py-1 text-right font-semibold text-slate-800">
                         <input
-                          id="stage2-sealNumber"
+                          id="stage2-tareWeightKg"
                           type="text"
-                          value={shipmentJson.sealNumber || ''}
-                          placeholder="Seal No"
-                          onChange={(e) => handleUpdate('seal_number', e.target.value, 'sealNumber')}
-                          className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                          value={shipmentJson.tareWeightKg > 0 ? shipmentJson.tareWeightKg : ''}
+                          placeholder="Tare (kg)"
+                          onChange={(e) => {
+                            handleUpdate('tare_weight', e.target.value, 'tareWeightKg');
+                          }}
+                          className="w-full text-right bg-transparent font-semibold text-slate-800 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
                         />
-                      </div>
-                    </td>
-                    <td className="px-2.5 py-1 text-slate-700">
-                      <input
-                        type="text"
-                        value={shipmentJson.containerType || "20' GP"}
-                        placeholder="Type"
-                        onChange={(e) => handleUpdate('container_type', e.target.value, 'containerType')}
-                        className="w-full bg-transparent text-slate-700 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
-                      />
-                    </td>
-                    <td className="px-2.5 py-1 text-right font-semibold text-slate-800">
-                      <input
-                        id="stage2-tareWeightKg"
-                        type="text"
-                        value={shipmentJson.tareWeightKg > 0 ? shipmentJson.tareWeightKg : ''}
-                        placeholder="Tare (kg)"
-                        onChange={(e) => {
-                          handleUpdate('tare_weight', e.target.value, 'tareWeightKg');
-                        }}
-                        className="w-full text-right bg-transparent font-semibold text-slate-800 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
-                      />
-                    </td>
-                    <td className="px-2.5 py-1 text-right font-semibold text-slate-800">
-                      {shipmentJson.grossWeightKg.toLocaleString()} kg
-                    </td>
-                    <td className="px-2.5 py-1 text-right font-extrabold text-emerald-950 bg-emerald-50">
-                      {calculatedVgm > 0 ? `${calculatedVgm.toLocaleString()} kg` : '—'}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-2.5 py-1 text-right font-semibold text-slate-800">
+                        {shipmentJson.grossWeightKg.toLocaleString()} kg
+                      </td>
+                      <td className="px-2.5 py-1 text-right font-extrabold text-emerald-950 bg-emerald-50">
+                        {calculatedVgm > 0 ? `${calculatedVgm.toLocaleString()} kg` : '—'}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

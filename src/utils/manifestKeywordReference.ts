@@ -1,7 +1,7 @@
 // Ekdant Logistics - Global Semantic Keyword Reference & Cascading Fallback Engine
 // Pure generic semantic mappings across standard IMO DG Declaration and Ocean Bill of Lading formats
 
-import type { ExtractedShipmentJSON, FormatDocumentType, ExtractedPallet } from '../types/index.ts';
+import type { ExtractedShipmentJSON, FormatDocumentType, ExtractedPallet, ContainerAllocation } from '../types/index.ts';
 
 export interface KeywordRule {
   id: string;
@@ -158,6 +158,144 @@ export function synthesizePalletRanges(pallets: ExtractedPallet[]): string[] {
   }
 
   return allRanges;
+}
+
+/**
+ * Deterministic Sequential Bin-Packing for 20' GP Containers
+ * Hard constraints:
+ * - Maximum 22 Pallets per 20' GP container
+ * - Maximum 25,000 kg cargo gross payload per 20' GP container
+ * - Default Tare Weight: 2,150 kg per container
+ * Automatically closes the current container and spawns the next (Container 2, Container 3, ...)
+ * whenever adding a pallet would exceed either 22 pallets or 25,000 kg payload.
+ */
+export function autoAllocate20GPContainers(
+  pallets: ExtractedPallet[],
+  existingContainers?: ContainerAllocation[],
+  rawContainerNumber?: string,
+  rawSealNumber?: string
+): ContainerAllocation[] {
+  const rawConts = (rawContainerNumber || '')
+    .split(/[,/]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const rawSeals = (rawSealNumber || '')
+    .split(/[,/]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!pallets || pallets.length === 0) {
+    const existing = existingContainers?.[0];
+    return [
+      {
+        id: 'container-1',
+        label: 'Container 1',
+        containerNumber: existing?.containerNumber || rawConts[0] || '',
+        sealNumber: existing?.sealNumber || rawSeals[0] || '',
+        containerType: '20GP',
+        tareWeightKg: existing?.tareWeightKg || 2150,
+        bookingNumber: existing?.bookingNumber,
+        palletIndices: [],
+        maxPayloadKg: 25000,
+        maxPallets: 22,
+        pallets: [],
+        assignedPalletIds: [],
+        totalGrossWeightKg: 0,
+        totalNetWeightKg: 0,
+        totalPackages: 0,
+        totalPallets: 0,
+        isOverweight: false,
+        isOverCapacity: false,
+        hasDangerousGoods: false
+      }
+    ];
+  }
+
+  const result: ContainerAllocation[] = [];
+  let currentContIndex = 0;
+  let currentPalletIndices: number[] = [];
+  let currentPayloadGrossKg = 0;
+
+  for (let i = 0; i < pallets.length; i++) {
+    const p = pallets[i];
+    const palletGross = p.grossWeightKg || 0;
+
+    // Check if adding this pallet exceeds 22 pallets OR 25,000 kg payload
+    const wouldExceedCount = currentPalletIndices.length + 1 > 22;
+    const wouldExceedWeight = currentPayloadGrossKg + palletGross > 25000;
+
+    if (currentPalletIndices.length > 0 && (wouldExceedCount || wouldExceedWeight)) {
+      // Close current container
+      const existing = existingContainers?.[currentContIndex];
+      const cPallets = currentPalletIndices.map((idx) => pallets[idx]).filter(Boolean);
+      const gross = cPallets.reduce((s, cp) => s + (cp.grossWeightKg || 0), 0);
+      const net = cPallets.reduce((s, cp) => s + (cp.netWeightKg || 0), 0);
+      const boxes = cPallets.reduce((s, cp) => s + (cp.boxCount || 0), 0);
+
+      result.push({
+        id: `container-${currentContIndex + 1}`,
+        label: `Container ${currentContIndex + 1}`,
+        containerNumber: existing?.containerNumber || rawConts[currentContIndex] || '',
+        sealNumber: existing?.sealNumber || rawSeals[currentContIndex] || '',
+        containerType: '20GP',
+        tareWeightKg: existing?.tareWeightKg || 2150,
+        bookingNumber: existing?.bookingNumber,
+        palletIndices: currentPalletIndices,
+        maxPayloadKg: 25000,
+        maxPallets: 22,
+        pallets: cPallets as any,
+        assignedPalletIds: cPallets.map((cp) => cp.palletNumber),
+        totalGrossWeightKg: gross,
+        totalNetWeightKg: net,
+        totalPackages: boxes,
+        totalPallets: cPallets.length,
+        isOverweight: gross > 25000,
+        isOverCapacity: cPallets.length > 22,
+        hasDangerousGoods: false
+      });
+
+      // Start next container
+      currentContIndex++;
+      currentPalletIndices = [i];
+      currentPayloadGrossKg = palletGross;
+    } else {
+      currentPalletIndices.push(i);
+      currentPayloadGrossKg += palletGross;
+    }
+  }
+
+  // Push final container
+  if (currentPalletIndices.length > 0 || result.length === 0) {
+    const existing = existingContainers?.[currentContIndex];
+    const cPallets = currentPalletIndices.map((idx) => pallets[idx]).filter(Boolean);
+    const gross = cPallets.reduce((s, cp) => s + (cp.grossWeightKg || 0), 0);
+    const net = cPallets.reduce((s, cp) => s + (cp.netWeightKg || 0), 0);
+    const boxes = cPallets.reduce((s, cp) => s + (cp.boxCount || 0), 0);
+
+    result.push({
+      id: `container-${currentContIndex + 1}`,
+      label: `Container ${currentContIndex + 1}`,
+      containerNumber: existing?.containerNumber || rawConts[currentContIndex] || '',
+      sealNumber: existing?.sealNumber || rawSeals[currentContIndex] || '',
+      containerType: '20GP',
+      tareWeightKg: existing?.tareWeightKg || 2150,
+      bookingNumber: existing?.bookingNumber,
+      palletIndices: currentPalletIndices,
+      maxPayloadKg: 25000,
+      maxPallets: 22,
+      pallets: cPallets as any,
+      assignedPalletIds: cPallets.map((cp) => cp.palletNumber),
+      totalGrossWeightKg: gross,
+      totalNetWeightKg: net,
+      totalPackages: boxes,
+      totalPallets: cPallets.length,
+      isOverweight: gross > 25000,
+      isOverCapacity: cPallets.length > 22,
+      hasDangerousGoods: false
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -359,20 +497,29 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
     }
   }
 
-  // 5. Smart Equipment Constraint Auto-Selection (Container Type & Tare Weight)
-  const currentPalletCount = (clean.pallets && clean.pallets.length) || clean.totalPallets || 0;
-  const currentGrossWt = clean.grossWeightKg || 0;
-  if (!clean.containerType || clean.containerType === '20GP') {
-    if (currentPalletCount > 22 || currentGrossWt > 25000) {
-      clean.containerType = '40GP';
-      if (!clean.tareWeightKg || clean.tareWeightKg === 0 || clean.tareWeightKg === 2150) {
-        clean.tareWeightKg = 3750;
-      }
-    } else {
-      clean.containerType = '20GP';
-      if (!clean.tareWeightKg || clean.tareWeightKg === 0) {
-        clean.tareWeightKg = 2150;
-      }
+  // 5. Strict 20' GP Hard-Lock & Deterministic Multi-Container Auto-Split Engine
+  clean.containerType = '20GP';
+  if (!clean.tareWeightKg || clean.tareWeightKg === 0) {
+    clean.tareWeightKg = 2150;
+  }
+
+  // Deterministically allocate pallets across 20' GP containers (Max 22 Pallets / 25,000 kg)
+  clean.containers = autoAllocate20GPContainers(
+    clean.pallets || [],
+    clean.containers,
+    clean.containerNumber,
+    clean.sealNumber
+  );
+
+  // Synchronize containerNumber & sealNumber across all allocated containers
+  if (clean.containers.length > 1) {
+    const validConts = clean.containers.map((c) => c.containerNumber.trim()).filter(Boolean);
+    if (validConts.length > 0) {
+      clean.containerNumber = validConts.join(', ');
+    }
+    const validSeals = clean.containers.map((c) => c.sealNumber.trim()).filter(Boolean);
+    if (validSeals.length > 0) {
+      clean.sealNumber = validSeals.join(', ');
     }
   }
 

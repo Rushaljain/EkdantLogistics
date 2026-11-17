@@ -15,16 +15,21 @@ import {
 import type {
   ExtractedShipmentJSON,
   ExtractedPallet,
-  ContainerType
+  ContainerType,
+  ContainerAllocation
 } from '../types/index.ts';
 import { CONTAINER_SPECS } from '../types/index.ts';
+import { autoAllocate20GPContainers } from '../utils/manifestKeywordReference.ts';
 
 export interface ContainerItem {
   id: string;
+  label: string;
   containerNumber: string;
   sealNumber: string;
   containerType: ContainerType;
   tareWeightKg: number;
+  bookingNumber?: string;
+  palletIndices?: number[];
 }
 
 interface ContainerBayWorkspaceProps {
@@ -40,67 +45,55 @@ export function ContainerBayWorkspace({
   onSwitchTab: _onSwitchTab,
   registerSyncHandler
 }: ContainerBayWorkspaceProps): React.JSX.Element {
-  // Smart Equipment Constraint Auto-Selection on initialization
+  // Hard-locked 20' GP container type and default tare
   const initialPallets = shipmentJson.pallets || [];
-  const pCount = initialPallets.length || shipmentJson.totalPallets || 0;
-  const grossWt = shipmentJson.grossWeightKg || 0;
 
-  const initialType: ContainerType =
-    shipmentJson.containerType && shipmentJson.containerType !== '20GP'
-      ? shipmentJson.containerType
-      : pCount > 22 || grossWt > 25000
-      ? '40GP'
-      : '20GP';
-
-  const defaultTare = CONTAINER_SPECS[initialType]?.tareWeightKg || 2150;
-  const initialTare = shipmentJson.tareWeightKg > 0 ? shipmentJson.tareWeightKg : defaultTare;
-
-  // Multi-Container State
-  const [containers, setContainers] = useState<ContainerItem[]>(() => {
-    const rawConts = shipmentJson.containerNumber
-      ? shipmentJson.containerNumber.split(/[,/]/).map((s) => s.trim()).filter(Boolean)
-      : [];
-    const rawSeals = shipmentJson.sealNumber
-      ? shipmentJson.sealNumber.split(/[,/]/).map((s) => s.trim()).filter(Boolean)
-      : [];
-
-    if (rawConts.length > 1) {
-      return rawConts.map((cNum, idx) => ({
-        id: `container-${idx + 1}`,
-        containerNumber: cNum,
-        sealNumber: rawSeals[idx] || (idx === 0 ? shipmentJson.sealNumber || '' : ''),
-        containerType: initialType,
-        tareWeightKg: idx === 0 ? initialTare : (CONTAINER_SPECS[initialType]?.tareWeightKg || 2150)
+  // Deterministic 20' GP multi-container allocation (Max 22 Pallets / 25,000 kg)
+  const initialContainers: ContainerItem[] = useMemo(() => {
+    if (shipmentJson.containers && shipmentJson.containers.length > 0) {
+      return shipmentJson.containers.map((c, idx) => ({
+        id: c.id || `container-${idx + 1}`,
+        label: c.label || `Container ${idx + 1}`,
+        containerNumber: c.containerNumber || '',
+        sealNumber: c.sealNumber || '',
+        containerType: '20GP' as ContainerType,
+        tareWeightKg: c.tareWeightKg || 2150,
+        bookingNumber: c.bookingNumber || shipmentJson.bookingNumber || '',
+        palletIndices: c.palletIndices || []
       }));
     }
+    const allocated = autoAllocate20GPContainers(
+      shipmentJson.pallets || [],
+      undefined,
+      shipmentJson.containerNumber,
+      shipmentJson.sealNumber
+    );
+    return allocated.map((c, idx) => ({
+      id: c.id || `container-${idx + 1}`,
+      label: c.label || `Container ${idx + 1}`,
+      containerNumber: c.containerNumber || '',
+      sealNumber: c.sealNumber || '',
+      containerType: '20GP' as ContainerType,
+      tareWeightKg: c.tareWeightKg || 2150,
+      bookingNumber: c.bookingNumber || shipmentJson.bookingNumber || '',
+      palletIndices: c.palletIndices || []
+    }));
+  }, [shipmentJson.containers, shipmentJson.pallets, shipmentJson.containerNumber, shipmentJson.sealNumber, shipmentJson.bookingNumber]);
 
-    return [
-      {
-        id: 'container-1',
-        containerNumber: shipmentJson.containerNumber || '',
-        sealNumber: shipmentJson.sealNumber || '',
-        containerType: initialType,
-        tareWeightKg: initialTare
-      }
-    ];
-  });
+  // Multi-Container State
+  const [containers, setContainers] = useState<ContainerItem[]>(() => initialContainers);
+  const [activeContainerId, setActiveContainerId] = useState<string>(() => initialContainers[0]?.id || 'container-1');
 
-  const [activeContainerId, setActiveContainerId] = useState<string>(() => {
-    const rawConts = shipmentJson.containerNumber
-      ? shipmentJson.containerNumber.split(/[,/]/).map((s) => s.trim()).filter(Boolean)
-      : [];
-    return rawConts.length > 1 ? 'container-1' : 'container-1';
-  });
-
-  // Active Container and its specs
+  // Active Container and its specs (Locked to 20' GP)
   const activeContainer = containers.find((c) => c.id === activeContainerId) || containers[0] || {
     id: 'container-1',
+    label: 'Container 1',
     containerNumber: '',
     sealNumber: '',
     containerType: '20GP' as ContainerType,
     tareWeightKg: 2150
   };
-  const specs = CONTAINER_SPECS[activeContainer.containerType] || CONTAINER_SPECS['20GP'];
+  const specs = CONTAINER_SPECS['20GP'];
 
   // Update active container fields
   const updateActiveContainer = (partial: Partial<ContainerItem>) => {
@@ -119,9 +112,30 @@ export function ContainerBayWorkspace({
   const [pallets, setPallets] = useState<ExtractedPallet[]>(() => [...initialPallets]);
   const [palletAllocationMap, setPalletAllocationMap] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
-    const defaultContId = 'container-1';
+    initialContainers.forEach((cont) => {
+      if (cont.palletIndices && cont.palletIndices.length > 0) {
+        cont.palletIndices.forEach((pIdx) => {
+          const p = initialPallets[pIdx];
+          if (p) {
+            map[p.palletNumber] = cont.id;
+          }
+        });
+      }
+    });
+
+    // Fallback: assign remaining sequentially within 20' GP limits
+    let contIdx = 0;
+    let countInCont = 0;
     initialPallets.forEach((p) => {
-      map[p.palletNumber] = defaultContId;
+      if (!map[p.palletNumber]) {
+        if (countInCont >= 22) {
+          contIdx++;
+          countInCont = 0;
+        }
+        const targetCont = initialContainers[contIdx] || initialContainers[0];
+        map[p.palletNumber] = targetCont?.id || 'container-1';
+        countInCont++;
+      }
     });
     return map;
   });
@@ -163,15 +177,6 @@ export function ContainerBayWorkspace({
     containerType: '20GP',
     tareWeightKg: 2150
   });
-
-  // Handle container type change for active container
-  const handleContainerTypeChange = (newType: ContainerType) => {
-    const newDefaultTare = CONTAINER_SPECS[newType]?.tareWeightKg || 2150;
-    updateActiveContainer({
-      containerType: newType,
-      tareWeightKg: newDefaultTare
-    });
-  };
 
   // Move a pallet to a specific container (or unallocate)
   const movePalletToContainer = (palletNumber: string, targetContainerId: string | null) => {
@@ -277,18 +282,55 @@ export function ContainerBayWorkspace({
     };
   }, []);
 
-  // Toggle allocation of a pallet to the active container
+  // Toggle allocation of a pallet to the active container (with auto-spill & auto-spawn)
   const togglePalletAllocation = (palletNumber: string) => {
+    const targetPallet = pallets.find((p) => p.palletNumber === palletNumber);
+    const targetGross = targetPallet?.grossWeightKg || 0;
+
     setPalletAllocationMap((prev) => {
       const next = { ...prev };
       if (next[palletNumber] === activeContainer.id) {
         delete next[palletNumber];
-      } else {
-        const currentCount = pallets.filter((p) => next[p.palletNumber] === activeContainer.id).length;
-        if (currentCount >= specs.maxPallets) {
-          return next;
-        }
+        return next;
+      }
+
+      // Check active container capacity (Max 22 Pallets / 25,000 kg payload)
+      const currentInActive = pallets.filter((p) => next[p.palletNumber] === activeContainer.id && p.palletNumber !== palletNumber);
+      const activeGross = currentInActive.reduce((s, p) => s + (p.grossWeightKg || 0), 0);
+
+      if (currentInActive.length + 1 <= 22 && activeGross + targetGross <= 25000) {
         next[palletNumber] = activeContainer.id;
+        return next;
+      }
+
+      // Active container is full -> spill into next available container or spawn new 20' GP container
+      let targetContId = '';
+      for (const cont of containers) {
+        if (cont.id === activeContainer.id) continue;
+        const inCont = pallets.filter((p) => next[p.palletNumber] === cont.id && p.palletNumber !== palletNumber);
+        const contGross = inCont.reduce((s, p) => s + (p.grossWeightKg || 0), 0);
+        if (inCont.length + 1 <= 22 && contGross + targetGross <= 25000) {
+          targetContId = cont.id;
+          break;
+        }
+      }
+
+      if (targetContId) {
+        next[palletNumber] = targetContId;
+      } else {
+        const newContNum = containers.length + 1;
+        const newId = `container-${newContNum}`;
+        const newCont: ContainerItem = {
+          id: newId,
+          label: `Container ${newContNum}`,
+          containerNumber: '',
+          sealNumber: '',
+          containerType: '20GP',
+          tareWeightKg: 2150,
+          bookingNumber
+        };
+        setContainers((cList) => [...cList, newCont]);
+        next[palletNumber] = newId;
       }
       return next;
     });
@@ -443,13 +485,16 @@ export function ContainerBayWorkspace({
   };
 
   const handleSaveContainerForm = () => {
-    const newId = `container-${Date.now()}`;
+    const nextIdx = containers.length + 1;
+    const newId = `container-${nextIdx}`;
     const newCont: ContainerItem = {
       id: newId,
+      label: `Container ${nextIdx}`,
       containerNumber: containerForm.containerNumber.trim(),
       sealNumber: containerForm.sealNumber.trim(),
-      containerType: containerForm.containerType,
-      tareWeightKg: Number(containerForm.tareWeightKg) || 2150
+      containerType: '20GP',
+      tareWeightKg: Number(containerForm.tareWeightKg) || 2150,
+      bookingNumber
     };
     setContainers((prev) => [...prev, newCont]);
     setActiveContainerId(newId);
@@ -497,12 +542,43 @@ export function ContainerBayWorkspace({
     const totalAllBoxes = allAllocatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
     const totalAllTare = containers.reduce((sum, c) => sum + (Number(c.tareWeightKg) || 0), 0);
 
+    const mappedContainers: ContainerAllocation[] = containers.map((c, cIdx) => {
+      const cPallets = pallets.filter((p) => palletAllocationMap[p.palletNumber] === c.id);
+      const palletIndices = cPallets
+        .map((cp) => pallets.findIndex((p) => p.palletNumber === cp.palletNumber))
+        .filter((idx) => idx !== -1);
+      const cGross = cPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0);
+      const cNet = cPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0);
+      const cBoxes = cPallets.reduce((s, p) => s + (p.boxCount || 0), 0);
+      return {
+        id: c.id,
+        label: c.label || `Container ${cIdx + 1}`,
+        containerNumber: c.containerNumber.trim(),
+        sealNumber: c.sealNumber.trim(),
+        containerType: '20GP' as const,
+        tareWeightKg: Number(c.tareWeightKg) || 2150,
+        bookingNumber: bookingNumber.trim(),
+        palletIndices,
+        maxPayloadKg: 25000,
+        maxPallets: 22,
+        pallets: cPallets as any,
+        assignedPalletIds: cPallets.map((p) => p.palletNumber),
+        totalGrossWeightKg: cGross,
+        totalNetWeightKg: cNet,
+        totalPackages: cBoxes,
+        totalPallets: cPallets.length,
+        isOverweight: cGross > 25000,
+        isOverCapacity: cPallets.length > 22,
+        hasDangerousGoods: false
+      };
+    });
+
     const updated: ExtractedShipmentJSON = {
       ...shipmentJson,
       containerNumber: primaryContNum,
       sealNumber: primarySealNum,
-      containerType: activeContainer.containerType,
-      tareWeightKg: totalAllTare > 0 ? totalAllTare : Number(activeContainer.tareWeightKg) || 0,
+      containerType: '20GP',
+      tareWeightKg: totalAllTare > 0 ? totalAllTare : Number(activeContainer.tareWeightKg) || 2150,
       carrierName: carrierName.trim(),
       vesselName: vesselName.trim(),
       voyageNumber: voyageNumber.trim(),
@@ -513,7 +589,8 @@ export function ContainerBayWorkspace({
       grossWeightKg: totalAllGross > 0 ? totalAllGross : shipmentJson.grossWeightKg,
       netWeightKg: totalAllNet > 0 ? totalAllNet : shipmentJson.netWeightKg,
       shippingMarks: updatedMarks,
-      pallets
+      pallets,
+      containers: mappedContainers
     };
 
     onUpdateShipment(updated);
@@ -707,11 +784,31 @@ export function ContainerBayWorkspace({
                             {p.invoiceNumber.toUpperCase().startsWith('INV') ? p.invoiceNumber : `INV: ${p.invoiceNumber}`}
                           </span>
                         )}
-                        {otherCont && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-600 border border-amber-500/30 shrink-0">
-                            {otherCont.containerNumber || 'Other Container'}
-                          </span>
-                        )}
+                        {(() => {
+                          const assignedContId = palletAllocationMap[p.palletNumber];
+                          const cIdx = containers.findIndex((c) => c.id === assignedContId);
+                          if (cIdx >= 0) {
+                            const contPallets = pallets.filter((other) => palletAllocationMap[other.palletNumber] === assignedContId);
+                            const slotNum = contPallets.findIndex((other) => other.palletNumber === p.palletNumber) + 1;
+                            const isCurrentActive = assignedContId === activeContainer.id;
+                            return (
+                              <span
+                                className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+                                  isCurrentActive
+                                    ? 'bg-sky-100/90 dark:bg-sky-950/50 text-sky-800 dark:text-sky-300 border-sky-300 dark:border-sky-800'
+                                    : 'bg-indigo-100/80 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800'
+                                }`}
+                              >
+                                C{cIdx + 1} &bull; Slot {slotNum}
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="font-mono text-[10px] font-medium px-1.5 py-0.5 rounded border bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-300 dark:border-slate-700 shrink-0">
+                              Unassigned
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       <div className="flex items-center space-x-1 shrink-0">
@@ -911,14 +1008,11 @@ export function ContainerBayWorkspace({
               <div className="flex items-center space-x-2">
                 <label className="text-xs text-content-secondary font-medium">Equipment:</label>
                 <select
-                  value={activeContainer.containerType}
-                  onChange={(e) => handleContainerTypeChange(e.target.value as ContainerType)}
-                  className="bg-input-bg border border-divider text-xs text-content-primary rounded-lg px-2.5 py-1 font-mono focus:outline-none focus:border-brand-primary font-medium cursor-pointer"
+                  value="20GP"
+                  disabled
+                  className="bg-input-bg border border-divider text-xs text-content-primary rounded-lg px-2.5 py-1 font-mono focus:outline-none focus:border-brand-primary font-medium opacity-85 cursor-not-allowed"
                 >
-                  <option value="20GP">20&apos; (Max 22 Pallets / 25,000 kg)</option>
-                  <option value="40GP">40&apos; (Max 40 Pallets / 28,500 kg)</option>
-                  <option value="40HC">40&apos; HC (Max 40 Pallets / 28,500 kg)</option>
-                  <option value="45HC">45&apos; HC (Max 44 Pallets / 28,500 kg)</option>
+                  <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
                 </select>
               </div>
             </div>
@@ -1347,17 +1441,10 @@ export function ContainerBayWorkspace({
                 </label>
                 <select
                   value={containerForm.containerType}
-                  onChange={(e) => {
-                    const t = e.target.value as ContainerType;
-                    const defaultT = CONTAINER_SPECS[t]?.tareWeightKg || 2150;
-                    setContainerForm((prev) => ({ ...prev, containerType: t, tareWeightKg: defaultT }));
-                  }}
-                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary cursor-pointer"
+                  disabled
+                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary opacity-80 cursor-not-allowed"
                 >
-                  <option value="20GP">20&apos; (Max 22 Pallets / 25,000 kg)</option>
-                  <option value="40GP">40&apos; (Max 40 Pallets / 28,500 kg)</option>
-                  <option value="40HC">40&apos; HC (Max 40 Pallets / 28,500 kg)</option>
-                  <option value="45HC">45&apos; HC (Max 44 Pallets / 28,500 kg)</option>
+                  <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
                 </select>
               </div>
 

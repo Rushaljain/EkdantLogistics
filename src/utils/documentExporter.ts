@@ -585,6 +585,28 @@ function generateBlManifestHtml(
         <th style="width: 20%;" class="right-col"><span class="cell-title">GR. WT. KGS</span></th>
         <th style="width: 20%;" class="right-col"><span class="cell-title">NT. WT. KGS</span></th>
       </tr>
+      ${shipment.containers && shipment.containers.length > 1 ? shipment.containers.map((cont, cIdx) => {
+        const cPallets = cont.palletIndices && cont.palletIndices.length > 0 && shipment.pallets
+          ? cont.palletIndices.map(i => shipment.pallets[i]).filter(Boolean)
+          : [];
+        const cGross = cPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0);
+        const cNet = cPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0);
+        const cTare = cont.tareWeightKg || 2150;
+        const cVgm = cGross + cTare;
+        return `
+      <tr>
+        <td><div class="cell-data cell-data-bold">${escapeHtml(cont.containerNumber || `Container ${cIdx + 1}`)}</div></td>
+        <td><div class="cell-data">${escapeHtml(cont.sealNumber || '---')}</div></td>
+        <td class="center-col"><div class="cell-data">${cPallets.length || cont.palletIndices?.length || '---'}</div></td>
+        <td class="right-col"><div class="cell-data cell-data-bold">${cGross > 0 ? cGross.toFixed(2) : '---'}</div></td>
+        <td class="right-col"><div class="cell-data">${cNet > 0 ? cNet.toFixed(2) : '---'}</div></td>
+      </tr>
+      <tr style="background: #f8fafc; font-size: 8px;">
+        <td colspan="2" style="font-size: 8px; color: #64748b;">${escapeHtml(cont.label || `Container ${cIdx + 1}`)} (Tare: ${cTare} kg)</td>
+        <td class="center-col" style="font-weight: bold; color: #047857;">VGM</td>
+        <td colspan="2" class="right-col font-bold" style="color: #047857;">${cVgm.toFixed(2)} KGS</td>
+      </tr>`;
+      }).join('') : `
       <tr>
         <td><div class="cell-data cell-data-bold">${escapeHtml(shipment.containerNumber || '---')}</div></td>
         <td><div class="cell-data">${escapeHtml(shipment.sealNumber || '---')}</div></td>
@@ -601,7 +623,7 @@ function generateBlManifestHtml(
       <tr style="background: #f1f5f9; font-size: 9px; font-weight: bold;">
         <td colspan="3" style="text-align: right; color: #047857;">VERIFIED GROSS MASS (VGM):</td>
         <td colspan="2" class="right-col" style="color: #047857;">${vgmVal.toFixed(2)} KGS</td>
-      </tr>` : ''}
+      </tr>` : ''}`}
     </table>
   </div>
 

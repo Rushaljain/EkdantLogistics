@@ -70,12 +70,15 @@ export interface Pallet {
 
 export interface ContainerAllocation {
   id: string;
+  label?: string;
   containerNumber: string;
   sealNumber: string;
   containerType: ContainerType;
   maxPayloadKg: number;
   maxPallets?: number;
   tareWeightKg: number;
+  bookingNumber?: string;
+  palletIndices?: number[];
   pallets: Pallet[];
   assignedPalletIds: string[];
   totalGrossWeightKg: number;
@@ -138,6 +141,7 @@ export interface ExtractedShipmentJSON {
   sealNumber: string;
   containerType: ContainerType;
   tareWeightKg: number;
+  containers?: ContainerAllocation[];
 
   // Packaging & Manifest Totals
   shippingMarks: string;
@@ -301,7 +305,8 @@ export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): Ex
     containerNumber: '',
     sealNumber: '',
     containerType: '20GP',
-    tareWeightKg: 0,
+    tareWeightKg: 2150,
+    containers: [],
     shippingMarks: '',
     productDescription: '',
     brandName: '',
@@ -394,7 +399,7 @@ export function createEmptyBLManifest(): BLManifest {
     containerNumber: '',
     sealNumber: '',
     containerType: '20GP',
-    tareWeightKg: 0,
+    tareWeightKg: 2150,
     unNumber: '',
     imoClass: '',
     properShippingName: '',
