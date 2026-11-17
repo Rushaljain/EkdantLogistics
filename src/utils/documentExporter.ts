@@ -151,7 +151,7 @@ function generateDgManifestHtml(
 
   const box20Declarant = val((id, lbl) => id.includes('box_20') || lbl.includes('container / vehicle packing certificate')) || shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY';
   const box21Emergency = val((id, lbl) => id.includes('box_9') || id.includes('box_21') || lbl.includes('emergency')) || shipment.emergencyContactPhone || '';
-  const box22ShipperDecl = val((id, lbl) => id.includes('box_22') || lbl.includes("shipper's declaration") || lbl.includes('shipper declaration')) ||
+  const box22ShipperDecl = val((id, lbl) => (id.includes('box_22') || lbl.includes("shipper's declaration") || lbl.includes('shipper declaration')) && !id.includes('place_date') && !lbl.includes('place')) ||
     (shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY');
 
   if (isAnlHaz) {

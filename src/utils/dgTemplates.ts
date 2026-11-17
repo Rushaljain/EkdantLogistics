@@ -536,7 +536,8 @@ export function getStandardDgFormats(): FormatSchemaJSON[] {
       { fieldId: 'box_19_container_seal', labelInTemplate: '19. Container / Seal', sectionName: 'Equipment & Containers', fieldType: 'text', mappedShipmentKey: 'containerNumber' },
       { fieldId: 'box_20_container_packing_cert', labelInTemplate: '20. Container Packing Certificate', sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarantName' },
       { fieldId: 'box_21_emergency_contact', labelInTemplate: '21. 24-Hour Emergency Contact', sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'emergencyContactPhone' },
-      { fieldId: 'box_22_shipper_declaration', labelInTemplate: "22. Shipper's Declaration", sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarationPlaceAndDate' }
+      { fieldId: 'box_22_shipper_declaration', labelInTemplate: "22. Shipper's Declaration", sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarantName' },
+      { fieldId: 'box_22_place_date', labelInTemplate: '22. Place and Date', sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarationPlaceAndDate' }
     ]
   }));
 }
