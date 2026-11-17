@@ -686,7 +686,8 @@ export type DgTemplateId =
   | 'ONE_LINE_DG'
   | 'MSC_LINE_DG'
   | 'DIAMOND_MARITIME_DG'
-  | 'KMTC_DG';
+  | 'KMTC_DG'
+  | 'CMA_CGM_DG';
 
 export interface DgTemplateDefinition {
   id: DgTemplateId;

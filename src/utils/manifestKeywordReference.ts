@@ -99,17 +99,17 @@ export function synthesizePalletRanges(pallets: ExtractedPallet[]): string[] {
     fileGroups.get(fileKey)!.push(p);
   });
 
+  const isNumericPalletNumber = (id: string): boolean => {
+    const trimmed = (id || '').trim();
+    if (!trimmed) return false;
+    // Strictly filter out dates, invoice strings, or slash patterns (e.g. TAL/1709/2026 or 01/09/2026)
+    if (trimmed.includes('/') || trimmed.includes('\\')) return false;
+    // Must match purely numeric (e.g. 1..21, 4533..4553) or explicit pallet identifier (e.g. P-1..P-21, PLT-1)
+    return /^(?:P-?|PLT-?)?\d+$/i.test(trimmed);
+  };
+
   const extractPrefixAndNum = (id: string): { prefix: string; num: number | null; suffix: string } => {
     const trimmed = (id || '').trim();
-    // Match prefix, number, and optional suffix (e.g. TAL/1703/2026 or 4533)
-    const slashMatch = trimmed.match(/^(.*?\/)?(\d+)(\/[^/]+)?$/);
-    if (slashMatch) {
-      return {
-        prefix: slashMatch[1] || '',
-        num: parseInt(slashMatch[2], 10),
-        suffix: slashMatch[3] || ''
-      };
-    }
     const endMatch = trimmed.match(/^(.*?)(\d+)$/);
     if (endMatch) {
       return { prefix: endMatch[1], num: parseInt(endMatch[2], 10), suffix: '' };
@@ -120,7 +120,8 @@ export function synthesizePalletRanges(pallets: ExtractedPallet[]): string[] {
   const allRanges: string[] = [];
 
   for (const group of fileGroups.values()) {
-    const validPallets = group.filter(p => (p.palletNumber || '').trim() !== '');
+    // Strictly filter to valid numeric pallet numbers, never dates or invoice numbers
+    const validPallets = group.filter(p => isNumericPalletNumber(p.palletNumber));
     if (validPallets.length === 0) continue;
 
     // Subgroup within this file by prefix + suffix pattern

@@ -68,6 +68,14 @@ export const DG_TEMPLATE_DEFINITIONS: Record<DgTemplateId, DgTemplateDefinition>
     isImoStandard22Box: false,
     carrierHint: 'Korea Marine Transport Co / KMTC / ANL',
     referenceDocName: 'KMTC DG.xls'
+  },
+  CMA_CGM_DG: {
+    id: 'CMA_CGM_DG',
+    name: 'CMA CGM DG',
+    description: 'ANL/CMA CGM hazardous grid layout with middle packing cert, routing strip, and 3-column cargo table (modeled on CMA CGM DG.xls HPFL NEWARK)',
+    isImoStandard22Box: false,
+    carrierHint: 'CMA CGM / CMA-CGM',
+    referenceDocName: 'CMA CGM DG.xls'
   }
 };
 
@@ -82,6 +90,9 @@ export function detectRecommendedDgTemplate(carrierName?: string): DgTemplateId 
   }
   const clean = carrierName.toUpperCase();
 
+  if (/\b(?:CMA|CMA\s*CGM|CMA-CGM)\b/.test(clean)) {
+    return 'CMA_CGM_DG';
+  }
   if (/\b(?:ONE|OCEAN\s*NETWORK\s*EXPRESS)\b/.test(clean)) {
     return 'ONE_LINE_DG';
   }
@@ -266,7 +277,6 @@ export function buildTemplateCargoBlock(
   const unPkg = (shipment.unPackingCode || '').trim();
   const sgg = (shipment.segregationGroup || imdg?.segregationGroup || 'SGG1').trim();
   const emergencyContact = (shipment.emergencyContactPhone || '').trim();
-  const declarant = (shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY').trim();
 
   const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
   const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
@@ -282,7 +292,7 @@ export function buildTemplateCargoBlock(
       // Nomination DG (modeled on NOMINATION DG.doc)
       const lines: string[] = [
         `Proper Shipping Name: ${psn}`,
-        `Techicnal Name : ${techName}`,
+        `Technical Name : ${techName}`,
         `Class : ${imoClass}`,
         `UN NO : ${unNo}`,
         'Sub Risk: NA',
@@ -298,9 +308,8 @@ export function buildTemplateCargoBlock(
       if (emergencyContact) {
         lines.push(`24 hr Emergency Tel No. (at destination) : ${emergencyContact}`);
       }
-      if (declarant) {
-        lines.push(`Emergency Contact Person (at destination) : ${declarant}`);
-      }
+      // Leave destination contact person blank / editable by default instead of auto-filling shipper's name
+      lines.push('Emergency Contact Person (at destination) : ');
       if (palletRange) {
         lines.push(`PALLET NOS: ${palletRange}`);
       }
@@ -326,6 +335,8 @@ export function buildTemplateCargoBlock(
       ];
       if (emergencyContact) {
         lines.push(`EMERGENCY CONTACT NO. & NAME: ${emergencyContact}`);
+      } else {
+        lines.push('EMERGENCY CONTACT NO. & NAME: ');
       }
       if (palletRange) {
         lines.push(`PALLET NOS: ${palletRange}`);
@@ -439,6 +450,30 @@ export function buildTemplateCargoBlock(
         'FLASH POINT :- NA',
         `MARINE POLLUTANT :- ${shipment.marinePollutant ? 'YES' : 'NO'}`,
         `SEGREGATION GROUP :- ${sgg}`
+      );
+      if (palletRange) {
+        lines.push(`PALLET NOS: ${palletRange}`);
+      }
+      return lines.join('\n');
+    }
+
+    case 'CMA_CGM_DG': {
+      // CMA CGM DG (modeled on CMA CGM DG.xls HPFL NEWARK)
+      const lines: string[] = [
+        `UN NO :- ${unNo}`,
+        `PROPER SHIPPING NAME : -  ${psn}`,
+        `TECHNICAL  NAME :  ${techName}`,
+        `CLASS :- ${imoClass}`,
+        'SUB CLASS :-  NA',
+        `UN PACKING GROUP :-${pg || 'III'}`
+      ];
+      if (unPkg) {
+        lines.push(`UN PACKING CODE :-  ${unPkg}`);
+      }
+      lines.push(
+        `EMS NO :-  ${ems}`,
+        'FLASH POINT :-  NA',
+        `MARINE POLLUTANT :-   ${shipment.marinePollutant ? 'YES' : 'NA'}`
       );
       if (palletRange) {
         lines.push(`PALLET NOS: ${palletRange}`);

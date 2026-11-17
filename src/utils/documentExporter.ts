@@ -3,6 +3,9 @@
 // Strictly zero hardcoded sample tokens: dynamically adapts to FormatSchemaJSON, MappedManifestField[], and ExtractedShipmentJSON
 
 import JSZip from 'jszip';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import * as XLSX from 'xlsx';
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
 import { groupManifestFieldsBySection } from './manifestMatcher.ts';
 import {
@@ -100,6 +103,8 @@ function generateDgManifestHtml(
   ) as DgTemplateId;
 
   const isKmtc = tmplId === 'KMTC_DG';
+  const isCmaCgm = tmplId === 'CMA_CGM_DG';
+  const isAnlHaz = isKmtc || isCmaCgm;
   const isNomination = tmplId === 'NOMINATION_DG';
   const isVstar = tmplId === 'VSTAR_DG';
   const isOneLine = tmplId === 'ONE_LINE_DG';
@@ -124,7 +129,8 @@ function generateDgManifestHtml(
   const box4ShipperRef = val((id, lbl) => id.includes('box_4') || lbl.includes("shipper's ref") || lbl.includes('shipper ref')) || shipment.shipperReference || '';
   const box5ForwarderRef = val((id, lbl) => id.includes('box_5') || lbl.includes('forwarder') || lbl.includes('freight forwarder')) || shipment.forwarderReference || '';
   const box6Consignee = val((id, lbl) => id.includes('box_6') || lbl.includes('consignee')) || `${shipment.consigneeName}\n${shipment.consigneeAddress}`;
-  const box7Carrier = val((id, lbl) => id.includes('box_7') || lbl.includes('carrier')) || shipment.carrierName || (isKmtc ? 'KOREA MARINE TRANSPORT CO. LTD.' : '');
+  const defaultCarrier = isCmaCgm ? 'CMA-CGM AGENCIES INDIA PVT.LTD.' : (isKmtc ? 'KOREA MARINE TRANSPORT CO. LTD.' : '');
+  const box7Carrier = val((id, lbl) => id.includes('box_7') || lbl.includes('carrier')) || shipment.carrierName || defaultCarrier;
 
   const box10VesselVoyage = val((id, lbl) => id.includes('box_10') || lbl.includes('vessel')) || (shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '');
   const box11Pol = val((id, lbl) => id.includes('box_11') || lbl.includes('port of loading')) || shipment.portOfLoading || '';
@@ -144,12 +150,12 @@ function generateDgManifestHtml(
 
   const box17CntrType = isOneLine || isMscLine ? "1x20'" : (isDiamond ? "01X20 GP" : (isNomination || isVstar ? "20 GP" : (shipment.containerType || "20' GP")));
 
-  const box20Declarant = val((id, lbl) => id.includes('box_20') || lbl.includes('container / vehicle packing certificate')) || shipment.dgDeclarantName || shipment.shipperName || '';
+  const box20Declarant = val((id, lbl) => id.includes('box_20') || lbl.includes('container / vehicle packing certificate')) || shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY';
   const box21Emergency = val((id, lbl) => id.includes('box_9') || id.includes('box_21') || lbl.includes('emergency')) || shipment.emergencyContactPhone || '';
   const box22ShipperDecl = val((id, lbl) => id.includes('box_22') || lbl.includes("shipper's declaration") || lbl.includes('shipper declaration')) ||
-    `${shipment.dgDeclarationPlaceAndDate || ''}\n${shipment.dgDeclarantName || shipment.shipperName || ''}`;
+    (shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY');
 
-  if (isKmtc) {
+  if (isAnlHaz) {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -584,6 +590,11 @@ function generateDgManifestHtml(
       </tr>
       ` : ''}
       ${isDiamond ? `
+      <tr>
+        <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
+          Total cube (m3) ${escapeHtml(box18Cube || '')}
+        </td>
+      </tr>
       <tr>
         <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
           Other Details UN PACKAGING NO. ${escapeHtml(shipment.unPackingCode || '')}
@@ -1029,6 +1040,225 @@ export async function exportManifestToDocx(
   options: ManifestExportOptions = {}
 ): Promise<Blob> {
   const isDg = format.documentType === 'DG';
+  const tmplId: DgTemplateId = (
+    format?.formatId && format.formatId in DG_TEMPLATE_DEFINITIONS
+      ? format.formatId
+      : detectRecommendedDgTemplate(shipment.carrierName)
+  ) as DgTemplateId;
+
+  // 1. Direct Binary Master Template Slot-In for Excel Templates (KMTC_DG, CMA_CGM_DG)
+  if (isDg && (tmplId === 'KMTC_DG' || tmplId === 'CMA_CGM_DG')) {
+    try {
+      const templateFilename = `${tmplId}.xlsx`;
+      const res = await fetch(`/templates/dg/${templateFilename}`);
+      if (res.ok) {
+        const arrayBuf = await res.arrayBuffer();
+        const wb = XLSX.read(arrayBuf, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+
+        const shipperLines = (shipment.shipperAddress || shipment.shipperName || '').split('\n');
+        const consigneeLines = (shipment.consigneeAddress || shipment.consigneeName || '').split('\n');
+        const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
+        const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
+        const unNo = shipment.unNumber || '2794';
+        const psn = shipment.properShippingName || 'BATTERIES, WET, FILLED WITH ACID';
+        const techName = shipment.productDescription || 'LEAD ACID STORAGE BATTERIES';
+        const imoClass = shipment.imoClass || '8';
+        const pg = shipment.packingGroup || 'III';
+        const ems = shipment.emsNumber || 'F-A, S-B';
+        const unPkg = shipment.unPackingCode || '';
+        const sgg = shipment.segregationGroup || 'SGG1';
+
+        const updateCell = (addr: string, val: string) => {
+          if (ws[addr]) {
+            ws[addr].v = val;
+            ws[addr].t = 's';
+          } else {
+            ws[addr] = { v: val, t: 's' };
+          }
+        };
+
+        if (tmplId === 'KMTC_DG') {
+          updateCell('B9', shipment.shipperName || '');
+          updateCell('B10', shipperLines[0] || '');
+          updateCell('B11', shipperLines[1] || '');
+          updateCell('B12', shipperLines.slice(2).join(', '));
+          updateCell('D9', shipment.shipperReference || shipment.invoiceNumbers?.[0] || '');
+          updateCell('D15', shipment.emergencyContactPhone || '');
+          updateCell('B17', shipment.consigneeName || '');
+          updateCell('B18', consigneeLines[0] || '');
+          updateCell('B19', consigneeLines[1] || '');
+          updateCell('B20', consigneeLines.slice(2).join(', '));
+          updateCell('D17', shipment.carrierName || 'KOREA MARINE TRANSPORT CO. LTD.');
+          updateCell('D19', shipment.bookingNumber || '');
+          updateCell('D24', shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY');
+          updateCell('D25', shipment.shipperName || '');
+          updateCell('D27', shipment.dgDeclarationPlaceAndDate || '');
+          updateCell('B32', shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '');
+          updateCell('C32', shipment.portOfLoading || '');
+          updateCell('D32', shipment.containerNumber || '');
+          updateCell('G32', shipment.sealNumber || '');
+          updateCell('B34', shipment.portOfDischarge || '');
+          updateCell('C34', shipment.finalDestination || shipment.portOfDischarge || '');
+          updateCell('C37', `UN NO :- ${unNo}`);
+          updateCell('G37', shipment.grossWeightKg > 0 ? `GR WT : ${shipment.grossWeightKg.toLocaleString()} KGS` : '');
+          updateCell('C39', `PROPER SHIPPING NAME : - ${psn}`);
+          updateCell('G39', shipment.netWeightKg > 0 ? `NT WT : ${shipment.netWeightKg.toLocaleString()} KGS` : '');
+          updateCell('C41', `TECHNICAL  NAME : - ${techName}`);
+          updateCell('B43', `OUTER PACKAGES :- ${outerCount} PALLETS`);
+          updateCell('C43', `CLASS :- ${imoClass}`);
+          updateCell('D43', 'SUB CLASS :- N/A');
+          updateCell('B45', `INNER PACKING :- ${innerCount} BOXES`);
+          updateCell('C45', `UN PACKING GROUP :- ${pg}`);
+          updateCell('C47', unPkg ? `UN PACKING CODE :-  ${unPkg}` : '');
+          updateCell('C49', `EMS NO :- ${ems}`);
+          updateCell('C51', 'FLASH POINT :- NA');
+          updateCell('C53', `MARINE POLLUTANT :- ${shipment.marinePollutant ? 'YES' : 'NO'}`);
+          updateCell('C55', `SEGREGATION GROUP :- ${sgg}`);
+          updateCell('D58', `${shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'} / ${shipment.shipperName || ''}`);
+          updateCell('D60', shipment.dgDeclarationPlaceAndDate || '');
+        } else if (tmplId === 'CMA_CGM_DG') {
+          updateCell('B9', shipment.shipperName || '');
+          updateCell('B10', shipperLines[0] || '');
+          updateCell('B11', shipperLines[1] || '');
+          updateCell('B12', shipperLines.slice(2).join(', '));
+          updateCell('D9', shipment.shipperReference || shipment.invoiceNumbers?.[0] || '');
+          updateCell('D15', shipment.emergencyContactPhone || '');
+          updateCell('B17', shipment.consigneeName || '');
+          updateCell('B18', consigneeLines[0] || '');
+          updateCell('B19', consigneeLines[1] || '');
+          updateCell('B20', consigneeLines.slice(2).join(', '));
+          updateCell('D17', shipment.carrierName || 'CMA-CGM AGENCIES INDIA PVT.LTD.');
+          updateCell('D18', `Carrier's Booking Number: ${shipment.bookingNumber || ''}`);
+          updateCell('D22', `${shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}, ${shipment.shipperName || ''}`);
+          updateCell('D25', shipment.dgDeclarationPlaceAndDate || '');
+          updateCell('B30', shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '');
+          updateCell('C30', shipment.portOfLoading || '');
+          updateCell('D31', shipment.containerNumber || '');
+          updateCell('G31', shipment.sealNumber || '');
+          updateCell('B32', shipment.portOfDischarge || '');
+          updateCell('C32', shipment.finalDestination || shipment.portOfDischarge || '');
+          updateCell('C35', `UN NO :- ${unNo}`);
+          updateCell('G35', shipment.grossWeightKg > 0 ? `GR WT : ${shipment.grossWeightKg.toLocaleString()} KGS` : '');
+          updateCell('C37', `PROPER SHIPPING NAME : -  ${psn}`);
+          updateCell('G37', shipment.netWeightKg > 0 ? `NT WT :  ${shipment.netWeightKg.toLocaleString()} KGS` : '');
+          updateCell('C39', `TECHNICAL  NAME :  ${techName}`);
+          updateCell('B41', `OUTER PACKAGES : ${outerCount} PALLETS`);
+          updateCell('C41', `CLASS :- ${imoClass}`);
+          updateCell('D41', 'SUB CLASS :-  NA');
+          updateCell('B43', `INNER PACKING :-  ${innerCount} BOXES`);
+          updateCell('C43', `UN PACKING GROUP :-${pg}`);
+          updateCell('C45', unPkg ? `UN PACKING CODE :-  ${unPkg}` : '');
+          updateCell('C47', `EMS NO :-  ${ems}`);
+          updateCell('C49', 'FLASH POINT :-  NA');
+          updateCell('C51', `MARINE POLLUTANT :-   ${shipment.marinePollutant ? 'YES' : 'NA'}`);
+          updateCell('D54', `${shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}, ${shipment.shipperName || ''}`);
+          updateCell('D56', shipment.dgDeclarationPlaceAndDate || '');
+        }
+
+        const outBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        return new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      }
+    } catch (e) {
+      console.warn('Direct XLSX master template slot-in failed, falling back:', e);
+    }
+  }
+
+  // 2. Direct Binary Master Template Slot-In for Word Templates (.docx)
+  if (isDg) {
+    try {
+      const templateFilename = `${tmplId}.docx`;
+      const res = await fetch(`/templates/dg/${templateFilename}`);
+      if (res.ok) {
+        const arrayBuf = await res.arrayBuffer();
+        const zip = new PizZip(arrayBuf);
+        const doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+          nullGetter: () => ''
+        });
+
+        const isDiamond = tmplId === 'DIAMOND_MARITIME_DG';
+        const isOneLine = tmplId === 'ONE_LINE_DG';
+        const isMscLine = tmplId === 'MSC_LINE_DG';
+        const isNomination = tmplId === 'NOMINATION_DG';
+        const isVstar = tmplId === 'VSTAR_DG';
+
+        const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
+        const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
+        const unNo = shipment.unNumber || '2794';
+        const psn = shipment.properShippingName || 'BATTERIES, WET, FILLED WITH ACID';
+        const techName = shipment.productDescription || 'LEAD ACID STORAGE BATTERIES';
+        const imoClass = shipment.imoClass || '8';
+        const pg = shipment.packingGroup || 'III';
+        const ems = shipment.emsNumber || 'F-A, S-B';
+        const unPkg = shipment.unPackingCode || '';
+        const sgg = shipment.segregationGroup || 'SGG1';
+        const tareVal = shipment.tareWeightKg || 2200;
+        const vgmVal = (shipment.grossWeightKg || 0) + tareVal;
+
+        const data: Record<string, string> = {
+          shipperBlock: shipment.shipperAddress || shipment.shipperName || '',
+          shipperName: shipment.shipperName || '',
+          shipperAddressLine1: (shipment.shipperAddress || '').split('\n')[0] || '',
+          shipperAddressLine2: (shipment.shipperAddress || '').split('\n')[1] || '',
+          shipperAddressLine3: (shipment.shipperAddress || '').split('\n').slice(2).join(', ') || '',
+          consigneeBlock: shipment.consigneeAddress || shipment.consigneeName || '',
+          consigneeName: shipment.consigneeName || '',
+          consigneeAddressLine1: (shipment.consigneeAddress || '').split('\n')[0] || '',
+          consigneeAddressLine2: (shipment.consigneeAddress || '').split('\n')[1] || '',
+          consigneeAddressLine3: (shipment.consigneeAddress || '').split('\n').slice(2).join(', ') || '',
+          bookingNo: shipment.bookingNumber || '',
+          pageInfo: '1 OF 1',
+          shipperRef: shipment.shipperReference || shipment.invoiceNumbers?.[0] || '',
+          forwarderRef: shipment.forwarderReference || '',
+          carrierName: shipment.carrierName || (isOneLine ? 'ONE LINE' : (isMscLine ? 'MSC MEDITERRANEAN SHIPPING COMPANY' : (isDiamond ? 'DIAMOND MARITIME AGENCY PVT LTD' : ''))),
+          vesselVoyage: shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '',
+          portOfLoading: shipment.portOfLoading || '',
+          portOfDischarge: shipment.portOfDischarge || '',
+          destination: shipment.finalDestination || shipment.portOfDischarge || '',
+          emergencyContact: shipment.emergencyContactPhone || '',
+          cargoDescriptionBlock: buildTemplateCargoBlock(tmplId, shipment),
+          grossMass: shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '',
+          netMass: shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '',
+          cube: shipment.volumeCbm > 0 ? `${shipment.volumeCbm} CBM` : (isDiamond ? '25 CBM' : ''),
+          unPackingCode: unPkg || '',
+          containerNo: shipment.containerNumber || '',
+          sealNo: shipment.sealNumber || '',
+          containerType: isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP"))),
+          tareMass: `${tareVal.toLocaleString()} KGS`,
+          totalGrossVgm: vgmVal > 0 ? `${vgmVal.toLocaleString()} KGS` : '',
+          declarantName: shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY',
+          placeAndDate: shipment.dgDeclarationPlaceAndDate || '',
+          haulierName: '',
+          vehicleRegNo: '',
+          unNumber: unNo,
+          properShippingName: psn,
+          technicalName: techName,
+          hazardClass: imoClass,
+          subsidiaryRisk: 'NA',
+          packingGroup: pg,
+          emsNo: ems,
+          flashPoint: 'NA',
+          marinePollutant: shipment.marinePollutant ? 'YES' : 'NA',
+          segregationGroup: sgg,
+          outerPackages: `${outerCount} PALLETS`,
+          innerPackages: `${innerCount} BOXES`
+        };
+
+        doc.render(data);
+        const outBlob = doc.getZip().generate({
+          type: 'blob',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        });
+        return outBlob;
+      }
+    } catch (e) {
+      console.warn('Direct DOCX master template slot-in failed, falling back:', e);
+    }
+  }
+
+  // 3. Fallback / Standard Ocean B/L Draft via dynamic JSZip XML assembly
   const zip = new JSZip();
 
   // 1. [Content_Types].xml
@@ -1209,13 +1439,9 @@ export async function exportManifestToDocx(
     `;
   }
 
-  const tmplId: DgTemplateId = isDg
-    ? ((format?.formatId && format.formatId in DG_TEMPLATE_DEFINITIONS ? format.formatId : detectRecommendedDgTemplate(shipment.carrierName)) as DgTemplateId)
-    : 'COMMON_DG';
-
   let docTitle = isDg ? 'MULTIMODAL DANGEROUS GOODS DECLARATION' : 'BILL OF LADING FOR OCEAN TRANSPORT';
   if (isDg) {
-    if (tmplId === 'KMTC_DG') {
+    if (tmplId === 'KMTC_DG' || tmplId === 'CMA_CGM_DG') {
       docTitle = 'IMO DANGEROUS GOODS DECLARATION';
     } else if (tmplId !== 'COMMON_DG') {
       docTitle = 'MULTIMODAL DANGEROUS GOODS FORM';
@@ -1279,13 +1505,15 @@ export async function downloadManifestDocx(
   mappedFields: MappedManifestField[],
   options: ManifestExportOptions = {}
 ): Promise<void> {
+  const isExcel = format.documentType === 'DG' && (format.formatId === 'KMTC_DG' || format.formatId === 'CMA_CGM_DG');
   const blob = await exportManifestToDocx(shipment, format, mappedFields, options);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
+  const ext = isExcel ? 'xlsx' : 'docx';
   const docSlug = format.documentType === 'DG' ? 'DG_Manifest' : 'BL_Draft';
   const refCode = shipment.bookingNumber || shipment.invoiceNumbers?.[0] || 'Shipment';
-  a.download = `${docSlug}_${refCode.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`;
+  a.download = `${docSlug}_${refCode.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1310,9 +1538,11 @@ export async function downloadCompleteShipmentPackage(
   const dgHtml = generateManifestHtml(shipment, dgFormat, mappedDgFields, options);
   const dgDocxBlob = await exportManifestToDocx(shipment, dgFormat, mappedDgFields, options);
   const dgJson = JSON.stringify(mappedDgFields, null, 2);
+  const isExcel = dgFormat.formatId === 'KMTC_DG' || dgFormat.formatId === 'CMA_CGM_DG';
+  const dgDocxExt = isExcel ? 'xlsx' : 'docx';
 
   zip.file(`DG_Manifest_${refCode}.html`, dgHtml);
-  zip.file(`DG_Declaration_${refCode}.docx`, dgDocxBlob);
+  zip.file(`DG_Declaration_${refCode}.${dgDocxExt}`, dgDocxBlob);
   zip.file(`DG_Manifest_${refCode}.json`, dgJson);
 
   // 2. BL Manifests

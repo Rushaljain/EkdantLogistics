@@ -12,8 +12,10 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@tanstack/react-table": "^9.3.1",
+    "docxtemplater": "^3.71.1",
     "jszip": "^3.10.2",
     "lucide-react": "^1.61.0",
+    "pizzip": "^3.3.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "xlsx": "^0.18.5"

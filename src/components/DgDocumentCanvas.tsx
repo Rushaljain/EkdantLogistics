@@ -208,6 +208,8 @@ export function DgDocumentCanvas({
 
   // Template-specific text constants
   const isKmtc = activeTemplateId === 'KMTC_DG';
+  const isCmaCgm = activeTemplateId === 'CMA_CGM_DG';
+  const isAnlGrid = isKmtc || isCmaCgm;
   const isNomination = activeTemplateId === 'NOMINATION_DG';
   const isVstar = activeTemplateId === 'VSTAR_DG';
   const isOneLine = activeTemplateId === 'ONE_LINE_DG';
@@ -341,9 +343,9 @@ export function DgDocumentCanvas({
       </div>
 
       {/* =========================================================================
-          VIEW A: KMTC / ANL HAZ FORMAT (GRID LAYOUT MODELED ON KMTC DG.XLS)
+          VIEW A: KMTC / CMA CGM ANL HAZ FORMAT (GRID LAYOUT MODELED ON KMTC & CMA CGM DG.XLS)
           ========================================================================= */}
-      {isKmtc ? (
+      {isAnlGrid ? (
         <div className="bg-white text-slate-900 shadow-2xl border-2 border-slate-900 rounded-sm p-6 sm:p-8 font-sans">
           {/* Document Header */}
           <div className="border-b-2 border-slate-900 pb-2 mb-3 text-center">
@@ -404,13 +406,13 @@ export function DgDocumentCanvas({
                 <EditableDocCell
                   boxNumber=""
                   label="Carrier"
-                  value={getVal('box_7_carrier', activeShipment.carrierName || 'KOREA MARINE TRANSPORT CO. LTD.')}
+                  value={getVal('box_7_carrier', activeShipment.carrierName || (isCmaCgm ? 'CMA-CGM AGENCIES INDIA PVT.LTD.' : 'KOREA MARINE TRANSPORT CO. LTD.'))}
                   onChange={(val) => handleUpdate('box_7_carrier', val, 'carrierName')}
                   stage2Key="carrierName"
                 />
                 <EditableDocCell
                   boxNumber=""
-                  label="Carrier's Booking Number:"
+                  label={isCmaCgm ? "Carrier's Booking Number: " : "Carrier's Booking Number:"}
                   value={getVal('box_2_transport_document_number', activeShipment.bookingNumber || '')}
                   onChange={(val) => handleUpdate('box_2_transport_document_number', val, 'bookingNumber')}
                   stage2Key="bookingNumber"
@@ -796,11 +798,13 @@ export function DgDocumentCanvas({
                   label="Additional handling information"
                   value={getVal(
                     'box_9_place_of_receipt',
-                    activeShipment.emergencyContactPhone ? `EMERGENCY CONTACT NUMBER: ${activeShipment.emergencyContactPhone}` : ''
+                    (isOneLine || isMscLine)
+                      ? ''
+                      : (activeShipment.emergencyContactPhone ? `EMERGENCY CONTACT NUMBER: ${activeShipment.emergencyContactPhone}` : '')
                   )}
                   onChange={(val) => handleUpdate('box_9_place_of_receipt', val, 'emergencyContactPhone')}
                   stage2Key="emergencyContactPhone"
-                  placeholder="EMERGENCY CONTACT NUMBER: +91 ..."
+                  placeholder="Additional handling instructions..."
                 />
               </div>
             </div>
@@ -808,7 +812,7 @@ export function DgDocumentCanvas({
             {/* Center Cargo Table (Unified Wide Box 14 + 3 Weight Columns) */}
             <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-slate-900">
               {/* Box 14: Shipping Marks | *Number and kind of packages; description of goods */}
-              <div className="md:col-span-8 p-2 bg-white flex flex-col space-y-1.5">
+              <div className="md:col-span-8 p-2 bg-white flex flex-col space-y-1.5 min-w-0">
                 <span className="text-[8px] font-bold text-slate-700 uppercase tracking-wider">
                   14. Shipping Marks | *Number and kind of packages; description of goods
                 </span>
@@ -816,7 +820,7 @@ export function DgDocumentCanvas({
                   rows={9}
                   value={getVal('box_14_shipping_marks', cargoBlockText)}
                   onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value, 'shippingMarks')}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-[9px] font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-tight"
+                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-[9px] font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed whitespace-pre-wrap break-words"
                 />
               </div>
 
@@ -935,15 +939,18 @@ export function DgDocumentCanvas({
                   </p>
                   <EditableDocCell
                     boxNumber="20"
-                    label="Name / Status of Declarant & Date"
+                    label="20. Company Name & Declarant"
                     value={getVal(
                       'box_20_container_packing_certificate',
-                      `${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}\n${activeShipment.dgDeclarationPlaceAndDate || ''}`
+                      `${activeShipment.shipperName || ''}\n${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}`
                     )}
                     onChange={(val) => handleUpdate('box_20_container_packing_certificate', val, 'dgDeclarantName')}
                     multiline
                     rows={2}
                   />
+                  <div className="mt-1.5 text-[8px] text-slate-600 font-mono">
+                    Place and date: <span className="font-semibold text-slate-800">{activeShipment.dgDeclarationPlaceAndDate || '---'}</span>
+                  </div>
                 </div>
                 <div className="border-t border-dotted border-slate-400 pt-1 mt-2 text-[8px] text-slate-500">
                   Signature of Declarant
@@ -980,15 +987,18 @@ export function DgDocumentCanvas({
                   </p>
                   <EditableDocCell
                     boxNumber="22"
-                    label="Company Name, Declarant & Date"
+                    label="22. Company Name & Declarant"
                     value={getVal(
                       'box_22_declarant_details_and_signature',
-                      `${activeShipment.shipperName || ''}\n${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}\n${activeShipment.dgDeclarationPlaceAndDate || ''}`
+                      `${activeShipment.shipperName || ''}\n${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}`
                     )}
                     onChange={(val) => handleUpdate('box_22_declarant_details_and_signature', val, 'dgDeclarantName')}
                     multiline
                     rows={2}
                   />
+                  <div className="mt-1.5 text-[8px] text-slate-600 font-mono">
+                    Place and date: <span className="font-semibold text-slate-800">{activeShipment.dgDeclarationPlaceAndDate || '---'}</span>
+                  </div>
                 </div>
                 <div className="border-t border-dotted border-slate-400 pt-1 mt-2 text-[8px] text-slate-500">
                   Signature of Declarant
