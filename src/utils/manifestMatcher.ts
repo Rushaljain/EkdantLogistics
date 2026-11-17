@@ -338,6 +338,7 @@ export function buildMappedManifest(
       if (palletRanges.length > 0) {
         const firstRange = palletRanges[0];
         if (!resolvedValue.includes(firstRange)) {
+          resolvedValue = resolvedValue.replace(/(?:\r?\n)?PALLET\s*NOS?:\s*[^\r\n]*/gi, '').trim();
           const palletStr = `PALLET NOS: ${palletRanges.join(', ')}`;
           resolvedValue = resolvedValue.trim() ? `${resolvedValue.trim()}\n${palletStr}` : palletStr;
         }

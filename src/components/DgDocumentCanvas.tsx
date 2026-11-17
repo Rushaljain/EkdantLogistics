@@ -37,7 +37,8 @@ export function DgDocumentCanvas({
     if (shipmentKey) {
       const updated = { ...shipmentJson };
       if (typeof updated[shipmentKey] === 'number') {
-        (updated as any)[shipmentKey] = Number(newValue) || 0;
+        const cleaned = typeof newValue === 'string' ? newValue.replace(/,/g, '').replace(/[^\d.]/g, '') : newValue;
+        (updated as any)[shipmentKey] = parseFloat(cleaned as string) || 0;
       } else {
         (updated as any)[shipmentKey] = newValue;
       }

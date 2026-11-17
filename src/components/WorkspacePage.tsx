@@ -136,6 +136,7 @@ export function WorkspacePage({
     if (!shipmentJson.carrierName?.trim()) pending.push('carrierName');
     if (!shipmentJson.vesselName?.trim() || !shipmentJson.voyageNumber?.trim()) pending.push('vesselVoyage');
     if (!shipmentJson.containerNumber?.trim()) pending.push('containerNumber');
+    if (!shipmentJson.sealNumber?.trim()) pending.push('sealNumber');
     if (!shipmentJson.tareWeightKg || shipmentJson.tareWeightKg === 0) pending.push('tareWeightKg');
     if (!shipmentJson.emergencyContactPhone?.trim()) pending.push('emergencyContactPhone');
     return pending;
@@ -147,6 +148,7 @@ export function WorkspacePage({
     if (!shipmentJson.carrierName?.trim()) pending.push('carrierName');
     if (!shipmentJson.vesselName?.trim() || !shipmentJson.voyageNumber?.trim()) pending.push('vesselVoyage');
     if (!shipmentJson.containerNumber?.trim()) pending.push('containerNumber');
+    if (!shipmentJson.sealNumber?.trim()) pending.push('sealNumber');
     if (!shipmentJson.tareWeightKg || shipmentJson.tareWeightKg === 0) pending.push('tareWeightKg');
     if (!shipmentJson.shippingBillNumbers?.trim()) pending.push('shippingBillNumbers');
     if (!shipmentJson.freeTimeClause?.trim()) pending.push('freeTimeClause');

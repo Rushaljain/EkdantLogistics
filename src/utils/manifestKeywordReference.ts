@@ -892,6 +892,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
         const palletRanges = synthesizePalletRanges(shipment.pallets);
         const palletStr = palletRanges.join(', ');
         if (palletStr && !marks.includes(palletRanges[0])) {
+          marks = marks.replace(/(?:\r?\n)?PALLET\s*NOS?:\s*[^\r\n]*/gi, '').trim();
           marks = marks ? `${marks}\nPALLET NOS: ${palletStr}` : `PALLET NOS: ${palletStr}`;
         }
       }

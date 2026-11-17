@@ -33,7 +33,8 @@ export function BlDocumentCanvas({
     if (shipmentKey) {
       const updated = { ...shipmentJson };
       if (typeof updated[shipmentKey] === 'number') {
-        (updated as any)[shipmentKey] = Number(newValue) || 0;
+        const cleaned = typeof newValue === 'string' ? newValue.replace(/,/g, '').replace(/[^\d.]/g, '') : newValue;
+        (updated as any)[shipmentKey] = parseFloat(cleaned as string) || 0;
       } else {
         (updated as any)[shipmentKey] = newValue;
       }
@@ -177,12 +178,18 @@ export function BlDocumentCanvas({
 
             {/* Document References Column */}
             <div className="md:col-span-6 flex flex-col divide-y divide-slate-900">
-              <div className="grid grid-cols-2 divide-x divide-slate-900">
+              <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-900">
+                <EditableDocCell
+                  label="Carrier / Shipping Line"
+                  value={getVal('carrier_name', shipmentJson.carrierName)}
+                  onChange={(val) => handleUpdate('carrier_name', val, 'carrierName')}
+                  stage2Key="carrierName"
+                  placeholder="e.g. Carrier Name"
+                />
                 <EditableDocCell
                   label="Bill of Lading Number"
                   value={getVal('bill_of_lading_number', shipmentJson.bookingNumber ? `BL-${shipmentJson.bookingNumber}` : '')}
                   onChange={(val) => handleUpdate('bill_of_lading_number', val)}
-                  stage2Key="bookingNumber"
                   placeholder="e.g. BL-BKG-99201"
                 />
                 <EditableDocCell
@@ -386,21 +393,52 @@ export function BlDocumentCanvas({
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="px-2.5 py-1.5 font-bold text-slate-900">
-                      {shipmentJson.containerNumber
-                        ? `${shipmentJson.containerNumber} / SEAL: ${shipmentJson.sealNumber || ''}`
-                        : '—'}
+                    <td className="px-2.5 py-1 font-bold text-slate-900">
+                      <div className="flex items-center space-x-1">
+                        <input
+                          id="stage2-containerNumber"
+                          type="text"
+                          value={shipmentJson.containerNumber || ''}
+                          placeholder="Container No"
+                          onChange={(e) => handleUpdate('container_number', e.target.value, 'containerNumber')}
+                          className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                        />
+                        <span className="text-slate-400 font-mono text-[9px]">/ SEAL:</span>
+                        <input
+                          id="stage2-sealNumber"
+                          type="text"
+                          value={shipmentJson.sealNumber || ''}
+                          placeholder="Seal No"
+                          onChange={(e) => handleUpdate('seal_number', e.target.value, 'sealNumber')}
+                          className="w-1/2 bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                        />
+                      </div>
                     </td>
-                    <td className="px-2.5 py-1.5 text-slate-700">
-                      {shipmentJson.containerType || '20GP'}
+                    <td className="px-2.5 py-1 text-slate-700">
+                      <input
+                        type="text"
+                        value={shipmentJson.containerType || "20' GP"}
+                        placeholder="Type"
+                        onChange={(e) => handleUpdate('container_type', e.target.value, 'containerType')}
+                        className="w-full bg-transparent text-slate-700 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                      />
                     </td>
-                    <td className="px-2.5 py-1.5 text-right font-semibold text-slate-800">
-                      {shipmentJson.tareWeightKg > 0 ? `${shipmentJson.tareWeightKg.toLocaleString()} kg` : '—'}
+                    <td className="px-2.5 py-1 text-right font-semibold text-slate-800">
+                      <input
+                        id="stage2-tareWeightKg"
+                        type="text"
+                        value={shipmentJson.tareWeightKg > 0 ? shipmentJson.tareWeightKg : ''}
+                        placeholder="Tare (kg)"
+                        onChange={(e) => {
+                          handleUpdate('tare_weight', e.target.value, 'tareWeightKg');
+                        }}
+                        className="w-full text-right bg-transparent font-semibold text-slate-800 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
+                      />
                     </td>
-                    <td className="px-2.5 py-1.5 text-right font-semibold text-slate-800">
+                    <td className="px-2.5 py-1 text-right font-semibold text-slate-800">
                       {shipmentJson.grossWeightKg.toLocaleString()} kg
                     </td>
-                    <td className="px-2.5 py-1.5 text-right font-extrabold text-emerald-950 bg-emerald-50">
+                    <td className="px-2.5 py-1 text-right font-extrabold text-emerald-950 bg-emerald-50">
                       {calculatedVgm > 0 ? `${calculatedVgm.toLocaleString()} kg` : '—'}
                     </td>
                   </tr>
