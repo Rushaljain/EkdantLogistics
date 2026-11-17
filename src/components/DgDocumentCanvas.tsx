@@ -3,10 +3,9 @@
 // Strict zero-hardcoding: dynamic resolution from ExtractedShipmentJSON
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, Layers, ChevronDown } from 'lucide-react';
+import { Layers, ChevronDown } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
-  ExtractedPallet,
   DgTemplateId,
   DgCargoItemLine
 } from '../types/index.ts';
@@ -73,7 +72,6 @@ export function DgDocumentCanvas({
   templateId = 'COMMON_DG',
   onSelectedItemsChange
 }: DgDocumentCanvasProps): React.JSX.Element {
-  const [showPalletAnnex] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   // Normalize template ID
@@ -166,83 +164,6 @@ export function DgDocumentCanvas({
   const cargoBlockText = useMemo(() => {
     return buildTemplateCargoBlock(activeTemplateId, activeShipment);
   }, [activeTemplateId, activeShipment]);
-
-  // Pallet Annex Handlers
-  const handlePalletChange = (
-    index: number,
-    field: keyof ExtractedPallet,
-    value: string | number
-  ) => {
-    const updatedPallets = [...shipmentJson.pallets];
-    const target = { ...updatedPallets[index] };
-
-    if (field === 'boxCount' || field === 'grossWeightKg' || field === 'netWeightKg') {
-      (target as any)[field] = Number(value) || 0;
-    } else {
-      (target as any)[field] = String(value);
-    }
-
-    updatedPallets[index] = target;
-
-    const totalBoxes = updatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
-    const grossWeight = updatedPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
-    const netWeight = updatedPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
-
-    onUpdateShipment({
-      ...shipmentJson,
-      pallets: updatedPallets,
-      totalBoxes: totalBoxes > 0 ? totalBoxes : shipmentJson.totalBoxes,
-      totalPackages: totalBoxes > 0 ? totalBoxes : shipmentJson.totalPackages,
-      grossWeightKg: grossWeight > 0 ? grossWeight : shipmentJson.grossWeightKg,
-      netWeightKg: netWeight > 0 ? netWeight : shipmentJson.netWeightKg
-    });
-  };
-
-  const handleAddPalletRow = () => {
-    const nextIdx = shipmentJson.pallets.length + 1;
-    const newPallet: ExtractedPallet = {
-      palletNumber: `P-${nextIdx.toString().padStart(2, '0')}`,
-      modelCode: shipmentJson.pallets[0]?.modelCode || '',
-      brand: shipmentJson.pallets[0]?.brand || shipmentJson.brandName || undefined,
-      invoiceNumber: shipmentJson.pallets[0]?.invoiceNumber || shipmentJson.invoiceNumbers?.[0] || undefined,
-      boxCount: 40,
-      grossWeightKg: 1020,
-      netWeightKg: 980,
-      sourceFile: 'Annex Pallet'
-    };
-
-    const updatedPallets = [...shipmentJson.pallets, newPallet];
-    const totalBoxes = updatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
-    const grossWeight = updatedPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
-    const netWeight = updatedPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
-
-    onUpdateShipment({
-      ...shipmentJson,
-      pallets: updatedPallets,
-      totalPallets: updatedPallets.length,
-      totalBoxes,
-      totalPackages: totalBoxes,
-      grossWeightKg: grossWeight,
-      netWeightKg: netWeight
-    });
-  };
-
-  const handleDeletePalletRow = (index: number) => {
-    const updatedPallets = shipmentJson.pallets.filter((_, i) => i !== index);
-    const totalBoxes = updatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
-    const grossWeight = updatedPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
-    const netWeight = updatedPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
-
-    onUpdateShipment({
-      ...shipmentJson,
-      pallets: updatedPallets,
-      totalPallets: updatedPallets.length,
-      totalBoxes,
-      totalPackages: totalBoxes,
-      grossWeightKg: grossWeight,
-      netWeightKg: netWeight
-    });
-  };
 
   // Template-specific text constants
   const isKmtc = activeTemplateId === 'KMTC_DG';
