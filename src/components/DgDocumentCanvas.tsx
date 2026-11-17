@@ -2,8 +2,9 @@
 // Implements 7 Carrier-Specific Reference Templates + Selective Multi-Item DG Cargo Picker
 // Strict zero-hardcoding: dynamic resolution from ExtractedShipmentJSON
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Plus, Trash2, Layers, ChevronDown } from 'lucide-react';
+import { renderAsync } from 'docx-preview';
 import type {
   ExtractedShipmentJSON,
   ExtractedPallet,
@@ -17,6 +18,7 @@ import {
   filterShipmentByDgCargoItems,
   buildTemplateCargoBlock
 } from '../utils/dgTemplates.ts';
+import { generatePopulatedDocxBlob } from '../utils/documentExporter.ts';
 
 interface DgDocumentCanvasProps {
   shipmentJson: ExtractedShipmentJSON;
@@ -210,32 +212,45 @@ export function DgDocumentCanvas({
   const isKmtc = activeTemplateId === 'KMTC_DG';
   const isCmaCgm = activeTemplateId === 'CMA_CGM_DG';
   const isAnlGrid = isKmtc || isCmaCgm;
-  const isNomination = activeTemplateId === 'NOMINATION_DG';
-  const isVstar = activeTemplateId === 'VSTAR_DG';
-  const isOneLine = activeTemplateId === 'ONE_LINE_DG';
-  const isMscLine = activeTemplateId === 'MSC_LINE_DG';
-  const isDiamond = activeTemplateId === 'DIAMOND_MARITIME_DG';
 
-  // Box 2 Booking Number display format
-  const box2Value = useMemo(() => {
-    const bkg = activeShipment.bookingNumber || '';
-    if (!bkg) return '';
-    if (isOneLine || isMscLine) {
-      return bkg.startsWith('BKG.NO.:') ? bkg : `BKG.NO.: ${bkg}`;
-    }
-    if (isDiamond) {
-      return bkg.startsWith('BOOKING NO:') ? bkg : `BOOKING NO: ${bkg}`;
-    }
-    return bkg;
-  }, [activeShipment.bookingNumber, isOneLine, isMscLine, isDiamond]);
+  // Ref and state for docx-preview WYSIWYG rendering
+  const docxContainerRef = useRef<HTMLDivElement>(null);
+  const [isRenderingDocx, setIsRenderingDocx] = useState(false);
+  const [docxRenderError, setDocxRenderError] = useState(false);
 
-  // Box 17 Container size & type display format
-  const box17Display = useMemo(() => {
-    if (isOneLine || isMscLine) return "1x20'";
-    if (isDiamond) return '01X20 GP';
-    if (isNomination || isVstar) return '20 GP';
-    return activeShipment.containerType || "20' GP";
-  }, [activeShipment.containerType, isOneLine, isMscLine, isDiamond, isNomination, isVstar]);
+  useEffect(() => {
+    if (isAnlGrid) return;
+    let isCancelled = false;
+
+    async function loadAndRender() {
+      if (!docxContainerRef.current) return;
+      setIsRenderingDocx(true);
+      setDocxRenderError(false);
+
+      try {
+        const blob = await generatePopulatedDocxBlob(activeShipment, activeTemplateId);
+        if (!blob || isCancelled) return;
+        if (docxContainerRef.current) {
+          docxContainerRef.current.innerHTML = '';
+          await renderAsync(blob, docxContainerRef.current, undefined, {
+            inWrapper: false,
+            ignoreWidth: false,
+            ignoreHeight: false
+          });
+        }
+      } catch (err) {
+        console.warn('docx-preview renderAsync failed:', err);
+        if (!isCancelled) setDocxRenderError(true);
+      } finally {
+        if (!isCancelled) setIsRenderingDocx(false);
+      }
+    }
+
+    loadAndRender();
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeShipment, activeTemplateId, isAnlGrid]);
 
   return (
     <div className="w-full max-w-[920px] mx-auto space-y-4 pb-12">
@@ -606,408 +621,49 @@ export function DgDocumentCanvas({
         </div>
       ) : (
         /* =========================================================================
-            VIEW B: STANDARD IMO 22-BOX FORM (COMMON, NOMINATION, VSTAR, ONE, MSC, DIAMOND)
+            VIEW B: 100% DITTO WORD MASTER TEMPLATE (COMMON, NOMINATION, VSTAR, ONE, MSC, DIAMOND)
+            RENDERED PIXEL-FOR-PIXEL VIA DOCX-PREVIEW
             ========================================================================= */
-        <div className="bg-white text-slate-900 shadow-2xl border-2 border-slate-900 rounded-sm p-6 sm:p-8 font-sans">
-          {/* Document Header */}
-          <div className="border-b-2 border-slate-900 pb-2 mb-3 text-center">
-            <h1 className="text-sm sm:text-base font-extrabold uppercase tracking-tight text-slate-950">
-              {activeTemplateId === 'COMMON_DG'
-                ? 'MULTIMODAL DANGEROUS GOODS DECLARATION'
-                : 'MULTIMODAL DANGEROUS GOODS FORM'}
-            </h1>
-            <p className="text-[8.5px] text-slate-600 font-medium">
-              {activeTemplateId === 'COMMON_DG'
-                ? 'This form meets the requirements of SOLAS 74, chapter VII, reg 5.4; MARPOL 73/78, Annex III, reg 4'
-                : 'This form may be used as a dangerous goods declaration as it meets the requirements of Solas 74,chapter VII, regulation 5; MARPOL 73/78, Annex III, regulation 4.'}
-            </p>
-          </div>
-
-          {/* 22 IMO Boxes Grid */}
-          <div className="border border-slate-900 divide-y divide-slate-900 text-[10px]">
-            {/* Top Half: 2 Columns 50% Left / 50% Right */}
-            <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-slate-900">
-              {/* Left Column (50% / col-span-6) */}
-              <div className="md:col-span-6 flex flex-col divide-y divide-slate-900">
-                <EditableDocCell
-                  boxNumber="1"
-                  label={
-                    isDiamond
-                      ? '1 SHIPPER/CONSIGNOR/SENDER (FULL STYLE ADDRESS IS MANDATORY)'
-                      : 'Shipper / Consignor / Sender'
-                  }
-                  value={getVal(
-                    'box_1_shipper',
-                    `${activeShipment.shipperName}\n${activeShipment.shipperAddress}${
-                      activeShipment.shipperIec ? `\nIEC: ${activeShipment.shipperIec}` : ''
-                    }${activeShipment.shipperGstin ? `\nGSTIN: ${activeShipment.shipperGstin}` : ''}`
-                  )}
-                  onChange={(val) => handleUpdate('box_1_shipper', val, 'shipperAddress')}
-                  multiline
-                  rows={3}
-                />
-                <EditableDocCell
-                  boxNumber="6"
-                  label="Consignee"
-                  value={getVal('box_6_consignee', `${activeShipment.consigneeName}\n${activeShipment.consigneeAddress}`)}
-                  onChange={(val) => handleUpdate('box_6_consignee', val, 'consigneeAddress')}
-                  multiline
-                  rows={3}
-                />
-                <EditableDocCell
-                  boxNumber="7"
-                  label="Carrier"
-                  value={getVal('box_7_carrier', activeShipment.carrierName)}
-                  onChange={(val) => handleUpdate('box_7_carrier', val, 'carrierName')}
-                  stage2Key="carrierName"
-                  placeholder="e.g. Carrier Name"
-                />
-                <div className="p-2 bg-slate-50">
-                  <span className="text-[8px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    8. This shipment is within the limitations prescribed for:
-                  </span>
-                  <div className="text-[9px] font-semibold text-slate-800">
-                    [ PASSENGER AND CARGO AIRCRAFT &nbsp;&bull;&nbsp; CARGO AIRCRAFT ONLY ]
-                  </div>
-                </div>
-
-                {/* Vessel and Port of Loading Row (with ONE/MSC Emergency Strip support) */}
-                <div className="grid grid-cols-2 divide-x divide-slate-900">
-                  <EditableDocCell
-                    boxNumber="10"
-                    label={isDiamond ? 'Vessel and Voyage number' : 'Vessel and voy'}
-                    value={getVal(
-                      'box_10_vessel_and_voyage_number',
-                      activeShipment.vesselName
-                        ? (activeShipment.voyageNumber ? `${activeShipment.vesselName} / ${activeShipment.voyageNumber}` : activeShipment.vesselName)
-                        : ''
-                    )}
-                    onChange={(val) => handleUpdate('box_10_vessel_and_voyage_number', val, 'vesselName')}
-                    stage2Key="vesselVoyage"
-                    placeholder="e.g. Vessel / Voy"
-                  />
-                  <EditableDocCell
-                    boxNumber="11"
-                    label="Port of loading"
-                    value={getVal('box_11_port_of_loading', activeShipment.portOfLoading)}
-                    onChange={(val) => handleUpdate('box_11_port_of_loading', val, 'portOfLoading')}
-                  />
-                </div>
-
-                {/* Prominent Emergency Contact line inside Box 11 for ONE LINE & MSC LINE templates */}
-                {(isOneLine || isMscLine) && (
-                  <div className="p-1.5 bg-rose-50 border-t border-slate-900 text-[8.5px] font-mono font-bold text-rose-900">
-                    EMERGENCY CONTACT NUMBER : {activeShipment.emergencyContactPhone || '---'}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 divide-x divide-slate-900">
-                  <EditableDocCell
-                    boxNumber="12"
-                    label="Port of discharge"
-                    value={getVal('box_12_port_of_discharge', activeShipment.portOfDischarge)}
-                    onChange={(val) => handleUpdate('box_12_port_of_discharge', val, 'portOfDischarge')}
-                  />
-                  <EditableDocCell
-                    boxNumber="13"
-                    label={isDiamond ? 'DESTINATIONS' : 'Destination'}
-                    value={getVal('box_13_destination', activeShipment.finalDestination || activeShipment.portOfDischarge)}
-                    onChange={(val) => handleUpdate('box_13_destination', val, 'finalDestination')}
-                  />
-                </div>
-              </div>
-
-              {/* Right Column (50% / col-span-6) */}
-              <div className="md:col-span-6 flex flex-col divide-y divide-slate-900">
-                <EditableDocCell
-                  boxNumber="2"
-                  label={
-                    isOneLine || isMscLine
-                      ? 'Transport Document Number: BKG.NO.:'
-                      : (isDiamond ? 'Transport document number BOOKING NO:' : 'Transport Document Number')
-                  }
-                  value={getVal('box_2_transport_document_number', box2Value)}
-                  onChange={(val) => handleUpdate('box_2_transport_document_number', val, 'bookingNumber')}
-                  stage2Key="bookingNumber"
-                />
-
-                {/* 3-Column Top Right for MSC LINE vs 2-Column for others */}
-                {isMscLine ? (
-                  <div className="grid grid-cols-3 divide-x divide-slate-900">
-                    <EditableDocCell
-                      boxNumber="3"
-                      label="3 Page of Page"
-                      value={getVal('box_3_page_of_page', '1 OF 1')}
-                      onChange={(val) => handleUpdate('box_3_page_of_page', val)}
-                    />
-                    <EditableDocCell
-                      boxNumber="4"
-                      label="Shipper's reference"
-                      value={getVal(
-                        'box_4_shipper_reference',
-                        activeShipment.shipperReference || activeShipment.invoiceNumbers?.[0] || ''
-                      )}
-                      onChange={(val) => handleUpdate('box_4_shipper_reference', val, 'shipperReference')}
-                    />
-                    <EditableDocCell
-                      boxNumber="5"
-                      label="Freight Forwarder's reference"
-                      value={getVal('box_5_freight_forwarder_reference', activeShipment.forwarderReference || '')}
-                      onChange={(val) => handleUpdate('box_5_freight_forwarder_reference', val, 'forwarderReference')}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 divide-x divide-slate-900">
-                      <EditableDocCell
-                        boxNumber="3"
-                        label={isOneLine ? '3 Page of Page' : 'Page 1 of 1'}
-                        value={getVal('box_3_page_of_page', '1 OF 1')}
-                        onChange={(val) => handleUpdate('box_3_page_of_page', val)}
-                      />
-                      <EditableDocCell
-                        boxNumber="4"
-                        label="Shipper's reference"
-                        value={getVal(
-                          'box_4_shipper_reference',
-                          activeShipment.shipperReference || activeShipment.invoiceNumbers?.[0] || ''
-                        )}
-                        onChange={(val) => handleUpdate('box_4_shipper_reference', val, 'shipperReference')}
-                      />
-                    </div>
-                    <EditableDocCell
-                      boxNumber="5"
-                      label="Freight Forwarder's reference"
-                      value={getVal('box_5_freight_forwarder_reference', activeShipment.forwarderReference || '')}
-                      onChange={(val) => handleUpdate('box_5_freight_forwarder_reference', val, 'forwarderReference')}
-                    />
-                  </>
-                )}
-
-                <div className="p-2 bg-slate-50 flex-1">
-                  <span className="text-[8px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    SHIPPER'S DECLARATION
-                  </span>
-                  <p className="text-[8px] leading-tight text-slate-600">
-                    I hereby declare that the contents of this consignment are fully and accurately described below by the proper shipping name(s), and are classified, packaged, marked and labelled/placarded, and are in all respects in proper condition for transport according to the applicable international and national governmental regulations.
-                  </p>
-                </div>
-
-                <EditableDocCell
-                  boxNumber="9"
-                  label="Additional handling information"
-                  value={getVal(
-                    'box_9_place_of_receipt',
-                    (isOneLine || isMscLine)
-                      ? ''
-                      : (activeShipment.emergencyContactPhone ? `EMERGENCY CONTACT NUMBER: ${activeShipment.emergencyContactPhone}` : '')
-                  )}
-                  onChange={(val) => handleUpdate('box_9_place_of_receipt', val, 'emergencyContactPhone')}
-                  stage2Key="emergencyContactPhone"
-                  placeholder="Additional handling instructions..."
-                />
-              </div>
-            </div>
-
-            {/* Center Cargo Table (Unified Wide Box 14 + 3 Weight Columns) */}
-            <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-slate-900">
-              {/* Box 14: Shipping Marks | *Number and kind of packages; description of goods */}
-              <div className="md:col-span-8 p-2 bg-white flex flex-col space-y-1.5 min-w-0">
-                <span className="text-[8px] font-bold text-slate-700 uppercase tracking-wider">
-                  14. Shipping Marks | *Number and kind of packages; description of goods
+        <div className="space-y-4">
+          <div className="bg-white text-slate-900 shadow-2xl border border-slate-300 rounded-sm p-4 sm:p-6 font-sans relative">
+            <div className="border-b border-slate-200 pb-2 mb-3 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-900 uppercase tracking-wide">
+                  100% Exact Carrier Master Template ({DG_TEMPLATE_DEFINITIONS[activeTemplateId].name})
                 </span>
-                <textarea
-                  rows={9}
-                  value={getVal('box_14_shipping_marks', cargoBlockText)}
-                  onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value, 'shippingMarks')}
-                  className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-[9px] font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed whitespace-pre-wrap break-words"
-                />
+                <p className="text-[9px] text-slate-500">
+                  Word OpenXML Layout Engine &bull; Native Geometry, Borders &amp; Styling Verbatim
+                </p>
               </div>
-
-              {/* Boxes 16, 17, 18: Masses & Cube */}
-              <div className="md:col-span-4 flex flex-col divide-y divide-slate-900">
-                <EditableDocCell
-                  boxNumber="16"
-                  label={isDiamond ? 'Gross mass (kg)' : 'Gross Mass (kg)'}
-                  value={getVal(
-                    'box_16_gross_mass_kg',
-                    activeGrossWeight > 0 ? `${activeGrossWeight.toLocaleString()} KGS` : ''
-                  )}
-                  onChange={(val) => handleUpdate('box_16_gross_mass_kg', val, 'grossWeightKg')}
-                />
-                <EditableDocCell
-                  boxNumber="17"
-                  label={isDiamond ? 'Net Mass' : 'Net Mass (kgs)'}
-                  value={getVal(
-                    'box_17_net_mass_kg',
-                    activeNetWeight > 0 ? `${activeNetWeight.toLocaleString()} KGS` : ''
-                  )}
-                  onChange={(val) => handleUpdate('box_17_net_mass_kg', val, 'netWeightKg')}
-                />
-                <EditableDocCell
-                  boxNumber="18"
-                  label={isDiamond ? 'Total cube (m3)' : 'Cube (m³)'}
-                  value={getVal(
-                    'box_18_cube_m3',
-                    activeShipment.volumeCbm > 0 ? `${activeShipment.volumeCbm.toFixed(3)} M³` : ''
-                  )}
-                  onChange={(val) => handleUpdate('box_18_cube_m3', val, 'volumeCbm')}
-                />
-              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                Live Populated DOCX Preview
+              </span>
             </div>
 
-            {/* Extra "Other Details" Horizontal Bar for Nomination, V-Star, and Diamond Maritime */}
-            {(isNomination || isVstar || isDiamond) && (
-              <div className="p-1.5 bg-slate-100 font-mono text-[8.5px] font-bold text-slate-900 border-t border-slate-900">
-                {isNomination && (
-                  <span>Other Details : UN PACKING CODE :- {activeShipment.unPackingCode || ''}</span>
-                )}
-                {isVstar && (
-                  <span>Other Details {activeShipment.unPackingCode ? `: UN PACKING CODE: ${activeShipment.unPackingCode}` : ''}</span>
-                )}
-                {isDiamond && (
-                  <span>Other Details UN PACKAGING NO. {activeShipment.unPackingCode || ''}</span>
-                )}
+            {isRenderingDocx && (
+              <div className="py-12 flex items-center justify-center">
+                <div className="flex items-center space-x-2 text-xs font-semibold text-brand-primary">
+                  <span className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin"></span>
+                  <span>Rendering exact master template...</span>
+                </div>
               </div>
             )}
 
-            {/* Official IMO Equipment Row (Boxes 15, 16, 17, 18, 19) */}
-            <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-y md:divide-y-0 divide-slate-900 bg-slate-50">
-              <EditableDocCell
-                boxNumber="15"
-                label="Container identification no."
-                value={getVal('box_19_container_and_seal_number', activeShipment.containerNumber)}
-                onChange={(val) => handleUpdate('box_19_container_and_seal_number', val, 'containerNumber')}
-                stage2Key="containerNumber"
-                placeholder="e.g. Container No"
-              />
-              <EditableDocCell
-                boxNumber="16"
-                label={isDiamond ? 'SEAL NO' : 'Seal number(s)'}
-                value={getVal('box_16_seal_number', activeShipment.sealNumber)}
-                onChange={(val) => handleUpdate('box_16_seal_number', val, 'sealNumber')}
-                stage2Key="sealNumber"
-                placeholder="e.g. Seal No"
-              />
-              <EditableDocCell
-                boxNumber="17"
-                label={isDiamond ? 'CNTR TYPE' : 'Container size & type'}
-                value={getVal('box_17_container_size_type', box17Display)}
-                onChange={(val) => handleUpdate('box_17_container_size_type', val, 'containerType')}
-              />
-              <EditableDocCell
-                boxNumber="18"
-                label="Tare mass (kg)"
-                value={getVal(
-                  'box_19_tare_mass_kg',
-                  activeTareWeight > 0 ? `${activeTareWeight.toLocaleString()} KGS` : ''
-                )}
-                onChange={(val) => handleUpdate('box_19_tare_mass_kg', val, 'tareWeightKg')}
-                stage2Key="tareWeightKg"
-                placeholder="e.g. 2150 KGS"
-              />
-              <div className="p-2 bg-emerald-50/80 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[8px] font-bold text-emerald-900 uppercase tracking-wider">
-                      {isDiamond ? '19. Total gross (kg)' : '19. Total gross (incl. tare) (kg)'}
-                    </span>
-                    <span className="text-[7.5px] font-mono font-bold text-emerald-700 bg-emerald-200/80 px-1 py-0.2 rounded border border-emerald-400">
-                      SOLAS VGM Live
-                    </span>
-                  </div>
-                  <div className="text-xs font-mono font-extrabold text-emerald-950 mt-1">
-                    {activeVgm > 0 ? `${activeVgm.toLocaleString()} KGS` : '—'}
-                  </div>
-                </div>
-                <div className="text-[8px] font-mono text-emerald-700 mt-1">
-                  Cargo ({activeGrossWeight.toLocaleString()} kg) + Tare ({activeTareWeight.toLocaleString()} kg)
-                </div>
-              </div>
-            </div>
+            <div
+              ref={docxContainerRef}
+              className="docx-render-target overflow-x-auto w-full [&_.docx]:!p-0 [&_.docx]:!shadow-none [&_.docx]:!border-0 [&_table]:!border-collapse [&_td]:!border-slate-800"
+            />
 
-            {/* Bottom Signature Row (Boxes 20, 21, 22) */}
-            <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-slate-900">
-              {/* Box 20: Container Packing Certificate */}
-              <div className="md:col-span-4 p-2 bg-white flex flex-col justify-between">
-                <div>
-                  <span className="text-[8px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    20. CONTAINER / VEHICLE PACKING CERTIFICATE {isDiamond ? '(stamp & signature are mandatory)' : ''}
-                  </span>
-                  <p className="text-[8px] leading-tight text-slate-500 mb-2">
-                    I hereby declare that the goods described above have been packed/loaded into the container/vehicle identified above in accordance with the applicable provisions.
-                  </p>
-                  <EditableDocCell
-                    boxNumber="20"
-                    label="20. Company Name & Declarant"
-                    value={getVal(
-                      'box_20_container_packing_certificate',
-                      `${activeShipment.shipperName || ''}\n${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}`
-                    )}
-                    onChange={(val) => handleUpdate('box_20_container_packing_certificate', val, 'dgDeclarantName')}
-                    multiline
-                    rows={2}
-                  />
-                  <div className="mt-1.5 text-[8px] text-slate-600 font-mono">
-                    Place and date: <span className="font-semibold text-slate-800">{activeShipment.dgDeclarationPlaceAndDate || '---'}</span>
-                  </div>
-                </div>
-                <div className="border-t border-dotted border-slate-400 pt-1 mt-2 text-[8px] text-slate-500">
-                  Signature of Declarant
-                </div>
+            {docxRenderError && (
+              <div className="p-4 text-center text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg">
+                Word document preview fallback: The exported .docx download contains the full binary master template.
               </div>
-
-              {/* Box 21: Receiving Organization Receipt */}
-              <div className="md:col-span-4 p-2 bg-slate-50 flex flex-col justify-between">
-                <div>
-                  <span className="text-[8px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    21. RECEIVING ORGANIZATION RECEIPT
-                  </span>
-                  <p className="text-[8px] leading-tight text-slate-500 mb-2">
-                    Received the above number of packages/containers in apparent good order and condition.
-                  </p>
-                  <div className="text-[8.5px] text-slate-600 space-y-1">
-                    <div>Haulier: <span className="border-b border-dotted border-slate-400 inline-block w-24">&nbsp;</span></div>
-                    <div>Vehicle Reg No: <span className="border-b border-dotted border-slate-400 inline-block w-20">&nbsp;</span></div>
-                  </div>
-                </div>
-                <div className="border-t border-dotted border-slate-400 pt-1 mt-2 text-[8px] text-slate-500">
-                  Driver's Signature
-                </div>
-              </div>
-
-              {/* Box 22: Shipper's Declaration */}
-              <div className="md:col-span-4 p-2 bg-white flex flex-col justify-between">
-                <div>
-                  <span className="text-[8px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
-                    22. SHIPPER'S DECLARATION {isDiamond ? '(stamp & signature are mandatory)' : ''}
-                  </span>
-                  <p className="text-[8px] leading-tight text-slate-500 mb-2">
-                    I hereby declare that the contents of this consignment are fully and accurately described above by the proper shipping name, and are classified, packaged, marked and labeled/placarded and are in all respects in proper condition for transport according to the applicable international and national governmental regulations.
-                  </p>
-                  <EditableDocCell
-                    boxNumber="22"
-                    label="22. Company Name & Declarant"
-                    value={getVal(
-                      'box_22_declarant_details_and_signature',
-                      `${activeShipment.shipperName || ''}\n${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}`
-                    )}
-                    onChange={(val) => handleUpdate('box_22_declarant_details_and_signature', val, 'dgDeclarantName')}
-                    multiline
-                    rows={2}
-                  />
-                  <div className="mt-1.5 text-[8px] text-slate-600 font-mono">
-                    Place and date: <span className="font-semibold text-slate-800">{activeShipment.dgDeclarationPlaceAndDate || '---'}</span>
-                  </div>
-                </div>
-                <div className="border-t border-dotted border-slate-400 pt-1 mt-2 text-[8px] text-slate-500">
-                  Signature of Declarant
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
+
+
 
       {/* =========================================================================
           PAGE 2: PALLET-LEVEL PACKAGING & WEIGHT BREAKDOWN ANNEX TABLE

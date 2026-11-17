@@ -5,7 +5,7 @@
 import JSZip from 'jszip';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
 import { groupManifestFieldsBySection } from './manifestMatcher.ts';
 import {
@@ -1031,6 +1031,106 @@ export function printManifestToPdf(
 }
 
 /**
+ * Injects shipment data into a carrier-specific master DOCX template via PizZip + Docxtemplater
+ */
+export async function generatePopulatedDocxBlob(
+  shipment: ExtractedShipmentJSON,
+  tmplId: DgTemplateId
+): Promise<Blob | null> {
+  try {
+    const templateFilename = `${tmplId}.docx`;
+    const res = await fetch(`/templates/dg/${templateFilename}`);
+    if (!res.ok) return null;
+    const arrayBuf = await res.arrayBuffer();
+    const zip = new PizZip(arrayBuf);
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      nullGetter: () => ''
+    });
+
+    const isDiamond = tmplId === 'DIAMOND_MARITIME_DG';
+    const isOneLine = tmplId === 'ONE_LINE_DG';
+    const isMscLine = tmplId === 'MSC_LINE_DG';
+    const isNomination = tmplId === 'NOMINATION_DG';
+    const isVstar = tmplId === 'VSTAR_DG';
+
+    const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
+    const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
+    const unNo = shipment.unNumber || '2794';
+    const psn = shipment.properShippingName || 'BATTERIES, WET, FILLED WITH ACID';
+    const techName = shipment.productDescription || 'LEAD ACID STORAGE BATTERIES';
+    const imoClass = shipment.imoClass || '8';
+    const pg = shipment.packingGroup || 'III';
+    const ems = shipment.emsNumber || 'F-A, S-B';
+    const unPkg = shipment.unPackingCode || '';
+    const sgg = shipment.segregationGroup || 'SGG1';
+    const tareVal = shipment.tareWeightKg || 2200;
+    const vgmVal = (shipment.grossWeightKg || 0) + tareVal;
+    const declarant = shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY';
+
+    const data: Record<string, string> = {
+      shipperBlock: shipment.shipperAddress || shipment.shipperName || '',
+      shipperName: shipment.shipperName || '',
+      shipperAddressLine1: (shipment.shipperAddress || '').split('\n')[0] || '',
+      shipperAddressLine2: (shipment.shipperAddress || '').split('\n')[1] || '',
+      shipperAddressLine3: (shipment.shipperAddress || '').split('\n').slice(2).join(', ') || '',
+      consigneeBlock: shipment.consigneeAddress || shipment.consigneeName || '',
+      consigneeName: shipment.consigneeName || '',
+      consigneeAddressLine1: (shipment.consigneeAddress || '').split('\n')[0] || '',
+      consigneeAddressLine2: (shipment.consigneeAddress || '').split('\n')[1] || '',
+      consigneeAddressLine3: (shipment.consigneeAddress || '').split('\n').slice(2).join(', ') || '',
+      bookingNo: shipment.bookingNumber || '',
+      pageInfo: '1 OF 1',
+      shipperRef: shipment.shipperReference || shipment.invoiceNumbers?.[0] || '',
+      forwarderRef: shipment.forwarderReference || '',
+      carrierName: shipment.carrierName || (isOneLine ? 'ONE LINE' : (isMscLine ? 'MSC MEDITERRANEAN SHIPPING COMPANY' : (isDiamond ? 'DIAMOND MARITIME AGENCY PVT LTD' : ''))),
+      vesselVoyage: shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '',
+      portOfLoading: shipment.portOfLoading || '',
+      portOfDischarge: shipment.portOfDischarge || '',
+      destination: shipment.finalDestination || shipment.portOfDischarge || '',
+      emergencyContact: shipment.emergencyContactPhone || '',
+      cargoDescriptionBlock: buildTemplateCargoBlock(tmplId, shipment),
+      grossMass: shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '',
+      netMass: shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '',
+      cube: shipment.volumeCbm > 0 ? `${shipment.volumeCbm} CBM` : (isDiamond ? '25 CBM' : ''),
+      unPackingCode: unPkg || '',
+      containerNo: shipment.containerNumber || '',
+      sealNo: shipment.sealNumber || '',
+      containerType: isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP"))),
+      tareMass: `${tareVal.toLocaleString()} KGS`,
+      totalGrossVgm: vgmVal > 0 ? `${vgmVal.toLocaleString()} KGS` : '',
+      declarantName: declarant,
+      placeAndDate: shipment.dgDeclarationPlaceAndDate || '',
+      haulierName: '',
+      vehicleRegNo: '',
+      unNumber: unNo,
+      properShippingName: psn,
+      technicalName: techName,
+      hazardClass: imoClass,
+      subsidiaryRisk: 'NA',
+      packingGroup: pg,
+      emsNo: ems,
+      flashPoint: 'NA',
+      marinePollutant: shipment.marinePollutant ? 'YES' : 'NA',
+      segregationGroup: sgg,
+      outerPackages: `${outerCount} PALLETS`,
+      innerPackages: `${innerCount} BOXES`
+    };
+
+    doc.render(data);
+    const outBlob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    });
+    return outBlob;
+  } catch (err) {
+    console.warn('generatePopulatedDocxBlob error:', err);
+    return null;
+  }
+}
+
+/**
  * Generates an editable Microsoft Word OpenXML (.docx) archive without external heavy binary dependencies
  */
 export async function exportManifestToDocx(
@@ -1053,11 +1153,15 @@ export async function exportManifestToDocx(
       const res = await fetch(`/templates/dg/${templateFilename}`);
       if (res.ok) {
         const arrayBuf = await res.arrayBuffer();
-        const wb = XLSX.read(arrayBuf, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(arrayBuf);
+        const ws = workbook.worksheets[0];
 
-        const shipperLines = (shipment.shipperAddress || shipment.shipperName || '').split('\n');
-        const consigneeLines = (shipment.consigneeAddress || shipment.consigneeName || '').split('\n');
+        const sAddress = (shipment.shipperAddress || '').replace(new RegExp(`^${shipment.shipperName}\\s*`, 'i'), '').trim();
+        const shipperLines = sAddress ? sAddress.split('\n') : (shipment.shipperAddress || '').split('\n');
+        const cAddress = (shipment.consigneeAddress || '').replace(new RegExp(`^${shipment.consigneeName}\\s*`, 'i'), '').trim();
+        const consigneeLines = cAddress ? cAddress.split('\n') : (shipment.consigneeAddress || '').split('\n');
+
         const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
         const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
         const unNo = shipment.unNumber || '2794';
@@ -1068,190 +1172,87 @@ export async function exportManifestToDocx(
         const ems = shipment.emsNumber || 'F-A, S-B';
         const unPkg = shipment.unPackingCode || '';
         const sgg = shipment.segregationGroup || 'SGG1';
+        const carrierDefault = tmplId === 'CMA_CGM_DG'
+          ? 'CMA-CGM AGENCIES INDIA PVT. LTD.'
+          : 'KOREA MARINE TRANSPORT CO. LTD.';
+        const carrier = shipment.carrierName || carrierDefault;
+        const declarant = shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY';
+        const placeDate = shipment.dgDeclarationPlaceAndDate || '';
 
-        const updateCell = (addr: string, val: string) => {
-          if (ws[addr]) {
-            ws[addr].v = val;
-            ws[addr].t = 's';
-          } else {
-            ws[addr] = { v: val, t: 's' };
-          }
+        const tags: Record<string, string> = {
+          shipperName: shipment.shipperName || '',
+          shipperAddressLine1: shipperLines[0] || '',
+          shipperAddressLine2: shipperLines[1] || '',
+          shipperAddressLine3: shipperLines.slice(2).join(', ') || '',
+          consigneeName: shipment.consigneeName || '',
+          consigneeAddressLine1: consigneeLines[0] || '',
+          consigneeAddressLine2: consigneeLines[1] || '',
+          consigneeAddressLine3: consigneeLines.slice(2).join(', ') || '',
+          shipperRef: shipment.shipperReference || shipment.invoiceNumbers?.[0] || '',
+          emergencyContact: shipment.emergencyContactPhone || '',
+          carrierName: carrier,
+          bookingNo: shipment.bookingNumber || '',
+          declarantName: declarant,
+          placeAndDate: placeDate,
+          vesselVoyage: shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '',
+          portOfLoading: shipment.portOfLoading || '',
+          containerNo: shipment.containerNumber || '',
+          sealNo: shipment.sealNumber || '',
+          portOfDischarge: shipment.portOfDischarge || '',
+          destination: shipment.finalDestination || shipment.portOfDischarge || '',
+          unNumber: unNo,
+          grossMass: shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '',
+          netMass: shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '',
+          properShippingName: psn,
+          technicalName: techName,
+          outerPackages: `${outerCount} PALLETS`,
+          innerPackages: `${innerCount} BOXES`,
+          hazardClass: imoClass,
+          subsidiaryRisk: 'NA',
+          packingGroup: pg,
+          unPackingCode: unPkg || '',
+          emsNo: ems,
+          flashPoint: 'NA',
+          marinePollutant: shipment.marinePollutant ? 'YES' : 'NA',
+          segregationGroup: sgg
         };
 
-        if (tmplId === 'KMTC_DG') {
-          updateCell('B9', shipment.shipperName || '');
-          updateCell('B10', shipperLines[0] || '');
-          updateCell('B11', shipperLines[1] || '');
-          updateCell('B12', shipperLines.slice(2).join(', '));
-          updateCell('D9', shipment.shipperReference || shipment.invoiceNumbers?.[0] || '');
-          updateCell('D15', shipment.emergencyContactPhone || '');
-          updateCell('B17', shipment.consigneeName || '');
-          updateCell('B18', consigneeLines[0] || '');
-          updateCell('B19', consigneeLines[1] || '');
-          updateCell('B20', consigneeLines.slice(2).join(', '));
-          updateCell('D17', shipment.carrierName || 'KOREA MARINE TRANSPORT CO. LTD.');
-          updateCell('D19', shipment.bookingNumber || '');
-          updateCell('D24', shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY');
-          updateCell('D25', shipment.shipperName || '');
-          updateCell('D27', shipment.dgDeclarationPlaceAndDate || '');
-          updateCell('B32', shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '');
-          updateCell('C32', shipment.portOfLoading || '');
-          updateCell('D32', shipment.containerNumber || '');
-          updateCell('G32', shipment.sealNumber || '');
-          updateCell('B34', shipment.portOfDischarge || '');
-          updateCell('C34', shipment.finalDestination || shipment.portOfDischarge || '');
-          updateCell('C37', `UN NO :- ${unNo}`);
-          updateCell('G37', shipment.grossWeightKg > 0 ? `GR WT : ${shipment.grossWeightKg.toLocaleString()} KGS` : '');
-          updateCell('C39', `PROPER SHIPPING NAME : - ${psn}`);
-          updateCell('G39', shipment.netWeightKg > 0 ? `NT WT : ${shipment.netWeightKg.toLocaleString()} KGS` : '');
-          updateCell('C41', `TECHNICAL  NAME : - ${techName}`);
-          updateCell('B43', `OUTER PACKAGES :- ${outerCount} PALLETS`);
-          updateCell('C43', `CLASS :- ${imoClass}`);
-          updateCell('D43', 'SUB CLASS :- N/A');
-          updateCell('B45', `INNER PACKING :- ${innerCount} BOXES`);
-          updateCell('C45', `UN PACKING GROUP :- ${pg}`);
-          updateCell('C47', unPkg ? `UN PACKING CODE :-  ${unPkg}` : '');
-          updateCell('C49', `EMS NO :- ${ems}`);
-          updateCell('C51', 'FLASH POINT :- NA');
-          updateCell('C53', `MARINE POLLUTANT :- ${shipment.marinePollutant ? 'YES' : 'NO'}`);
-          updateCell('C55', `SEGREGATION GROUP :- ${sgg}`);
-          updateCell('D58', `${shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'} / ${shipment.shipperName || ''}`);
-          updateCell('D60', shipment.dgDeclarationPlaceAndDate || '');
-        } else if (tmplId === 'CMA_CGM_DG') {
-          updateCell('B9', shipment.shipperName || '');
-          updateCell('B10', shipperLines[0] || '');
-          updateCell('B11', shipperLines[1] || '');
-          updateCell('B12', shipperLines.slice(2).join(', '));
-          updateCell('D9', shipment.shipperReference || shipment.invoiceNumbers?.[0] || '');
-          updateCell('D15', shipment.emergencyContactPhone || '');
-          updateCell('B17', shipment.consigneeName || '');
-          updateCell('B18', consigneeLines[0] || '');
-          updateCell('B19', consigneeLines[1] || '');
-          updateCell('B20', consigneeLines.slice(2).join(', '));
-          updateCell('D17', shipment.carrierName || 'CMA-CGM AGENCIES INDIA PVT.LTD.');
-          updateCell('D18', `Carrier's Booking Number: ${shipment.bookingNumber || ''}`);
-          updateCell('D22', `${shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}, ${shipment.shipperName || ''}`);
-          updateCell('D25', shipment.dgDeclarationPlaceAndDate || '');
-          updateCell('B30', shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '');
-          updateCell('C30', shipment.portOfLoading || '');
-          updateCell('D31', shipment.containerNumber || '');
-          updateCell('G31', shipment.sealNumber || '');
-          updateCell('B32', shipment.portOfDischarge || '');
-          updateCell('C32', shipment.finalDestination || shipment.portOfDischarge || '');
-          updateCell('C35', `UN NO :- ${unNo}`);
-          updateCell('G35', shipment.grossWeightKg > 0 ? `GR WT : ${shipment.grossWeightKg.toLocaleString()} KGS` : '');
-          updateCell('C37', `PROPER SHIPPING NAME : -  ${psn}`);
-          updateCell('G37', shipment.netWeightKg > 0 ? `NT WT :  ${shipment.netWeightKg.toLocaleString()} KGS` : '');
-          updateCell('C39', `TECHNICAL  NAME :  ${techName}`);
-          updateCell('B41', `OUTER PACKAGES : ${outerCount} PALLETS`);
-          updateCell('C41', `CLASS :- ${imoClass}`);
-          updateCell('D41', 'SUB CLASS :-  NA');
-          updateCell('B43', `INNER PACKING :-  ${innerCount} BOXES`);
-          updateCell('C43', `UN PACKING GROUP :-${pg}`);
-          updateCell('C45', unPkg ? `UN PACKING CODE :-  ${unPkg}` : '');
-          updateCell('C47', `EMS NO :-  ${ems}`);
-          updateCell('C49', 'FLASH POINT :-  NA');
-          updateCell('C51', `MARINE POLLUTANT :-   ${shipment.marinePollutant ? 'YES' : 'NA'}`);
-          updateCell('D54', `${shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}, ${shipment.shipperName || ''}`);
-          updateCell('D56', shipment.dgDeclarationPlaceAndDate || '');
-        }
+        // In-place tag replacement across all cells preserving all styles, borders, fonts, and merges
+        ws.eachRow((row) => {
+          row.eachCell((cell) => {
+            if (typeof cell.value === 'string') {
+              let text = cell.value;
+              let changed = false;
+              for (const [tagKey, tagVal] of Object.entries(tags)) {
+                const placeholder = `{${tagKey}}`;
+                if (text.includes(placeholder)) {
+                  text = text.replaceAll(placeholder, tagVal);
+                  changed = true;
+                }
+              }
+              if (changed) {
+                cell.value = text;
+              }
+            }
+          });
+        });
 
-        const outBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        return new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const outBuffer = await workbook.xlsx.writeBuffer();
+        return new Blob([outBuffer], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
       }
     } catch (e) {
-      console.warn('Direct XLSX master template slot-in failed, falling back:', e);
+      console.warn('ExcelJS master template slot-in failed, falling back:', e);
     }
   }
 
   // 2. Direct Binary Master Template Slot-In for Word Templates (.docx)
   if (isDg) {
     try {
-      const templateFilename = `${tmplId}.docx`;
-      const res = await fetch(`/templates/dg/${templateFilename}`);
-      if (res.ok) {
-        const arrayBuf = await res.arrayBuffer();
-        const zip = new PizZip(arrayBuf);
-        const doc = new Docxtemplater(zip, {
-          paragraphLoop: true,
-          linebreaks: true,
-          nullGetter: () => ''
-        });
-
-        const isDiamond = tmplId === 'DIAMOND_MARITIME_DG';
-        const isOneLine = tmplId === 'ONE_LINE_DG';
-        const isMscLine = tmplId === 'MSC_LINE_DG';
-        const isNomination = tmplId === 'NOMINATION_DG';
-        const isVstar = tmplId === 'VSTAR_DG';
-
-        const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
-        const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
-        const unNo = shipment.unNumber || '2794';
-        const psn = shipment.properShippingName || 'BATTERIES, WET, FILLED WITH ACID';
-        const techName = shipment.productDescription || 'LEAD ACID STORAGE BATTERIES';
-        const imoClass = shipment.imoClass || '8';
-        const pg = shipment.packingGroup || 'III';
-        const ems = shipment.emsNumber || 'F-A, S-B';
-        const unPkg = shipment.unPackingCode || '';
-        const sgg = shipment.segregationGroup || 'SGG1';
-        const tareVal = shipment.tareWeightKg || 2200;
-        const vgmVal = (shipment.grossWeightKg || 0) + tareVal;
-
-        const data: Record<string, string> = {
-          shipperBlock: shipment.shipperAddress || shipment.shipperName || '',
-          shipperName: shipment.shipperName || '',
-          shipperAddressLine1: (shipment.shipperAddress || '').split('\n')[0] || '',
-          shipperAddressLine2: (shipment.shipperAddress || '').split('\n')[1] || '',
-          shipperAddressLine3: (shipment.shipperAddress || '').split('\n').slice(2).join(', ') || '',
-          consigneeBlock: shipment.consigneeAddress || shipment.consigneeName || '',
-          consigneeName: shipment.consigneeName || '',
-          consigneeAddressLine1: (shipment.consigneeAddress || '').split('\n')[0] || '',
-          consigneeAddressLine2: (shipment.consigneeAddress || '').split('\n')[1] || '',
-          consigneeAddressLine3: (shipment.consigneeAddress || '').split('\n').slice(2).join(', ') || '',
-          bookingNo: shipment.bookingNumber || '',
-          pageInfo: '1 OF 1',
-          shipperRef: shipment.shipperReference || shipment.invoiceNumbers?.[0] || '',
-          forwarderRef: shipment.forwarderReference || '',
-          carrierName: shipment.carrierName || (isOneLine ? 'ONE LINE' : (isMscLine ? 'MSC MEDITERRANEAN SHIPPING COMPANY' : (isDiamond ? 'DIAMOND MARITIME AGENCY PVT LTD' : ''))),
-          vesselVoyage: shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '',
-          portOfLoading: shipment.portOfLoading || '',
-          portOfDischarge: shipment.portOfDischarge || '',
-          destination: shipment.finalDestination || shipment.portOfDischarge || '',
-          emergencyContact: shipment.emergencyContactPhone || '',
-          cargoDescriptionBlock: buildTemplateCargoBlock(tmplId, shipment),
-          grossMass: shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '',
-          netMass: shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '',
-          cube: shipment.volumeCbm > 0 ? `${shipment.volumeCbm} CBM` : (isDiamond ? '25 CBM' : ''),
-          unPackingCode: unPkg || '',
-          containerNo: shipment.containerNumber || '',
-          sealNo: shipment.sealNumber || '',
-          containerType: isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP"))),
-          tareMass: `${tareVal.toLocaleString()} KGS`,
-          totalGrossVgm: vgmVal > 0 ? `${vgmVal.toLocaleString()} KGS` : '',
-          declarantName: shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY',
-          placeAndDate: shipment.dgDeclarationPlaceAndDate || '',
-          haulierName: '',
-          vehicleRegNo: '',
-          unNumber: unNo,
-          properShippingName: psn,
-          technicalName: techName,
-          hazardClass: imoClass,
-          subsidiaryRisk: 'NA',
-          packingGroup: pg,
-          emsNo: ems,
-          flashPoint: 'NA',
-          marinePollutant: shipment.marinePollutant ? 'YES' : 'NA',
-          segregationGroup: sgg,
-          outerPackages: `${outerCount} PALLETS`,
-          innerPackages: `${innerCount} BOXES`
-        };
-
-        doc.render(data);
-        const outBlob = doc.getZip().generate({
-          type: 'blob',
-          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        });
-        return outBlob;
+      const docxBlob = await generatePopulatedDocxBlob(shipment, tmplId);
+      if (docxBlob) {
+        return docxBlob;
       }
     } catch (e) {
       console.warn('Direct DOCX master template slot-in failed, falling back:', e);
