@@ -676,6 +676,33 @@ export interface CustomerStockSummary {
 }
 
 // =========================================================================
+// CFS Inventory Movement & Historical Audit Log Types (Sprint 5)
+// =========================================================================
+
+export type InventoryMovementDirection = 'STOCK_OUT' | 'STOCK_IN';
+
+export interface InventoryMovementRecord {
+  id: string;
+  movementDate: string;
+  direction: InventoryMovementDirection;
+  customer: string;
+  customInvoiceNo: string;
+  modelDescription: string;
+  pallets: number;
+  batteries: number;
+  grossWeightKg?: number;
+  containerNo?: string;
+  sealNo?: string;
+  shippingBillNo?: string;
+  shippingBillDate?: string;
+  vehicleNo?: string;
+  remainingBalancePallets: number;
+  remainingBalanceBatteries: number;
+  createdAt: string;
+  remarks?: string;
+}
+
+// =========================================================================
 // DG Form Templates & Multi-Item Selective Cargo Types
 // =========================================================================
 

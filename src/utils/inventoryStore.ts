@@ -7,6 +7,7 @@ import type {
   CustomerStockAlert,
   CustomerStockSummary,
   ExtractedShipmentJSON,
+  InventoryMovementRecord,
   PalletItem,
   PalletStockUnit
 } from '../types/index.ts';
@@ -14,6 +15,7 @@ import { createEmptyShipmentJSON } from '../types/index.ts';
 import { autoAllocate20GPContainers } from './manifestKeywordReference.ts';
 
 export const CFS_LEDGER_STORAGE_KEY = 'ekdant_cha_cfs_ledger_v1';
+export const CFS_MOVEMENT_LOGS_STORAGE_KEY = 'ekdant_cha_movement_logs_v1';
 
 // Month names list (Indian financial year cycle APR to MAR)
 export const CFS_MONTHS = [
@@ -1086,3 +1088,163 @@ export async function importCFSExcel(file: File): Promise<{ importedCount: numbe
     return { importedCount: 0, errors: [err.message || 'Failed to parse Excel file'] };
   }
 }
+
+// =========================================================================
+// Sprint 5: Inventory Movement Logs & Outgoing History Engine
+// =========================================================================
+
+export function getPersistedMovementLogs(): InventoryMovementRecord[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CFS_MOVEMENT_LOGS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function savePersistedMovementLogs(records: InventoryMovementRecord[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CFS_MOVEMENT_LOGS_STORAGE_KEY, JSON.stringify(records));
+  } catch (err) {
+    console.error('Failed to save movement logs to localStorage:', err);
+  }
+}
+
+export function recordMovementLog(record: Omit<InventoryMovementRecord, 'id' | 'createdAt'>): InventoryMovementRecord {
+  const newRecord: InventoryMovementRecord = {
+    ...record,
+    id: `mov_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    createdAt: new Date().toISOString()
+  };
+  const existing = getPersistedMovementLogs();
+  savePersistedMovementLogs([newRecord, ...existing]);
+  return newRecord;
+}
+
+export function getDerivedInventoryMovements(entries: CFSLedgerEntry[]): InventoryMovementRecord[] {
+  const derived: InventoryMovementRecord[] = [];
+  const persisted = getPersistedMovementLogs();
+  const persistedIds = new Set(persisted.map((p) => p.id));
+
+  entries.forEach((e) => {
+    const modelDesc = (e.pallets || [])
+      .map((p) => p.model)
+      .filter(Boolean)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .join(', ') || '-';
+
+    // 1. Gate-In / Stock-In Record
+    const recPallets = e.actualReceivedPallets || e.invoicedPallets || 0;
+    const recBatteries = e.actualReceivedBatteries || e.invoicedBatteries || 0;
+    if (recPallets > 0) {
+      const stockInId = `in_${e.id}`;
+      if (!persistedIds.has(stockInId)) {
+        derived.push({
+          id: stockInId,
+          movementDate: e.cartingInDate || e.lastPltRecdDate || formatToDDMMYYYY(e.createdAt),
+          direction: 'STOCK_IN',
+          customer: e.customer || 'Customer',
+          customInvoiceNo: e.customInvoiceNo,
+          modelDescription: modelDesc,
+          pallets: recPallets,
+          batteries: recBatteries,
+          grossWeightKg: e.invoicedGrossWeightKg || 0,
+          vehicleNo: e.vehicleNo || '-',
+          remainingBalancePallets: e.balancePallets,
+          remainingBalanceBatteries: e.balanceBatteries,
+          createdAt: e.createdAt || new Date().toISOString(),
+          remarks: e.shortfallPallets > 0 ? `Shortfall: ${e.shortfallPallets} Plt` : 'Full Gate-In'
+        });
+      }
+    }
+
+    // 2. Dispatch / Stock-Out Record
+    if ((e.actualStuffedPallets || 0) > 0 || (e.containerNo && e.containerNo.trim() !== '')) {
+      const stockOutId = `out_${e.id}_${e.containerNo || 'disp'}`;
+      if (!persistedIds.has(stockOutId)) {
+        const stuffedPallets = e.actualStuffedPallets || 0;
+        const stuffedBatteries = e.actualStuffedBatteries || 0;
+        const stuffedGrossKg = e.invoicedPallets > 0
+          ? Math.round((e.invoicedGrossWeightKg / e.invoicedPallets) * stuffedPallets)
+          : 0;
+
+        derived.push({
+          id: stockOutId,
+          movementDate: e.stuffingDate || e.portGateInDate || e.pickupDate || formatToDDMMYYYY(e.createdAt),
+          direction: 'STOCK_OUT',
+          customer: e.customer || 'Customer',
+          customInvoiceNo: e.customInvoiceNo,
+          modelDescription: modelDesc,
+          pallets: stuffedPallets,
+          batteries: stuffedBatteries,
+          grossWeightKg: stuffedGrossKg,
+          containerNo: e.containerNo || '-',
+          sealNo: e.sealNo || '-',
+          shippingBillNo: e.shippingBillNo || '-',
+          shippingBillDate: e.shippingBillDate || '-',
+          vehicleNo: e.vehicleNo || '-',
+          remainingBalancePallets: e.balancePallets,
+          remainingBalanceBatteries: e.balanceBatteries,
+          createdAt: e.createdAt || new Date().toISOString(),
+          remarks: e.remarks || 'Stuffed & Dispatched'
+        });
+      }
+    }
+  });
+
+  const all = [...persisted, ...derived];
+  return all.sort((a, b) => {
+    const tA = new Date(a.createdAt || a.movementDate).getTime() || 0;
+    const tB = new Date(b.createdAt || b.movementDate).getTime() || 0;
+    return tB - tA;
+  });
+}
+
+export function exportCFSMovementLogsXlsx(records: InventoryMovementRecord[]): void {
+  const rows = records.map((r) => ({
+    'Movement Date': r.movementDate,
+    'Direction': r.direction === 'STOCK_OUT' ? 'STOCK-OUT • DISPATCHED' : 'STOCK-IN • GATE RECEIPT',
+    'Customer / Consignee': r.customer,
+    'Custom Invoice No.': r.customInvoiceNo,
+    'Model / Description': r.modelDescription,
+    'Pallets': r.pallets,
+    'Batteries': r.batteries,
+    'Gross Weight (kg)': r.grossWeightKg || 0,
+    'Container No.': r.containerNo || '-',
+    'Seal No.': r.sealNo || '-',
+    'Shipping Bill No.': r.shippingBillNo || '-',
+    'SB Date': r.shippingBillDate || '-',
+    'Vehicle / Haulier': r.vehicleNo || '-',
+    'Remaining Balance (Plt)': r.remainingBalancePallets,
+    'Remaining Balance (Units)': r.remainingBalanceBatteries,
+    'Remarks': r.remarks || ''
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 14 },
+    { wch: 26 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 25 },
+    { wch: 10 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 22 },
+    { wch: 24 },
+    { wch: 22 }
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Movement Logs');
+  const today = formatToDDMMYYYY(new Date()).replace(/\./g, '-');
+  XLSX.writeFile(wb, `CFS_Inventory_Movement_Logs_${today}.xlsx`);
+}
+
