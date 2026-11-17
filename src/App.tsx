@@ -53,7 +53,7 @@ import { FilesPage } from './components/FilesPage.tsx';
 import { FormatAdderPage } from './components/FormatAdderPage.tsx';
 import { UploadLandingView } from './components/UploadLandingView.tsx';
 import { WarehouseInventoryHub } from './components/WarehouseInventoryHub.tsx';
-import { ingestShipmentToLedger, getCFSLedgerEntries } from './utils/inventoryStore.ts';
+import { ingestShipmentToLedger, getCFSLedgerEntries, syncStage2FieldsToLedger } from './utils/inventoryStore.ts';
 
 export function App(): React.JSX.Element {
   // Navigation & Shell State
@@ -420,7 +420,11 @@ export function App(): React.JSX.Element {
       setBlCustomOverrides((prev) => ({ ...prev, [field.fieldId]: newValue }));
     }
 
-    setShipmentJson((prev) => updateShipmentFromManifestField(prev, field, newValue));
+    setShipmentJson((prev) => {
+      const next = updateShipmentFromManifestField(prev, field, newValue);
+      syncStage2FieldsToLedger(next);
+      return next;
+    });
 
     // When tareWeightKg or grossWeightKg is edited, clear any custom overrides on VGM fields
     if (field.mappedShipmentKey === 'tareWeightKg' || field.mappedShipmentKey === 'grossWeightKg') {
@@ -442,6 +446,7 @@ export function App(): React.JSX.Element {
   // Sync update from Container Bay Modal
   const handleUpdateShipmentFromContainer = (updated: ExtractedShipmentJSON) => {
     setShipmentJson(updated);
+    syncStage2FieldsToLedger(updated);
     const derivedDg = deriveDGManifestFromJSON(updated);
     setDgManifest(derivedDg);
     const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, updated);

@@ -27,6 +27,7 @@ import { DgDocumentCanvas } from './DgDocumentCanvas.tsx';
 import { BlDocumentCanvas } from './BlDocumentCanvas.tsx';
 import { ContainerBayWorkspace } from './ContainerBayWorkspace.tsx';
 import { synthesizePalletRanges } from '../utils/manifestKeywordReference.ts';
+import { syncStage2FieldsToLedger } from '../utils/inventoryStore.ts';
 
 export type WorkspaceTab = 'dg_manifest' | 'bl_manifest' | 'container_bay' | 'extracted_data' | 'export_center';
 
@@ -119,6 +120,7 @@ export function WorkspacePage({
   const handleContainerSync = () => {
     if (containerSyncRef.current) {
       containerSyncRef.current();
+      syncStage2FieldsToLedger(shipmentJson);
       setHasContainerSynced(true);
       setTimeout(() => setHasContainerSynced(false), 3000);
     }
@@ -218,6 +220,7 @@ export function WorkspacePage({
   }, [shipmentJson, selectedContainerScope]);
 
   const handleScopedDgUpdateShipment = (updated: ExtractedShipmentJSON) => {
+    syncStage2FieldsToLedger(updated);
     if (selectedContainerScope === 'all' || !shipmentJson.containers || shipmentJson.containers.length <= 1) {
       onUpdateShipment(updated);
       return;
@@ -234,7 +237,7 @@ export function WorkspacePage({
       return c;
     });
 
-    onUpdateShipment({
+    const fullUpdated = {
       ...shipmentJson,
       carrierName: updated.carrierName,
       vesselName: updated.vesselName,
@@ -244,7 +247,9 @@ export function WorkspacePage({
       portOfDischarge: updated.portOfDischarge,
       emergencyContactPhone: updated.emergencyContactPhone,
       containers: updatedContainers
-    });
+    };
+    syncStage2FieldsToLedger(fullUpdated);
+    onUpdateShipment(fullUpdated);
   };
 
   // Field audit entries

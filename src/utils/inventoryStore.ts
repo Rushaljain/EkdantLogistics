@@ -263,7 +263,23 @@ export function ingestShipmentToLedger(shipment: ExtractedShipmentJSON): CFSLedg
     }));
 
     if (existing) {
-      // Merge updates non-destructively
+      // Idempotent re-upload protection: preserve confirmed physical gate-in, truck, and dispatch progress
+      const preservedPallets = palletUnits.map((newUnit) => {
+        const found = (existing.pallets || []).find(
+          (ep) => String(ep.palletNumber).trim() === String(newUnit.palletNumber).trim()
+        );
+        if (found) {
+          return {
+            ...newUnit,
+            receivedBatteries: found.receivedBatteries !== undefined ? found.receivedBatteries : newUnit.receivedBatteries,
+            status: found.status || newUnit.status,
+            containerNo: found.containerNo || newUnit.containerNo,
+            stuffedDate: found.stuffedDate || newUnit.stuffedDate
+          };
+        }
+        return newUnit;
+      });
+
       const merged: CFSLedgerEntry = recomputeCFSDerivedFields({
         ...existing,
         customer: existing.customer || customer,
@@ -272,10 +288,23 @@ export function ingestShipmentToLedger(shipment: ExtractedShipmentJSON): CFSLedg
         invoicedPallets: existing.invoicedPallets || invoicedPallets,
         invoicedBatteries: existing.invoicedBatteries || invoicedBatteries,
         invoicedGrossWeightKg: existing.invoicedGrossWeightKg || invoicedGrossKg,
+        actualReceivedPallets: existing.actualReceivedPallets !== undefined ? existing.actualReceivedPallets : invoicedPallets,
+        actualReceivedBatteries: existing.actualReceivedBatteries !== undefined ? existing.actualReceivedBatteries : invoicedBatteries,
+        actualStuffedPallets: existing.actualStuffedPallets || 0,
+        actualStuffedBatteries: existing.actualStuffedBatteries || 0,
+        cartingInDate: existing.cartingInDate || todayFormatted,
+        vehicleNo: existing.vehicleNo || '',
+        lastPltRecdDate: existing.lastPltRecdDate || todayFormatted,
+        secondVehicleDate: existing.secondVehicleDate || '',
+        secondVehicleNo: existing.secondVehicleNo || '',
         shippingBillNo: existing.shippingBillNo || shipment.shippingBillNumbers || '',
+        shippingBillDate: existing.shippingBillDate || '',
         containerNo: existing.containerNo || shipment.containerNumber || '',
         sealNo: existing.sealNo || shipment.sealNumber || '',
-        pallets: existing.pallets && existing.pallets.length > 0 ? existing.pallets : palletUnits
+        stuffingDate: existing.stuffingDate || '',
+        pickupDate: existing.pickupDate || '',
+        portGateInDate: existing.portGateInDate || '',
+        pallets: preservedPallets.length > 0 ? preservedPallets : (existing.pallets || [])
       });
       newlyCreated.push(merged);
     } else {
@@ -458,6 +487,46 @@ export function confirmStuffingDispatch(
 
   saveCFSLedgerEntries(updatedEntries);
   return { updatedEntries: affectedEntries, stuffedCount: totalStuffedCount };
+}
+
+/**
+ * Live Two-Way Stage-2 Field Sync:
+ * Synchronizes Shipping Bill No, Shipping Bill Date, Container No, and Seal No
+ * edited in the Workspace into matching CFS Ledger rows.
+ */
+export function syncStage2FieldsToLedger(shipment: ExtractedShipmentJSON): void {
+  if (!shipment) return;
+  const existing = getCFSLedgerEntries();
+  if (existing.length === 0) return;
+
+  const invoiceSet = new Set((shipment.invoiceNumbers || []).map((i) => i.trim().toUpperCase()));
+  const containerNo = shipment.containerNumber?.trim() || '';
+  const sealNo = shipment.sealNumber?.trim() || '';
+  const shippingBillNo = shipment.shippingBillNumbers?.trim() || '';
+  const shippingBillDate = shipment.invoiceDates?.[0]?.trim() || '';
+
+  let hasChanged = false;
+
+  const updatedEntries = existing.map((entry) => {
+    const matchesInvoice = invoiceSet.has(entry.customInvoiceNo.trim().toUpperCase());
+    const matchesContainer = Boolean(containerNo && entry.containerNo && entry.containerNo.trim().toUpperCase() === containerNo.toUpperCase());
+
+    if (matchesInvoice || matchesContainer) {
+      hasChanged = true;
+      return recomputeCFSDerivedFields({
+        ...entry,
+        shippingBillNo: shippingBillNo || entry.shippingBillNo,
+        shippingBillDate: shippingBillDate || entry.shippingBillDate,
+        containerNo: containerNo || entry.containerNo,
+        sealNo: sealNo || entry.sealNo
+      });
+    }
+    return entry;
+  });
+
+  if (hasChanged) {
+    saveCFSLedgerEntries(updatedEntries);
+  }
 }
 
 /**
