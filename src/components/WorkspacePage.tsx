@@ -64,7 +64,7 @@ interface WorkspacePageProps {
 
   // Export actions
   onPrintPdf: (docType: FormatDocumentType) => void;
-  onDownloadDocx: (docType: FormatDocumentType) => void;
+  onDownloadDocx: (docType: FormatDocumentType, overrideShipment?: ExtractedShipmentJSON) => void;
   onDownloadHtml: (docType: FormatDocumentType) => void;
   onDownloadJson: (data: any, filename: string) => void;
   onDownloadZip: () => void;
@@ -869,12 +869,16 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => onDownloadDocx('DG')}
+                    onClick={() => onDownloadDocx('DG', scopedDgShipmentJson)}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
-                    <span className="text-xs font-semibold text-content-primary block">Word .docx</span>
-                    <span className="text-[9px] text-content-muted font-mono">Editable document</span>
+                    <span className="text-xs font-semibold text-content-primary block">
+                      {selectedDgFormatId === 'KMTC_DG' || selectedDgFormatId === 'CMA_CGM_DG' ? 'Excel .xlsx' : 'Word .docx'}
+                    </span>
+                    <span className="text-[9px] text-content-muted font-mono">
+                      {selectedDgFormatId === 'KMTC_DG' || selectedDgFormatId === 'CMA_CGM_DG' ? '1:1 Master Excel Sheet' : 'Editable master document'}
+                    </span>
                   </button>
 
                   <button
@@ -1018,7 +1022,7 @@ export function WorkspacePage({
                     if (val === 'PDF') {
                       onPrintPdf(targetDoc);
                     } else if (val === 'Word') {
-                      onDownloadDocx(targetDoc);
+                      onDownloadDocx(targetDoc, targetDoc === 'DG' ? scopedDgShipmentJson : undefined);
                     }
                   }}
                   className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
@@ -1027,7 +1031,11 @@ export function WorkspacePage({
                     Export Document ({activeTab === 'bl_manifest' ? 'BL' : 'DG'})
                   </option>
                   <option value="PDF">PDF Document</option>
-                  <option value="Word">Word (.docx)</option>
+                  <option value="Word">
+                    {activeTab !== 'bl_manifest' && (selectedDgFormatId === 'KMTC_DG' || selectedDgFormatId === 'CMA_CGM_DG')
+                      ? 'Excel (.xlsx)'
+                      : 'Word (.docx)'}
+                  </option>
                 </select>
               </div>
 

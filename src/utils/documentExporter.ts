@@ -5,7 +5,6 @@
 import JSZip from 'jszip';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
-import ExcelJS from 'exceljs';
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
 import { groupManifestFieldsBySection } from './manifestMatcher.ts';
 import {
@@ -1035,7 +1034,8 @@ export function printManifestToPdf(
  */
 export async function generatePopulatedDocxBlob(
   shipment: ExtractedShipmentJSON,
-  tmplId: DgTemplateId
+  tmplId: DgTemplateId,
+  mappedFields?: MappedManifestField[]
 ): Promise<Blob | null> {
   try {
     const templateFilename = `${tmplId}.docx`;
@@ -1055,6 +1055,14 @@ export async function generatePopulatedDocxBlob(
     const isNomination = tmplId === 'NOMINATION_DG';
     const isVstar = tmplId === 'VSTAR_DG';
 
+    const val = (id: string, fallback: string) => {
+      if (mappedFields && mappedFields.length > 0) {
+        const match = mappedFields.find((f) => f.fieldId.toLowerCase() === id.toLowerCase());
+        if (match && match.value) return match.value;
+      }
+      return fallback;
+    };
+
     const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
     const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
     const unNo = shipment.unNumber || '2794';
@@ -1067,41 +1075,63 @@ export async function generatePopulatedDocxBlob(
     const sgg = shipment.segregationGroup || 'SGG1';
     const tareVal = shipment.tareWeightKg || 2200;
     const vgmVal = (shipment.grossWeightKg || 0) + tareVal;
-    const declarant = shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY';
+
+    const sFull = val('box_1_shipper', shipment.shipperAddress || shipment.shipperName || '');
+    const sLines = sFull.split('\n').filter(Boolean);
+    const sName = val('box_1_shipper_name', shipment.shipperName || sLines[0] || '');
+
+    const cFull = val('box_6_consignee', shipment.consigneeAddress || shipment.consigneeName || '');
+    const cLines = cFull.split('\n').filter(Boolean);
+    const cName = val('box_6_consignee_name', shipment.consigneeName || cLines[0] || '');
+
+    const carrierDefault = isOneLine
+      ? 'ONE LINE'
+      : (isMscLine ? 'MSC MEDITERRANEAN SHIPPING COMPANY' : (isDiamond ? 'DIAMOND MARITIME AGENCY PVT LTD' : ''));
+    const carrier = val('box_7_carrier', shipment.carrierName || carrierDefault);
+
+    const declarant = val(
+      'box_22_declarant_details_and_signature',
+      val('box_22_declarant_details', val('box_20_container_packing_certificate', shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY'))
+    );
+
+    const cargoBlock = val('box_14_shipping_marks', buildTemplateCargoBlock(tmplId, shipment));
 
     const data: Record<string, string> = {
-      shipperBlock: shipment.shipperAddress || shipment.shipperName || '',
-      shipperName: shipment.shipperName || '',
-      shipperAddressLine1: (shipment.shipperAddress || '').split('\n')[0] || '',
-      shipperAddressLine2: (shipment.shipperAddress || '').split('\n')[1] || '',
-      shipperAddressLine3: (shipment.shipperAddress || '').split('\n').slice(2).join(', ') || '',
-      consigneeBlock: shipment.consigneeAddress || shipment.consigneeName || '',
-      consigneeName: shipment.consigneeName || '',
-      consigneeAddressLine1: (shipment.consigneeAddress || '').split('\n')[0] || '',
-      consigneeAddressLine2: (shipment.consigneeAddress || '').split('\n')[1] || '',
-      consigneeAddressLine3: (shipment.consigneeAddress || '').split('\n').slice(2).join(', ') || '',
-      bookingNo: shipment.bookingNumber || '',
-      pageInfo: '1 OF 1',
-      shipperRef: shipment.shipperReference || shipment.invoiceNumbers?.[0] || '',
-      forwarderRef: shipment.forwarderReference || '',
-      carrierName: shipment.carrierName || (isOneLine ? 'ONE LINE' : (isMscLine ? 'MSC MEDITERRANEAN SHIPPING COMPANY' : (isDiamond ? 'DIAMOND MARITIME AGENCY PVT LTD' : ''))),
-      vesselVoyage: shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '',
-      portOfLoading: shipment.portOfLoading || '',
-      portOfDischarge: shipment.portOfDischarge || '',
-      destination: shipment.finalDestination || shipment.portOfDischarge || '',
-      emergencyContact: shipment.emergencyContactPhone || '',
-      cargoDescriptionBlock: buildTemplateCargoBlock(tmplId, shipment),
-      grossMass: shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '',
-      netMass: shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '',
-      cube: shipment.volumeCbm > 0 ? `${shipment.volumeCbm} CBM` : (isDiamond ? '25 CBM' : ''),
-      unPackingCode: unPkg || '',
-      containerNo: shipment.containerNumber || '',
-      sealNo: shipment.sealNumber || '',
-      containerType: isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP"))),
-      tareMass: `${tareVal.toLocaleString()} KGS`,
+      shipperBlock: sFull,
+      shipperName: sName,
+      shipperAddressLine1: sLines.length > 1 ? sLines[1] : (sLines[0] || ''),
+      shipperAddressLine2: sLines.length > 2 ? sLines[2] : '',
+      shipperAddressLine3: sLines.length > 3 ? sLines.slice(3).join(', ') : '',
+      consigneeBlock: cFull,
+      consigneeName: cName,
+      consigneeAddressLine1: cLines.length > 1 ? cLines[1] : (cLines[0] || ''),
+      consigneeAddressLine2: cLines.length > 2 ? cLines[2] : '',
+      consigneeAddressLine3: cLines.length > 3 ? cLines.slice(3).join(', ') : '',
+      bookingNo: val('box_2_transport_document_number', shipment.bookingNumber || ''),
+      pageInfo: val('box_3_page_of_page', '1 OF 1'),
+      shipperRef: val('box_4_shipper_reference', shipment.shipperReference || shipment.invoiceNumbers?.[0] || ''),
+      forwarderRef: val('box_5_freight_forwarder_reference', shipment.forwarderReference || ''),
+      carrierName: carrier,
+      vesselVoyage: val(
+        'box_10_vessel_and_voyage_number',
+        shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : ''
+      ),
+      portOfLoading: val('box_11_port_of_loading', shipment.portOfLoading || ''),
+      portOfDischarge: val('box_12_port_of_discharge', shipment.portOfDischarge || ''),
+      destination: val('box_13_destination', shipment.finalDestination || shipment.portOfDischarge || ''),
+      emergencyContact: val('box_21_emergency_contact', val('box_9_place_of_receipt', shipment.emergencyContactPhone || '')),
+      cargoDescriptionBlock: cargoBlock,
+      grossMass: val('box_16_gross_mass_kg', val('box_16_gross_mass', shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '')),
+      netMass: val('box_17_net_mass_kg', val('box_17_net_mass', shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '')),
+      cube: val('box_18_cube_m3', shipment.volumeCbm > 0 ? `${shipment.volumeCbm} CBM` : (isDiamond ? '25 CBM' : '')),
+      unPackingCode: val('box_other_details_un_pack', unPkg || ''),
+      containerNo: val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || '')),
+      sealNo: val('box_16_seal_number', shipment.sealNumber || ''),
+      containerType: val('box_17_container_size_type', isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP")))),
+      tareMass: val('box_19_tare_mass_kg', `${tareVal.toLocaleString()} KGS`),
       totalGrossVgm: vgmVal > 0 ? `${vgmVal.toLocaleString()} KGS` : '',
       declarantName: declarant,
-      placeAndDate: shipment.dgDeclarationPlaceAndDate || '',
+      placeAndDate: val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''),
       haulierName: '',
       vehicleRegNo: '',
       unNumber: unNo,
@@ -1131,7 +1161,7 @@ export async function generatePopulatedDocxBlob(
 }
 
 /**
- * Generates an editable Microsoft Word OpenXML (.docx) archive without external heavy binary dependencies
+ * Generates an editable Microsoft Word OpenXML (.docx) or Excel (.xlsx) archive without external heavy binary dependencies
  */
 export async function exportManifestToDocx(
   shipment: ExtractedShipmentJSON,
@@ -1153,14 +1183,24 @@ export async function exportManifestToDocx(
       const res = await fetch(`/templates/dg/${templateFilename}`);
       if (res.ok) {
         const arrayBuf = await res.arrayBuffer();
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(arrayBuf);
-        const ws = workbook.worksheets[0];
+        const zip = new PizZip(arrayBuf);
+        let sheetXml = zip.file('xl/worksheets/sheet1.xml')?.asText() || '';
 
-        const sAddress = (shipment.shipperAddress || '').replace(new RegExp(`^${shipment.shipperName}\\s*`, 'i'), '').trim();
-        const shipperLines = sAddress ? sAddress.split('\n') : (shipment.shipperAddress || '').split('\n');
-        const cAddress = (shipment.consigneeAddress || '').replace(new RegExp(`^${shipment.consigneeName}\\s*`, 'i'), '').trim();
-        const consigneeLines = cAddress ? cAddress.split('\n') : (shipment.consigneeAddress || '').split('\n');
+        const val = (id: string, fallback: string) => {
+          if (mappedFields && mappedFields.length > 0) {
+            const match = mappedFields.find((f) => f.fieldId.toLowerCase() === id.toLowerCase());
+            if (match && match.value) return match.value;
+          }
+          return fallback;
+        };
+
+        const sFull = val('box_1_shipper', shipment.shipperAddress || shipment.shipperName || '');
+        const sLines = sFull.split('\n').filter(Boolean);
+        const sName = val('box_1_shipper_name', shipment.shipperName || sLines[0] || '');
+
+        const cFull = val('box_6_consignee', shipment.consigneeAddress || shipment.consigneeName || '');
+        const cLines = cFull.split('\n').filter(Boolean);
+        const cName = val('box_6_consignee_name', shipment.consigneeName || cLines[0] || '');
 
         const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
         const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
@@ -1175,34 +1215,40 @@ export async function exportManifestToDocx(
         const carrierDefault = tmplId === 'CMA_CGM_DG'
           ? 'CMA-CGM AGENCIES INDIA PVT. LTD.'
           : 'KOREA MARINE TRANSPORT CO. LTD.';
-        const carrier = shipment.carrierName || carrierDefault;
-        const declarant = shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY';
-        const placeDate = shipment.dgDeclarationPlaceAndDate || '';
+        const carrier = val('box_7_carrier', shipment.carrierName || carrierDefault);
+        const declarant = val(
+          'box_22_declarant_details',
+          shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY'
+        );
+        const placeDate = val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || '');
 
         const tags: Record<string, string> = {
-          shipperName: shipment.shipperName || '',
-          shipperAddressLine1: shipperLines[0] || '',
-          shipperAddressLine2: shipperLines[1] || '',
-          shipperAddressLine3: shipperLines.slice(2).join(', ') || '',
-          consigneeName: shipment.consigneeName || '',
-          consigneeAddressLine1: consigneeLines[0] || '',
-          consigneeAddressLine2: consigneeLines[1] || '',
-          consigneeAddressLine3: consigneeLines.slice(2).join(', ') || '',
-          shipperRef: shipment.shipperReference || shipment.invoiceNumbers?.[0] || '',
-          emergencyContact: shipment.emergencyContactPhone || '',
+          shipperName: sName,
+          shipperAddressLine1: sLines.length > 1 ? sLines[1] : (sLines[0] || ''),
+          shipperAddressLine2: sLines.length > 2 ? sLines[2] : '',
+          shipperAddressLine3: sLines.length > 3 ? sLines.slice(3).join(', ') : '',
+          consigneeName: cName,
+          consigneeAddressLine1: cLines.length > 1 ? cLines[1] : (cLines[0] || ''),
+          consigneeAddressLine2: cLines.length > 2 ? cLines[2] : '',
+          consigneeAddressLine3: cLines.length > 3 ? cLines.slice(3).join(', ') : '',
+          shipperRef: val('box_4_shipper_reference', shipment.shipperReference || shipment.invoiceNumbers?.[0] || ''),
+          emergencyContact: val('box_21_emergency_contact', shipment.emergencyContactPhone || ''),
           carrierName: carrier,
-          bookingNo: shipment.bookingNumber || '',
+          bookingNo: val('box_2_transport_document_number', shipment.bookingNumber || ''),
           declarantName: declarant,
           placeAndDate: placeDate,
-          vesselVoyage: shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '',
-          portOfLoading: shipment.portOfLoading || '',
-          containerNo: shipment.containerNumber || '',
-          sealNo: shipment.sealNumber || '',
-          portOfDischarge: shipment.portOfDischarge || '',
-          destination: shipment.finalDestination || shipment.portOfDischarge || '',
+          vesselVoyage: val(
+            'box_10_vessel_and_voyage_number',
+            shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : ''
+          ),
+          portOfLoading: val('box_11_port_of_loading', shipment.portOfLoading || ''),
+          containerNo: val('box_19_container_number', shipment.containerNumber || ''),
+          sealNo: val('box_16_seal_number', shipment.sealNumber || ''),
+          portOfDischarge: val('box_12_port_of_discharge', shipment.portOfDischarge || ''),
+          destination: val('box_13_destination', shipment.finalDestination || shipment.portOfDischarge || ''),
           unNumber: unNo,
-          grossMass: shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '',
-          netMass: shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '',
+          grossMass: val('box_16_gross_mass', shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : ''),
+          netMass: val('box_17_net_mass', shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : ''),
           properShippingName: psn,
           technicalName: techName,
           outerPackages: `${outerCount} PALLETS`,
@@ -1217,40 +1263,35 @@ export async function exportManifestToDocx(
           segregationGroup: sgg
         };
 
-        // In-place tag replacement across all cells preserving all styles, borders, fonts, and merges
-        ws.eachRow((row) => {
-          row.eachCell((cell) => {
-            if (typeof cell.value === 'string') {
-              let text = cell.value;
-              let changed = false;
-              for (const [tagKey, tagVal] of Object.entries(tags)) {
-                const placeholder = `{${tagKey}}`;
-                if (text.includes(placeholder)) {
-                  text = text.replaceAll(placeholder, tagVal);
-                  changed = true;
-                }
-              }
-              if (changed) {
-                cell.value = text;
-              }
-            }
-          });
-        });
+        const escapeXml = (str: string) => {
+          return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+        };
 
-        const outBuffer = await workbook.xlsx.writeBuffer();
-        return new Blob([outBuffer], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        for (const [tagKey, tagVal] of Object.entries(tags)) {
+          sheetXml = sheetXml.replaceAll(`{${tagKey}}`, escapeXml(tagVal));
+        }
+
+        zip.file('xl/worksheets/sheet1.xml', sheetXml);
+        const outBlob = zip.generate({
+          type: 'blob',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         });
+        return outBlob;
       }
     } catch (e) {
-      console.warn('ExcelJS master template slot-in failed, falling back:', e);
+      console.warn('PizZip Excel master template slot-in failed, falling back:', e);
     }
   }
 
   // 2. Direct Binary Master Template Slot-In for Word Templates (.docx)
   if (isDg) {
     try {
-      const docxBlob = await generatePopulatedDocxBlob(shipment, tmplId);
+      const docxBlob = await generatePopulatedDocxBlob(shipment, tmplId, mappedFields);
       if (docxBlob) {
         return docxBlob;
       }

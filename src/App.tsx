@@ -537,10 +537,10 @@ export function App(): React.JSX.Element {
     printManifestToPdf(shipmentJson, format, fields);
   };
 
-  const handleDownloadDocx = (docType: FormatDocumentType) => {
+  const handleDownloadDocx = (docType: FormatDocumentType, overrideShipment?: ExtractedShipmentJSON) => {
     const fields = docType === 'DG' ? mappedDgFields : mappedBlFields;
     const format = docType === 'DG' ? activeDgFormat : activeBlFormat;
-    downloadManifestDocx(shipmentJson, format, fields);
+    downloadManifestDocx(overrideShipment || shipmentJson, format, fields);
   };
 
   const handleDownloadHtml = (docType: FormatDocumentType) => {
