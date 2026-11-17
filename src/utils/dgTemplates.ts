@@ -345,26 +345,20 @@ export function buildTemplateCargoBlock(
     }
 
     case 'ONE_LINE_DG': {
-      // ONE Line DG (modeled on ONE LINE DG.docx)
+      // ONE Line DG (modeled on ONE LINE DG.docx - benchmark compact layout)
       const lines: string[] = [
         `PROPER SHIPPING NAME(PSN): ${psn}`,
         `TECHNICAL NAME: ${techName}`,
-        `CLASS: ${imoClass}`,
-        'SUB CLASS: NA',
-        `UN NO: ${unNo}`,
-        `PKG GROUP: ${pg === 'III' ? 'III' : 'NIL'}`,
-        `EMS: ${ems}`,
-        `MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NA'}`
+        `CLASS: ${imoClass}   SUB CLASS: NA   UN NO: ${unNo}   PKG GROUP: ${pg === 'III' ? 'III' : 'NIL'}`,
+        `EMS: ${ems}   MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NA'}`
       ];
       if (unPkg) {
         lines.push(`UN PACKING CODE: ${unPkg}`);
       }
       lines.push(
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
-        `OUTER: ${outerCount} PALLETS`,
-        `INNER: ${innerCount} CORRUGATED BOXES`,
-        '*FLASH POINT: N.A',
-        '*LTD QTY: N.A'
+        `OUTER: ${outerCount} PALLETS   INNER: ${innerCount} CORRUGATED BOXES`,
+        '*FLASH POINT: N.A   *LTD QTY: N.A'
       );
       if (emergencyContact) {
         lines.push(`EMERGENCY CONTACT NO. & NAME: ${emergencyContact}`);
@@ -376,26 +370,20 @@ export function buildTemplateCargoBlock(
     }
 
     case 'MSC_LINE_DG': {
-      // MSC Line DG (modeled on MSC LINE DG.docx)
+      // MSC Line DG (modeled on MSC LINE DG.docx - benchmark compact layout)
       const lines: string[] = [
         `PROPER SHIPPING NAME(PSN): ${psn}`,
         `TECHNICAL NAME: ${techName}`,
-        `CLASS: ${imoClass}`,
-        'SUB CLASS: NA',
-        `UN NO: ${unNo}`,
-        `PKG GROUP: ${pg || 'III'}`,
-        `EMS: ${ems}`,
-        `MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NA'}`
+        `CLASS: ${imoClass}   SUB CLASS: NA   UN NO: ${unNo}   PKG GROUP: ${pg || 'III'}`,
+        `EMS: ${ems}   MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NA'}`
       ];
       if (unPkg) {
         lines.push(`UN PACKING CODE: ${unPkg}`);
       }
       lines.push(
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
-        `OUTER: ${outerCount} PALLETS`,
-        `INNER: ${innerCount} CORRUGATED BOXES`,
-        '*FLASH POINT: N.A',
-        '*LTD QTY: N.A'
+        `OUTER: ${outerCount} PALLETS   INNER: ${innerCount} CORRUGATED BOXES`,
+        '*FLASH POINT: N.A   *LTD QTY: N.A'
       );
       if (emergencyContact) {
         lines.push(`EMERGENCY CONTACT NO. & NAME: ${emergencyContact}`);

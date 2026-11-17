@@ -27,6 +27,44 @@ interface DgDocumentCanvasProps {
   onSelectedItemsChange?: (selectedIds: string[]) => void;
 }
 
+function getCleanShipperValue(shipment: ExtractedShipmentJSON): string {
+  const full = `${shipment.shipperName || ''}\n${shipment.shipperAddress || ''}${
+    shipment.shipperIec ? `\nIEC: ${shipment.shipperIec}` : ''
+  }${shipment.shipperGstin ? `\nGSTIN: ${shipment.shipperGstin}` : ''}`.trim();
+
+  const lines = full.split('\n').map((l) => l.trim()).filter(Boolean);
+  const onBehalfIdx = lines.findIndex((l) => /^(ON BEHALF OF|FOR AND ON BEHALF OF|\(ON BEHALF OF\))/i.test(l));
+  const primaryLines = onBehalfIdx >= 0 ? lines.slice(0, onBehalfIdx) : lines;
+
+  let name = shipment.shipperName || '';
+  let addrLines = primaryLines;
+  if (primaryLines.length > 0 && /LIMITED|LTD|INDUSTRIES|CORP|INC|CO\b/i.test(primaryLines[0])) {
+    name = primaryLines[0];
+    addrLines = primaryLines.slice(1);
+  }
+
+  const addr1 = addrLines[0] || '';
+  const addr2 = addrLines[1] || '';
+  const addr3 = addrLines.length > 2 ? addrLines.slice(2).join(', ') : '';
+
+  return [name, addr1, addr2, addr3].filter(Boolean).join('\n');
+}
+
+function getCleanConsigneeValue(shipment: ExtractedShipmentJSON): string {
+  const full = `${shipment.consigneeName || ''}\n${shipment.consigneeAddress || ''}`.trim();
+  const lines = full.split('\n').map((l) => l.trim()).filter(Boolean);
+  let name = shipment.consigneeName || '';
+  let addrLines = lines;
+  if (lines.length > 0 && /LIMITED|LTD|COMPANY|CORP|INC|CO\b/i.test(lines[0])) {
+    name = lines[0];
+    addrLines = lines.slice(1);
+  }
+  const addr1 = addrLines[0] || '';
+  const addr2 = addrLines[1] || '';
+  const addr3 = addrLines.length > 2 ? addrLines.slice(2).join(', ') : '';
+  return [name, addr1, addr2, addr3].filter(Boolean).join('\n');
+}
+
 export function DgDocumentCanvas({
   shipmentJson,
   onUpdateShipment,
@@ -35,7 +73,7 @@ export function DgDocumentCanvas({
   templateId = 'COMMON_DG',
   onSelectedItemsChange
 }: DgDocumentCanvasProps): React.JSX.Element {
-  const [showPalletAnnex, setShowPalletAnnex] = useState(false);
+  const [showPalletAnnex] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   // Normalize template ID
@@ -322,20 +360,11 @@ export function DgDocumentCanvas({
           </div>
         )}
 
-        {/* Pallet Annex Page 2 Toggle */}
+        {/* Template info bar */}
         <div className="flex items-center justify-between px-1">
           <div className="text-xs font-semibold text-content-secondary">
             Template: <span className="text-content-primary font-bold">{DG_TEMPLATE_DEFINITIONS[activeTemplateId].name}</span>
           </div>
-          <label className="flex items-center space-x-2 cursor-pointer text-xs font-semibold text-content-secondary select-none bg-surface px-3 py-1.5 rounded-lg border border-divider shadow-xs hover:bg-surface-secondary transition-colors">
-            <input
-              type="checkbox"
-              checked={showPalletAnnex}
-              onChange={(e) => setShowPalletAnnex(e.target.checked)}
-              className="rounded border-divider text-brand-primary focus:ring-brand-primary h-3.5 w-3.5"
-            />
-            <span>Include Pallet Annex Table (Page 2)</span>
-          </label>
         </div>
       </div>
 
@@ -364,9 +393,7 @@ export function DgDocumentCanvas({
                   label="SHIPPER :-"
                   value={getVal(
                     'box_1_shipper',
-                    `${activeShipment.shipperName}\n${activeShipment.shipperAddress}${
-                      activeShipment.shipperIec ? `\nIEC: ${activeShipment.shipperIec}` : ''
-                    }${activeShipment.shipperGstin ? `\nGSTIN: ${activeShipment.shipperGstin}` : ''}`
+                    getCleanShipperValue(activeShipment)
                   )}
                   onChange={(val) => handleUpdate('box_1_shipper', val, 'shipperAddress')}
                   multiline
@@ -375,7 +402,7 @@ export function DgDocumentCanvas({
                 <EditableDocCell
                   boxNumber=""
                   label="Consignee :-"
-                  value={getVal('box_6_consignee', `${activeShipment.consigneeName}\n${activeShipment.consigneeAddress}`)}
+                  value={getVal('box_6_consignee', getCleanConsigneeValue(activeShipment))}
                   onChange={(val) => handleUpdate('box_6_consignee', val, 'consigneeAddress')}
                   multiline
                   rows={4}
@@ -636,9 +663,7 @@ export function DgDocumentCanvas({
                   }
                   value={getVal(
                     'box_1_shipper',
-                    `${activeShipment.shipperName}\n${activeShipment.shipperAddress}${
-                      activeShipment.shipperIec ? `\nIEC: ${activeShipment.shipperIec}` : ''
-                    }${activeShipment.shipperGstin ? `\nGSTIN: ${activeShipment.shipperGstin}` : ''}`
+                    getCleanShipperValue(activeShipment)
                   )}
                   onChange={(val) => handleUpdate('box_1_shipper', val, 'shipperAddress')}
                   multiline
@@ -647,7 +672,7 @@ export function DgDocumentCanvas({
                 <EditableDocCell
                   boxNumber="6"
                   label="Consignee"
-                  value={getVal('box_6_consignee', `${activeShipment.consigneeName}\n${activeShipment.consigneeAddress}`)}
+                  value={getVal('box_6_consignee', getCleanConsigneeValue(activeShipment))}
                   onChange={(val) => handleUpdate('box_6_consignee', val, 'consigneeAddress')}
                   multiline
                   rows={3}
@@ -1003,124 +1028,6 @@ export function DgDocumentCanvas({
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-
-
-      {/* =========================================================================
-          PAGE 2: PALLET-LEVEL PACKAGING & WEIGHT BREAKDOWN ANNEX TABLE
-          ========================================================================= */}
-      {showPalletAnnex && (
-        <div className="bg-white text-slate-900 shadow-2xl border-2 border-slate-900 rounded-sm p-6 sm:p-8 font-sans">
-          <div className="flex items-center justify-between pb-3 border-b-2 border-slate-900 mb-4">
-            <div>
-              <h2 className="text-xs sm:text-sm font-extrabold uppercase tracking-tight text-slate-950">
-                ANNEX: PALLET-LEVEL PACKAGING &amp; WEIGHT BREAKDOWN TABLE
-              </h2>
-              <p className="text-[9px] text-slate-600 font-medium">
-                Itemized package verification matching Box 14 pallet ranges
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleAddPalletRow}
-              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center space-x-1 shadow-sm transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Add Pallet Row</span>
-            </button>
-          </div>
-
-          {/* Pallets Table */}
-          <div className="border border-slate-900 overflow-x-auto text-[10px] font-mono">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-900 text-slate-800 text-[9px] uppercase font-bold">
-                  <th className="px-2.5 py-2 w-16">Pallet #</th>
-                  <th className="px-2.5 py-2">Model / Product Description</th>
-                  <th className="px-2.5 py-2 w-24 text-right">Boxes</th>
-                  <th className="px-2.5 py-2 w-32 text-right">Gross Wt (kg)</th>
-                  <th className="px-2.5 py-2 w-32 text-right">Net Wt (kg)</th>
-                  <th className="px-2.5 py-2 w-16 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-300">
-                {activeShipment.pallets.map((p, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50">
-                    <td className="px-2.5 py-1">
-                      <input
-                        type="text"
-                        value={p.palletNumber}
-                        onChange={(e) => handlePalletChange(idx, 'palletNumber', e.target.value)}
-                        className="w-full bg-transparent font-bold text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
-                      />
-                    </td>
-                    <td className="px-2.5 py-1">
-                      <input
-                        type="text"
-                        value={p.modelCode}
-                        onChange={(e) => handlePalletChange(idx, 'modelCode', e.target.value)}
-                        className="w-full bg-transparent text-slate-800 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
-                      />
-                    </td>
-                    <td className="px-2.5 py-1 text-right">
-                      <input
-                        type="number"
-                        value={p.boxCount || ''}
-                        onChange={(e) => handlePalletChange(idx, 'boxCount', e.target.value)}
-                        className="w-full bg-transparent font-semibold text-right text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
-                      />
-                    </td>
-                    <td className="px-2.5 py-1 text-right">
-                      <input
-                        type="number"
-                        value={p.grossWeightKg || ''}
-                        onChange={(e) => handlePalletChange(idx, 'grossWeightKg', e.target.value)}
-                        className="w-full bg-transparent font-semibold text-right text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
-                      />
-                    </td>
-                    <td className="px-2.5 py-1 text-right">
-                      <input
-                        type="number"
-                        value={p.netWeightKg || ''}
-                        onChange={(e) => handlePalletChange(idx, 'netWeightKg', e.target.value)}
-                        className="w-full bg-transparent font-semibold text-right text-slate-900 border-0 p-0 focus:outline-none focus:ring-1 focus:ring-sky-500 rounded"
-                      />
-                    </td>
-                    <td className="px-2.5 py-1 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePalletRow(idx)}
-                        className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
-                        title="Delete Pallet"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-slate-100 border-t-2 border-slate-900 font-extrabold text-[10px] text-slate-950">
-                  <td colSpan={2} className="px-2.5 py-2">
-                    TOTALS ({activeShipment.pallets.length} Pallets)
-                  </td>
-                  <td className="px-2.5 py-2 text-right">
-                    {activeBoxes.toLocaleString()} Boxes
-                  </td>
-                  <td className="px-2.5 py-2 text-right text-emerald-800">
-                    {activeGrossWeight.toLocaleString()} KGS
-                  </td>
-                  <td className="px-2.5 py-2 text-right">
-                    {activeNetWeight.toLocaleString()} KGS
-                  </td>
-                  <td className="px-2.5 py-2" />
-                </tr>
-              </tfoot>
-            </table>
           </div>
         </div>
       )}

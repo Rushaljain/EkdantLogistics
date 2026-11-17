@@ -1032,6 +1032,67 @@ export function printManifestToPdf(
 /**
  * Injects shipment data into a carrier-specific master DOCX template via PizZip + Docxtemplater
  */
+function parseCleanShipperBlock(rawText: string, fallbackName: string) {
+  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+  const onBehalfIdx = lines.findIndex((l) => /^(ON BEHALF OF|FOR AND ON BEHALF OF|\(ON BEHALF OF\))/i.test(l));
+
+  const primaryLines = onBehalfIdx >= 0 ? lines.slice(0, onBehalfIdx) : lines;
+  const onBehalfLines = onBehalfIdx >= 0 ? lines.slice(onBehalfIdx) : [];
+
+  let name = fallbackName;
+  let addrLines = primaryLines;
+  if (primaryLines.length > 0 && /LIMITED|LTD|INDUSTRIES|CORP|INC|CO\b/i.test(primaryLines[0])) {
+    name = primaryLines[0];
+    addrLines = primaryLines.slice(1);
+  } else if (!name && primaryLines.length > 0) {
+    name = primaryLines[0];
+    addrLines = primaryLines.slice(1);
+  }
+
+  const addr1 = addrLines[0] || '';
+  const addr2 = addrLines[1] || '';
+  const addr3 = addrLines.length > 2 ? addrLines.slice(2).join(', ') : '';
+
+  const compactBlock = [name, addr1, addr2, addr3].filter(Boolean).join('\n');
+  const onBehalfText = onBehalfLines.join('\n');
+
+  return {
+    name,
+    addr1,
+    addr2,
+    addr3,
+    compactBlock,
+    onBehalfText
+  };
+}
+
+function parseCleanConsigneeBlock(rawText: string, fallbackName: string) {
+  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+  let name = fallbackName;
+  let addrLines = lines;
+  if (lines.length > 0 && /LIMITED|LTD|COMPANY|CORP|INC|CO\b/i.test(lines[0])) {
+    name = lines[0];
+    addrLines = lines.slice(1);
+  } else if (!name && lines.length > 0) {
+    name = lines[0];
+    addrLines = lines.slice(1);
+  }
+
+  const addr1 = addrLines[0] || '';
+  const addr2 = addrLines[1] || '';
+  const addr3 = addrLines.length > 2 ? addrLines.slice(2).join(', ') : '';
+
+  const compactBlock = [name, addr1, addr2, addr3].filter(Boolean).join('\n');
+
+  return {
+    name,
+    addr1,
+    addr2,
+    addr3,
+    compactBlock
+  };
+}
+
 export async function generatePopulatedDocxBlob(
   shipment: ExtractedShipmentJSON,
   tmplId: DgTemplateId,
@@ -1077,12 +1138,10 @@ export async function generatePopulatedDocxBlob(
     const vgmVal = (shipment.grossWeightKg || 0) + tareVal;
 
     const sFull = val('box_1_shipper', shipment.shipperAddress || shipment.shipperName || '');
-    const sLines = sFull.split('\n').filter(Boolean);
-    const sName = val('box_1_shipper_name', shipment.shipperName || sLines[0] || '');
+    const sParsed = parseCleanShipperBlock(sFull, shipment.shipperName || '');
 
     const cFull = val('box_6_consignee', shipment.consigneeAddress || shipment.consigneeName || '');
-    const cLines = cFull.split('\n').filter(Boolean);
-    const cName = val('box_6_consignee_name', shipment.consigneeName || cLines[0] || '');
+    const cParsed = parseCleanConsigneeBlock(cFull, shipment.consigneeName || '');
 
     const carrierDefault = isOneLine
       ? 'ONE LINE'
@@ -1097,16 +1156,20 @@ export async function generatePopulatedDocxBlob(
     const cargoBlock = val('box_14_shipping_marks', buildTemplateCargoBlock(tmplId, shipment));
 
     const data: Record<string, string> = {
-      shipperBlock: sFull,
-      shipperName: sName,
-      shipperAddressLine1: sLines.length > 1 ? sLines[1] : (sLines[0] || ''),
-      shipperAddressLine2: sLines.length > 2 ? sLines[2] : '',
-      shipperAddressLine3: sLines.length > 3 ? sLines.slice(3).join(', ') : '',
-      consigneeBlock: cFull,
-      consigneeName: cName,
-      consigneeAddressLine1: cLines.length > 1 ? cLines[1] : (cLines[0] || ''),
-      consigneeAddressLine2: cLines.length > 2 ? cLines[2] : '',
-      consigneeAddressLine3: cLines.length > 3 ? cLines.slice(3).join(', ') : '',
+      shipperBlock: sParsed.compactBlock,
+      shipperName: sParsed.name,
+      shipperAddressLine1: sParsed.addr1,
+      shipperAddressLine2: sParsed.addr2,
+      shipperAddressLine3: sParsed.addr3,
+      consigneeBlock: cParsed.compactBlock,
+      consigneeName: cParsed.name,
+      consigneeAddressLine1: cParsed.addr1,
+      consigneeAddressLine2: cParsed.addr2,
+      consigneeAddressLine3: cParsed.addr3,
+      additionalHandling: val(
+        'box_9_additional_handling_information',
+        val('box_9_place_of_receipt', sParsed.onBehalfText || '')
+      ),
       bookingNo: val('box_2_transport_document_number', shipment.bookingNumber || ''),
       pageInfo: val('box_3_page_of_page', '1 OF 1'),
       shipperRef: val('box_4_shipper_reference', shipment.shipperReference || shipment.invoiceNumbers?.[0] || ''),
