@@ -34,6 +34,7 @@ import {
   parseTargetFormat,
   type ParseFormatProgress
 } from './utils/formatParser.ts';
+import { detectRecommendedDgTemplate } from './utils/dgTemplates.ts';
 import {
   buildMappedManifest,
   updateShipmentFromManifestField,
@@ -298,6 +299,12 @@ export function App(): React.JSX.Element {
       ingestShipmentToLedger(result.shipmentJson);
       setCfsLedgerCount(getCFSLedgerEntries().length);
 
+      // Auto-detect recommended DG Template from carrier
+      if (result.shipmentJson.carrierName) {
+        const recommendedTemplate = detectRecommendedDgTemplate(result.shipmentJson.carrierName);
+        setSelectedDgFormatId(recommendedTemplate);
+      }
+
       // Trigger smooth skeleton fade-in transition
       setIsTransitioningToWorkspace(true);
       setHasParsed(true);
@@ -380,6 +387,9 @@ export function App(): React.JSX.Element {
     setDgManifest(derivedDg);
     const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, shipment);
     setBlManifest(derivedBl);
+    if (shipment.carrierName) {
+      setSelectedDgFormatId(detectRecommendedDgTemplate(shipment.carrierName));
+    }
     setHasParsed(true);
     setActivePage('workspace');
     setSaveToastMessage(`Loaded ${shipment.pallets?.length || 0} pallets from Warehouse into Workspace!`);

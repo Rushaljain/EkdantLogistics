@@ -675,3 +675,42 @@ export interface CustomerStockSummary {
   alertMessage: string;
 }
 
+// =========================================================================
+// DG Form Templates & Multi-Item Selective Cargo Types
+// =========================================================================
+
+export type DgTemplateId =
+  | 'COMMON_DG'
+  | 'NOMINATION_DG'
+  | 'VSTAR_DG'
+  | 'ONE_LINE_DG'
+  | 'MSC_LINE_DG'
+  | 'DIAMOND_MARITIME_DG'
+  | 'KMTC_DG';
+
+export interface DgTemplateDefinition {
+  id: DgTemplateId;
+  name: string;
+  description: string;
+  carrierHint?: string;
+  isImoStandard22Box: boolean;
+  referenceDocName: string;
+}
+
+export interface DgCargoItemLine {
+  id: string;
+  modelCode: string;
+  unNumber: string;
+  properShippingName: string;
+  brand?: string;
+  invoiceNumber?: string;
+  palletCount: number;
+  boxCount: number;
+  grossWeightKg: number;
+  netWeightKg: number;
+  palletIndices: number[];
+  palletNumbers: string[];
+  palletRange: string;
+}
+
+

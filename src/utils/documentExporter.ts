@@ -5,7 +5,12 @@
 import JSZip from 'jszip';
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
 import { groupManifestFieldsBySection } from './manifestMatcher.ts';
-import { buildImoBox14CargoBlock } from './manifestKeywordReference.ts';
+import {
+  type DgTemplateId,
+  DG_TEMPLATE_DEFINITIONS,
+  buildTemplateCargoBlock,
+  detectRecommendedDgTemplate
+} from './dgTemplates.ts';
 
 /**
  * Escapes characters for HTML output
@@ -82,48 +87,74 @@ export function generateManifestHtml(
  */
 function generateDgManifestHtml(
   shipment: ExtractedShipmentJSON,
-  _format: FormatSchemaJSON,
+  format: FormatSchemaJSON,
   mappedFields: MappedManifestField[],
   refCode: string,
   includePallets: boolean
 ): string {
+  // Resolve Template ID
+  const tmplId: DgTemplateId = (
+    format?.formatId && format.formatId in DG_TEMPLATE_DEFINITIONS
+      ? format.formatId
+      : detectRecommendedDgTemplate(shipment.carrierName)
+  ) as DgTemplateId;
+
+  const isKmtc = tmplId === 'KMTC_DG';
+  const isNomination = tmplId === 'NOMINATION_DG';
+  const isVstar = tmplId === 'VSTAR_DG';
+  const isOneLine = tmplId === 'ONE_LINE_DG';
+  const isMscLine = tmplId === 'MSC_LINE_DG';
+  const isDiamond = tmplId === 'DIAMOND_MARITIME_DG';
+
   // Field Value Lookups
   const val = (pred: (id: string, label: string) => boolean) => findFieldValue(mappedFields, pred);
 
   const box1Shipper = val((id, lbl) => id.includes('box_1') || lbl.includes('shipper') || lbl.includes('consignor')) ||
     `${shipment.shipperName}\n${shipment.shipperAddress}${shipment.shipperIec ? `\nIEC: ${shipment.shipperIec}` : ''}${shipment.shipperGstin ? `\nGSTIN: ${shipment.shipperGstin}` : ''}`;
-  const box2TransportDoc = val((id, lbl) => id.includes('box_2') || lbl.includes('transport document')) || shipment.bookingNumber || shipment.invoiceNumbers?.join(', ') || '';
-  const box3Page = val((id, lbl) => id.includes('box_3') || lbl.includes('page of page') || id.includes('page')) || '1 OF 1';
+  
+  const rawBooking = shipment.bookingNumber || shipment.invoiceNumbers?.join(', ') || '';
+  let box2TransportDoc = val((id, lbl) => id.includes('box_2') || lbl.includes('transport document')) || rawBooking;
+  if (box2TransportDoc && (isOneLine || isMscLine) && !box2TransportDoc.startsWith('BKG.NO.:')) {
+    box2TransportDoc = `BKG.NO.: ${box2TransportDoc}`;
+  } else if (box2TransportDoc && isDiamond && !box2TransportDoc.startsWith('BOOKING NO:')) {
+    box2TransportDoc = `BOOKING NO: ${box2TransportDoc}`;
+  }
+
+  const box3Page = val((id, lbl) => id.includes('box_3') || lbl.includes('page of page') || id.includes('page')) || (isOneLine || isMscLine ? '3 Page of Page' : '1 OF 1');
   const box4ShipperRef = val((id, lbl) => id.includes('box_4') || lbl.includes("shipper's ref") || lbl.includes('shipper ref')) || shipment.shipperReference || '';
   const box5ForwarderRef = val((id, lbl) => id.includes('box_5') || lbl.includes('forwarder') || lbl.includes('freight forwarder')) || shipment.forwarderReference || '';
   const box6Consignee = val((id, lbl) => id.includes('box_6') || lbl.includes('consignee')) || `${shipment.consigneeName}\n${shipment.consigneeAddress}`;
-  const box7Carrier = val((id, lbl) => id.includes('box_7') || lbl.includes('carrier')) || shipment.carrierName || '';
+  const box7Carrier = val((id, lbl) => id.includes('box_7') || lbl.includes('carrier')) || shipment.carrierName || (isKmtc ? 'KOREA MARINE TRANSPORT CO. LTD.' : '');
 
   const box10VesselVoyage = val((id, lbl) => id.includes('box_10') || lbl.includes('vessel')) || (shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : '');
   const box11Pol = val((id, lbl) => id.includes('box_11') || lbl.includes('port of loading')) || shipment.portOfLoading || '';
   const box12Pod = val((id, lbl) => id.includes('box_12') || lbl.includes('port of discharge')) || shipment.portOfDischarge || '';
   const box13Dest = val((id, lbl) => id.includes('box_13') || lbl.includes('destination')) || shipment.finalDestination || shipment.portOfDischarge || '';
 
-  const box14CargoBlock = buildImoBox14CargoBlock(shipment);
+  const box14CargoBlock = buildTemplateCargoBlock(tmplId, shipment);
 
-  const box16Gross = val((id, lbl) => id.includes('box_16') || lbl.includes('gross mass')) || (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : '');
-  const box17Net = val((id, lbl) => id.includes('box_17') || lbl.includes('net mass')) || (shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toFixed(2)} KGS` : '');
+  const box16Gross = val((id, lbl) => id.includes('box_16') || lbl.includes('gross mass')) || (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '');
+  const box17Net = val((id, lbl) => id.includes('box_17') || lbl.includes('net mass')) || (shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '');
   const box18Cube = val((id, lbl) => id.includes('box_18') || lbl.includes('cube') || lbl.includes('m³')) || (shipment.volumeCbm > 0 ? `${shipment.volumeCbm.toFixed(3)} M³` : '');
 
-  const box19Tare = val((id, lbl) => id.includes('box_18_tare') || id.includes('box_19_tare') || lbl.includes('tare mass')) || (shipment.tareWeightKg > 0 ? `${shipment.tareWeightKg.toFixed(0)} KGS` : '');
+  const box19Tare = val((id, lbl) => id.includes('box_18_tare') || id.includes('box_19_tare') || lbl.includes('tare mass')) || (shipment.tareWeightKg > 0 ? `${shipment.tareWeightKg.toLocaleString()} KGS` : '2,150 KGS');
+  const calculatedVgm = (shipment.grossWeightKg || 0) + (shipment.tareWeightKg || 2150);
   const box19Vgm = val((id, lbl) => id.includes('box_19_total_gross') || id.includes('box_19_vgm') || lbl.includes('incl. tare') || lbl.includes('vgm')) ||
-    (shipment.grossWeightKg > 0 && shipment.tareWeightKg > 0 ? `${Number((shipment.grossWeightKg + shipment.tareWeightKg).toFixed(2))} KGS` : (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : ''));
+    (calculatedVgm > 0 ? `${calculatedVgm.toLocaleString()} KGS` : '');
+
+  const box17CntrType = isOneLine || isMscLine ? "1x20'" : (isDiamond ? "01X20 GP" : (isNomination || isVstar ? "20 GP" : (shipment.containerType || "20' GP")));
 
   const box20Declarant = val((id, lbl) => id.includes('box_20') || lbl.includes('container / vehicle packing certificate')) || shipment.dgDeclarantName || shipment.shipperName || '';
   const box21Emergency = val((id, lbl) => id.includes('box_9') || id.includes('box_21') || lbl.includes('emergency')) || shipment.emergencyContactPhone || '';
   const box22ShipperDecl = val((id, lbl) => id.includes('box_22') || lbl.includes("shipper's declaration") || lbl.includes('shipper declaration')) ||
     `${shipment.dgDeclarationPlaceAndDate || ''}\n${shipment.dgDeclarantName || shipment.shipperName || ''}`;
 
-  return `<!DOCTYPE html>
+  if (isKmtc) {
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>MULTIMODAL DANGEROUS GOODS DECLARATION - ${escapeHtml(refCode)}</title>
+  <title>IMO DANGEROUS GOODS DECLARATION - ${escapeHtml(refCode)}</title>
   <style>
     @page { size: A4 portrait; margin: 6mm 8mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -137,7 +168,7 @@ function generateDgManifestHtml(
     .legal-text { font-size: 6.5px; line-height: 1.15; color: #222; margin-top: 2px; }
     .header-title-box { background: #f8fafc; text-align: center; border-bottom: 1.5px solid #000; padding: 4px; }
     .header-title-box h1 { margin: 0; font-size: 11.5px; font-weight: 900; letter-spacing: 0.6px; }
-    .header-title-box .sub { font-size: 7.5px; font-weight: bold; color: #334155; margin-top: 1px; }
+    .header-title-box .sub { font-size: 7px; font-weight: bold; color: #334155; margin-top: 1px; }
     .center-col { text-align: center; }
     .right-col { text-align: right; }
     .annex-section { margin-top: 14px; border-top: 2px solid #000; padding-top: 8px; }
@@ -151,8 +182,226 @@ function generateDgManifestHtml(
 <body>
   <div class="dg-form-container">
     <div class="header-title-box">
-      <h1>MULTIMODAL DANGEROUS GOODS DECLARATION</h1>
-      <div class="sub">This form meets the requirements of SOLAS 74, Chapter VII, Regulation 5.4 and MARPOL 73/78, Annex III, Regulation 4</div>
+      <h1>IMO DANGEROUS GOODS DECLARATION</h1>
+      <div class="sub">This form meets the requirements of SOLAS 74 chapter VII, regulation 5 MARPOL 73/78 Annex III, regulation 4 and the IMDG Code, General Introduction, section 9.</div>
+    </div>
+
+    <!-- Upper Grid: Shipper/Consignee Left | References Right -->
+    <table class="table-layout">
+      <tr>
+        <td style="width: 50%; vertical-align: top;">
+          <span class="box-num">SHIPPER :-</span>
+          <div class="box-val">${escapeHtml(box1Shipper)}</div>
+          <div style="margin-top: 8px;">
+            <span class="box-num">Consignee :-</span>
+            <div class="box-val">${escapeHtml(box6Consignee)}</div>
+          </div>
+        </td>
+        <td style="width: 50%; vertical-align: top; padding: 0;">
+          <table class="table-layout">
+            <tr>
+              <td>
+                <span class="box-num">Reference Number(s)</span>
+                <div class="box-val box-val-bold">${escapeHtml(box4ShipperRef || '---')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span class="box-num">24 HRS Emergency Contact Telephone Number: (with Country code / Area code / telephone no)</span>
+                <div class="box-val" style="color: #b91c1c; font-weight: 700;">${escapeHtml(box21Emergency || '---')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span class="box-num">Carrier</span>
+                <div class="box-val">${escapeHtml(box7Carrier || 'KOREA MARINE TRANSPORT CO. LTD.')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <span class="box-num">Carrier's Booking Number:</span>
+                <div class="box-val box-val-bold">${escapeHtml(box2TransportDoc || '---')}</div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Middle Grid: Container Packing Declaration Left | Signatory Right -->
+    <table class="table-layout" style="border-top: none;">
+      <tr>
+        <td style="width: 50%; background: #fafafa;">
+          <span class="box-num">Container Packing Certificate / Vehicle Declaration</span>
+          <div style="font-weight: 800; font-size: 7.5px; margin: 2px 0;">CONTAINER PACKING DECLARATION</div>
+          <div class="legal-text">
+            It is hereby declared that the packing of the container has been carried out in accordance with the General Introduction, IMDG Code, paragraph 5.4.2.1
+          </div>
+        </td>
+        <td style="width: 50%; padding: 0;">
+          <table class="table-layout">
+            <tr>
+              <td colspan="2">
+                <span class="box-num">Name/Status, Company/Organization of Signatory</span>
+                <div class="box-val">${escapeHtml(box20Declarant || 'AUTHORIZED SIGNATORY')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="width: 50%;">
+                <span class="box-num">Place and Date</span>
+                <div class="box-val">${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+              </td>
+              <td style="width: 50%;">
+                <span class="box-num">Signature on Behalf of Packer</span>
+                <div style="height: 14px; border-bottom: 1px dotted #94a3b8;"></div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Routing Strip -->
+    <table class="table-layout" style="border-top: none; background: #f8fafc;">
+      <tr>
+        <td style="width: 25%;">
+          <span class="box-num">Ship's Name and Voyage No.</span>
+          <div class="box-val box-val-bold">${escapeHtml(box10VesselVoyage || '---')}</div>
+        </td>
+        <td style="width: 25%;">
+          <span class="box-num">Port of Loading</span>
+          <div class="box-val">${escapeHtml(box11Pol || '---')}</div>
+        </td>
+        <td style="width: 25%;">
+          <span class="box-num">Container Number(s)</span>
+          <div class="box-val box-val-bold">${escapeHtml(shipment.containerNumber || '---')}</div>
+        </td>
+        <td style="width: 25%;">
+          <span class="box-num">SEAL NO:</span>
+          <div class="box-val">${escapeHtml(shipment.sealNumber || '---')}</div>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2">
+          <span class="box-num">Port of Unloading</span>
+          <div class="box-val">${escapeHtml(box12Pod || '---')}</div>
+        </td>
+        <td colspan="2">
+          <span class="box-num">Final Place of Delivery</span>
+          <div class="box-val">${escapeHtml(box13Dest || '---')}</div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- 3-Column Cargo Table -->
+    <table class="table-layout" style="border-top: none;">
+      <tr style="background: #f1f5f9;">
+        <th style="width: 25%;"><span class="box-num">Qty., Type, and Kind of Packages</span></th>
+        <th style="width: 50%;"><span class="box-num">Description (Proper Shipping Name, Class, UN, Packing Group)</span></th>
+        <th style="width: 25%;" class="right-col"><span class="box-num">Gross &amp; Net Weights</span></th>
+      </tr>
+      <tr>
+        <td style="font-family: monospace; font-size: 7.5px;">
+          <div style="font-weight: bold;">NO OF PACKAGES</div>
+          <div>OUTER PACKAGES :- ${shipment.totalPallets || shipment.pallets?.length || 0} PALLETS</div>
+          <div>INNER PACKING :- ${shipment.totalBoxes || shipment.totalPackages || 0} BOXES</div>
+        </td>
+        <td style="font-family: monospace; font-size: 7.5px; line-height: 1.25;">
+          <div class="box-val">${escapeHtml(box14CargoBlock)}</div>
+        </td>
+        <td class="right-col" style="font-family: monospace; font-size: 7.5px;">
+          <div style="font-weight: bold;">GR WT : ${escapeHtml(box16Gross || '---')}</div>
+          <div style="font-weight: bold; margin-top: 4px;">NT WT : ${escapeHtml(box17Net || '---')}</div>
+          <div style="margin-top: 8px; padding-top: 4px; border-top: 1px dotted #94a3b8; color: #047857; font-weight: bold;">
+            VGM: ${escapeHtml(box19Vgm || '---')}
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Bottom Shipper's Declaration -->
+    <table class="table-layout" style="border-top: none;">
+      <tr>
+        <td style="width: 50%; background: #fafafa;">
+          <span class="box-num">SHIPPER'S DECLARATION</span>
+          <div class="legal-text">
+            It is hereby declared that the contents of this consignment are fully and accurately described above by the proper shipping name(s), and are classified, packaged, marked and labeled/placarded, and are in all respects in proper condition for transport according to the applicable international and national government regulations.
+          </div>
+        </td>
+        <td style="width: 50%; padding: 0;">
+          <table class="table-layout">
+            <tr>
+              <td colspan="2">
+                <span class="box-num">Name/Status, Company/Organization of Signatory</span>
+                <div class="box-val">${escapeHtml(box22ShipperDecl || shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY')}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="width: 50%;">
+                <span class="box-num">Place and Date</span>
+                <div class="box-val">${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+              </td>
+              <td style="width: 50%;">
+                <span class="box-num">Signature on Behalf of Shipper</span>
+                <div style="height: 14px; border-bottom: 1px dotted #94a3b8;"></div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  ${includePallets ? renderPalletAnnexHtml(shipment) : ''}
+</body>
+</html>`;
+  }
+
+  // Standard IMO 22-Box Templates (COMMON, NOMINATION, VSTAR, ONE LINE, MSC LINE, DIAMOND MARITIME)
+  const docHeaderTitle = tmplId === 'COMMON_DG'
+    ? 'MULTIMODAL DANGEROUS GOODS DECLARATION'
+    : 'MULTIMODAL DANGEROUS GOODS FORM';
+  const docHeaderSub = tmplId === 'COMMON_DG'
+    ? 'This form meets the requirements of SOLAS 74, Chapter VII, Regulation 5.4 and MARPOL 73/78, Annex III, Regulation 4'
+    : 'This form may be used as a dangerous goods declaration as it meets the requirements of Solas 74,chapter VII, regulation 5; MARPOL 73/78, Annex III, regulation 4.';
+  const box1Label = isDiamond
+    ? '1 SHIPPER/CONSIGNOR/SENDER (FULL STYLE ADDRESS IS MANDATORY)'
+    : '1. Shipper / Consignor / Sender';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(docHeaderTitle)} - ${escapeHtml(refCode)}</title>
+  <style>
+    @page { size: A4 portrait; margin: 6mm 8mm; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 6px; color: #000000; background: #ffffff; font-size: 8px; line-height: 1.2; }
+    .dg-form-container { width: 100%; max-width: 800px; margin: 0 auto; border: 1.5px solid #000; background: #fff; page-break-inside: avoid; }
+    .table-layout { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .table-layout td, .table-layout th { border: 1px solid #000; padding: 3px 5px; vertical-align: top; word-wrap: break-word; }
+    .box-num { font-size: 7px; font-weight: 800; text-transform: uppercase; color: #111; display: block; margin-bottom: 1.5px; }
+    .box-val { font-size: 8px; font-weight: 600; white-space: pre-wrap; color: #000; }
+    .box-val-bold { font-weight: 700; }
+    .legal-text { font-size: 6.5px; line-height: 1.15; color: #222; margin-top: 2px; }
+    .header-title-box { background: #f8fafc; text-align: center; border-bottom: 1.5px solid #000; padding: 4px; }
+    .header-title-box h1 { margin: 0; font-size: 11.5px; font-weight: 900; letter-spacing: 0.6px; }
+    .header-title-box .sub { font-size: 7px; font-weight: bold; color: #334155; margin-top: 1px; }
+    .center-col { text-align: center; }
+    .right-col { text-align: right; }
+    .annex-section { margin-top: 14px; border-top: 2px solid #000; padding-top: 8px; }
+    .annex-title { font-size: 10.5px; font-weight: 800; text-transform: uppercase; margin: 0 0 6px 0; }
+    .annex-table { width: 100%; border-collapse: collapse; font-size: 8.5px; }
+    .annex-table th { background: #f1f5f9; border: 1px solid #000; padding: 3px; text-align: left; font-size: 7.5px; }
+    .annex-table td { border: 1px solid #000; padding: 2px 4px; }
+    @media print { body { padding: 0; } .dg-form-container { border: 1.5px solid #000; } }
+  </style>
+</head>
+<body>
+  <div class="dg-form-container">
+    <div class="header-title-box">
+      <h1>${escapeHtml(docHeaderTitle)}</h1>
+      <div class="sub">${escapeHtml(docHeaderSub)}</div>
     </div>
 
     <!-- Top Half (50% Left / 50% Right Columns) -->
@@ -163,7 +412,7 @@ function generateDgManifestHtml(
           <table class="table-layout" style="height: 100%;">
             <tr>
               <td style="height: 65px;">
-                <span class="box-num">1. Shipper / Consignor / Sender</span>
+                <span class="box-num">${escapeHtml(box1Label)}</span>
                 <div class="box-val">${escapeHtml(box1Shipper)}</div>
               </td>
             </tr>
@@ -201,6 +450,11 @@ function generateDgManifestHtml(
                     </td>
                   </tr>
                 </table>
+                ${(isOneLine || isMscLine) ? `
+                <div style="background: #fff1f2; color: #9f1239; font-weight: bold; padding: 2.5px 5px; border-top: 1px solid #000; font-size: 7px;">
+                  EMERGENCY CONTACT NUMBER : ${escapeHtml(box21Emergency || '---')}
+                </div>
+                ` : ''}
               </td>
             </tr>
             <tr>
@@ -231,12 +485,34 @@ function generateDgManifestHtml(
                 <div class="box-val box-val-bold">${escapeHtml(box2TransportDoc || '---')}</div>
               </td>
             </tr>
+            ${isMscLine ? `
+            <tr>
+              <td style="padding: 0;">
+                <table class="table-layout">
+                  <tr>
+                    <td style="width: 33%; border-top: none; border-left: none; border-bottom: none;">
+                      <span class="box-num">3. Page of Page</span>
+                      <div class="box-val box-val-bold">${escapeHtml(box3Page)}</div>
+                    </td>
+                    <td style="width: 33%; border-top: none; border-left: none; border-bottom: none;">
+                      <span class="box-num">4. Shipper's reference</span>
+                      <div class="box-val">${escapeHtml(box4ShipperRef || '---')}</div>
+                    </td>
+                    <td style="width: 34%; border-top: none; border-right: none; border-bottom: none;">
+                      <span class="box-num">5. Forwarder's ref</span>
+                      <div class="box-val">${escapeHtml(box5ForwarderRef || '---')}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            ` : `
             <tr>
               <td style="padding: 0;">
                 <table class="table-layout">
                   <tr>
                     <td style="width: 45%; border-top: none; border-left: none; border-bottom: none;">
-                      <span class="box-num">3. Page 1 of 1</span>
+                      <span class="box-num">3. Page of Page</span>
                       <div class="box-val box-val-bold">${escapeHtml(box3Page)}</div>
                     </td>
                     <td style="width: 55%; border-top: none; border-right: none; border-bottom: none;">
@@ -253,6 +529,7 @@ function generateDgManifestHtml(
                 <div class="box-val">${escapeHtml(box5ForwarderRef || '---')}</div>
               </td>
             </tr>
+            `}
             <tr>
               <td style="background: #fafafa; padding: 4px;">
                 <span class="box-num">SHIPPER'S DECLARATION</span>
@@ -292,21 +569,42 @@ function generateDgManifestHtml(
         <td class="right-col"><div class="box-val">${escapeHtml(box17Net || '---')}</div></td>
         <td class="right-col"><div class="box-val">${escapeHtml(box18Cube || '---')}</div></td>
       </tr>
+      ${isNomination ? `
+      <tr>
+        <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
+          Other Details : UN PACKING CODE :- ${escapeHtml(shipment.unPackingCode || '')}
+        </td>
+      </tr>
+      ` : ''}
+      ${isVstar ? `
+      <tr>
+        <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
+          Other Details ${shipment.unPackingCode ? `: UN PACKING CODE: ${escapeHtml(shipment.unPackingCode)}` : ''}
+        </td>
+      </tr>
+      ` : ''}
+      ${isDiamond ? `
+      <tr>
+        <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
+          Other Details UN PACKAGING NO. ${escapeHtml(shipment.unPackingCode || '')}
+        </td>
+      </tr>
+      ` : ''}
     </table>
 
     <!-- Official IMO Equipment Row (Boxes 15, 16, 17, 18, 19) -->
     <table class="table-layout" style="border-top: none;">
       <tr style="background: #f8fafc;">
         <th style="width: 26%;"><span class="box-num">15. Container identification no.</span></th>
-        <th style="width: 20%;"><span class="box-num">16. Seal number(s)</span></th>
-        <th style="width: 16%;"><span class="box-num">17. Container size &amp; type</span></th>
+        <th style="width: 20%;"><span class="box-num">${isDiamond ? 'SEAL NO' : '16. Seal number(s)'}</span></th>
+        <th style="width: 16%;"><span class="box-num">${isDiamond ? 'CNTR TYPE' : '17. Container size &amp; type'}</span></th>
         <th style="width: 18%;" class="right-col"><span class="box-num">18. Tare mass (kg)</span></th>
-        <th style="width: 20%;" class="right-col"><span class="box-num">19. Total gross (incl. tare) (kg)</span></th>
+        <th style="width: 20%;" class="right-col"><span class="box-num">${isDiamond ? '19. Total gross (kg)' : '19. Total gross (incl. tare) (kg)'}</span></th>
       </tr>
       <tr>
         <td><div class="box-val box-val-bold">${escapeHtml(shipment.containerNumber || '---')}</div></td>
         <td><div class="box-val">${escapeHtml(shipment.sealNumber || '---')}</div></td>
-        <td><div class="box-val">${escapeHtml(shipment.containerType || "20' GP")}</div></td>
+        <td><div class="box-val">${escapeHtml(box17CntrType)}</div></td>
         <td class="right-col"><div class="box-val">${escapeHtml(box19Tare || '---')}</div></td>
         <td class="right-col"><div class="box-val box-val-bold" style="color: #047857;">${escapeHtml(box19Vgm || '---')}</div></td>
       </tr>
@@ -316,7 +614,7 @@ function generateDgManifestHtml(
     <table class="table-layout" style="border-top: none;">
       <tr>
         <td style="width: 36%;">
-          <span class="box-num">20. Container / Vehicle Packing Certificate</span>
+          <span class="box-num">20. Container / Vehicle Packing Certificate ${isDiamond ? '(stamp & signature mandatory)' : ''}</span>
           <div class="legal-text">
             I hereby declare that the goods described above have been packed/loaded into the container/vehicle identified above in accordance with the applicable provisions.
           </div>
@@ -340,7 +638,7 @@ function generateDgManifestHtml(
           </div>
         </td>
         <td style="width: 36%;">
-          <span class="box-num">22. Shipper's Declaration</span>
+          <span class="box-num">22. Shipper's Declaration ${isDiamond ? '(stamp & signature mandatory)' : ''}</span>
           <div class="legal-text">
             I hereby declare that the contents of this consignment are fully and accurately described above by the proper shipping name, and are classified, packaged, marked and labeled/placarded and are in all respects in proper condition for transport according to the applicable international and national governmental regulations.
           </div>
@@ -911,7 +1209,18 @@ export async function exportManifestToDocx(
     `;
   }
 
-  const docTitle = isDg ? 'MULTIMODAL DANGEROUS GOODS DECLARATION' : 'BILL OF LADING FOR OCEAN TRANSPORT';
+  const tmplId: DgTemplateId = isDg
+    ? ((format?.formatId && format.formatId in DG_TEMPLATE_DEFINITIONS ? format.formatId : detectRecommendedDgTemplate(shipment.carrierName)) as DgTemplateId)
+    : 'COMMON_DG';
+
+  let docTitle = isDg ? 'MULTIMODAL DANGEROUS GOODS DECLARATION' : 'BILL OF LADING FOR OCEAN TRANSPORT';
+  if (isDg) {
+    if (tmplId === 'KMTC_DG') {
+      docTitle = 'IMO DANGEROUS GOODS DECLARATION';
+    } else if (tmplId !== 'COMMON_DG') {
+      docTitle = 'MULTIMODAL DANGEROUS GOODS FORM';
+    }
+  }
   const refCode = shipment.bookingNumber || shipment.invoiceNumbers?.[0] || shipment.shipperReference || 'DRAFT';
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

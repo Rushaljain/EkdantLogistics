@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import type { FormatDocumentType, FormatFieldDefinition, FormatSchemaJSON } from '../types/index.ts';
 import { fileToBase64 } from './documentParser.ts';
 import { preFilterWorkbook } from './spreadsheetPreFilter.ts';
+import { getStandardDgFormats } from './dgTemplates.ts';
 
 const FORMAT_LIBRARY_KEY = 'ekdant_format_library_v1';
 
@@ -13,44 +14,9 @@ const FORMAT_LIBRARY_KEY = 'ekdant_format_library_v1';
 // Default Industry-Standard Formats (Available Out-of-the-Box)
 // =========================================================================
 
-export const DEFAULT_DG_FORMAT: FormatSchemaJSON = {
-  formatId: 'standard_imo_dg_v1',
-  formatName: 'Standard IMO Multimodal Dangerous Goods Declaration',
-  documentType: 'DG',
-  sourceFileName: 'imo_multimodal_standard.pdf',
-  createdAt: '2026-01-01T00:00:00.000Z',
-  fields: [
-    { fieldId: 'box_1_shipper', labelInTemplate: '1. Shipper / Consignor (Name, Address, IEC, GSTIN)', sectionName: 'Parties', fieldType: 'multiline', mappedShipmentKey: 'shipperAddress' },
-    { fieldId: 'box_2_transport_doc_no', labelInTemplate: '2. Transport Document Number', sectionName: 'Reference', fieldType: 'text', mappedShipmentKey: 'bookingNumber' },
-    { fieldId: 'box_3_page_of_page', labelInTemplate: '3. Page of Page', sectionName: 'Reference', fieldType: 'text', mappedShipmentKey: '' },
-    { fieldId: 'box_4_shipper_ref', labelInTemplate: "4. Shipper's Reference", sectionName: 'Reference', fieldType: 'text', mappedShipmentKey: 'shipperReference' },
-    { fieldId: 'box_6_consignee', labelInTemplate: '6. Consignee (Name and Address)', sectionName: 'Parties', fieldType: 'multiline', mappedShipmentKey: 'consigneeAddress' },
-    { fieldId: 'box_7_carrier', labelInTemplate: '7. Carrier (Name and Details)', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'carrierName' },
-    { fieldId: 'box_8_pre_carriage', labelInTemplate: '8. This shipment is within the limitations prescribed for: Pre-Carriage by', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'preCarriageBy' },
-    { fieldId: 'box_9_place_of_receipt', labelInTemplate: '9. Place of Receipt by Pre-Carrier', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'placeOfReceipt' },
-    { fieldId: 'box_10_vessel_voyage', labelInTemplate: '10. Vessel and Voyage Number', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'vesselName' },
-    { fieldId: 'box_11_port_of_loading', labelInTemplate: '11. Port of Loading', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'portOfLoading' },
-    { fieldId: 'box_12_port_of_discharge', labelInTemplate: '12. Port of Discharge', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'portOfDischarge' },
-    { fieldId: 'box_13_destination', labelInTemplate: '13. Destination', sectionName: 'Transport & Routing', fieldType: 'text', mappedShipmentKey: 'finalDestination' },
-    { fieldId: 'box_14_shipping_marks', labelInTemplate: '14. Shipping Marks / Container Numbers', sectionName: 'Cargo & Packaging', fieldType: 'multiline', mappedShipmentKey: 'shippingMarks' },
-    { fieldId: 'box_15_package_description', labelInTemplate: '15. Number and Kind of Packages; Description of Goods', sectionName: 'Cargo & Packaging', fieldType: 'multiline', mappedShipmentKey: 'productDescription' },
-    { fieldId: 'box_15_un_number', labelInTemplate: '15a. UN Number', sectionName: 'Dangerous Goods Details', fieldType: 'text', mappedShipmentKey: 'unNumber' },
-    { fieldId: 'box_15_proper_shipping_name', labelInTemplate: '15b. Proper Shipping Name', sectionName: 'Dangerous Goods Details', fieldType: 'text', mappedShipmentKey: 'properShippingName' },
-    { fieldId: 'box_15_imo_class', labelInTemplate: '15c. IMO Class / Division', sectionName: 'Dangerous Goods Details', fieldType: 'text', mappedShipmentKey: 'imoClass' },
-    { fieldId: 'box_15_packing_group', labelInTemplate: '15d. Packing Group', sectionName: 'Dangerous Goods Details', fieldType: 'text', mappedShipmentKey: 'packingGroup' },
-    { fieldId: 'box_15_ems_number', labelInTemplate: '15e. EMS Number', sectionName: 'Dangerous Goods Details', fieldType: 'text', mappedShipmentKey: 'emsNumber' },
-    { fieldId: 'box_15_un_packing_code', labelInTemplate: '15f. UN Packaging Specification Code', sectionName: 'Dangerous Goods Details', fieldType: 'text', mappedShipmentKey: 'unPackingCode' },
-    { fieldId: 'box_16_gross_mass', labelInTemplate: '16. Gross Mass (kg)', sectionName: 'Weights & Measurements', fieldType: 'number', mappedShipmentKey: 'grossWeightKg' },
-    { fieldId: 'box_17_net_mass', labelInTemplate: '17. Net Mass (kg)', sectionName: 'Weights & Measurements', fieldType: 'number', mappedShipmentKey: 'netWeightKg' },
-    { fieldId: 'box_18_cube', labelInTemplate: '18. Cube (m³)', sectionName: 'Weights & Measurements', fieldType: 'number', mappedShipmentKey: 'volumeCbm' },
-    { fieldId: 'box_19_container_seal', labelInTemplate: '19. Container Identification No. / Seal No.', sectionName: 'Equipment & Containers', fieldType: 'text', mappedShipmentKey: 'containerNumber' },
-    { fieldId: 'box_19_tare_weight', labelInTemplate: '19b. Container Tare Mass (kg)', sectionName: 'Equipment & Containers', fieldType: 'number', mappedShipmentKey: 'tareWeightKg' },
-    { fieldId: 'box_19_total_gross_incl_tare', labelInTemplate: '19c. Total gross (incl. tare) (kg)', sectionName: 'Equipment & Containers', fieldType: 'number', mappedShipmentKey: 'grossWeightKg' },
-    { fieldId: 'box_20_container_packing_cert', labelInTemplate: '20. Container / Vehicle Packing Certificate (Name/Status of Declarant)', sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarantName' },
-    { fieldId: 'box_21_emergency_contact', labelInTemplate: '21. 24-Hour Emergency Response Contact Name & Telephone', sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'emergencyContactPhone' },
-    { fieldId: 'box_22_shipper_declaration', labelInTemplate: "22. Shipper's Declaration (Place and Date)", sectionName: 'Declarations & Signatures', fieldType: 'text', mappedShipmentKey: 'dgDeclarationPlaceAndDate' }
-  ]
-};
+export const STANDARD_DG_FORMATS: FormatSchemaJSON[] = getStandardDgFormats();
+
+export const DEFAULT_DG_FORMAT: FormatSchemaJSON = STANDARD_DG_FORMATS[0];
 
 export const DEFAULT_BL_FORMAT: FormatSchemaJSON = {
   formatId: 'standard_ocean_bl_v1',
@@ -98,32 +64,35 @@ export const DEFAULT_BL_FORMAT: FormatSchemaJSON = {
 
 export function getSavedFormats(): FormatSchemaJSON[] {
   if (typeof window === 'undefined') {
-    return [DEFAULT_DG_FORMAT, DEFAULT_BL_FORMAT];
+    return [...STANDARD_DG_FORMATS, DEFAULT_BL_FORMAT];
   }
 
   try {
     const raw = window.localStorage.getItem(FORMAT_LIBRARY_KEY);
     if (!raw) {
-      return [DEFAULT_DG_FORMAT, DEFAULT_BL_FORMAT];
+      return [...STANDARD_DG_FORMATS, DEFAULT_BL_FORMAT];
     }
     const list: FormatSchemaJSON[] = JSON.parse(raw);
     if (!Array.isArray(list) || list.length === 0) {
-      return [DEFAULT_DG_FORMAT, DEFAULT_BL_FORMAT];
+      return [...STANDARD_DG_FORMATS, DEFAULT_BL_FORMAT];
     }
+
+    const standardIds = new Set(STANDARD_DG_FORMATS.map(f => f.formatId));
+    standardIds.add('standard_imo_dg_v1'); // legacy id
 
     // Always overwrite standard built-in defaults with the latest code definitions
     // so any schema fixes/restored boxes apply immediately without stale localStorage caching
     const customFormats = list.filter(
-      f => f.formatId !== DEFAULT_DG_FORMAT.formatId && f.formatId !== DEFAULT_BL_FORMAT.formatId
+      f => !standardIds.has(f.formatId) && f.formatId !== DEFAULT_BL_FORMAT.formatId
     );
 
-    const merged = [DEFAULT_DG_FORMAT, DEFAULT_BL_FORMAT, ...customFormats];
+    const merged = [...STANDARD_DG_FORMATS, DEFAULT_BL_FORMAT, ...customFormats];
     // Sync back fresh defaults into localStorage
     window.localStorage.setItem(FORMAT_LIBRARY_KEY, JSON.stringify(merged));
     return merged;
   } catch (err) {
     console.warn('[FormatParser] Failed to load saved formats from localStorage:', err);
-    return [DEFAULT_DG_FORMAT, DEFAULT_BL_FORMAT];
+    return [...STANDARD_DG_FORMATS, DEFAULT_BL_FORMAT];
   }
 }
 

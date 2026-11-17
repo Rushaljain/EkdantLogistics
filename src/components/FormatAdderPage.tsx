@@ -242,7 +242,9 @@ export function FormatAdderPage({
                   const isBlActive = fmt.documentType === 'BL' && selectedBlFormatId === fmt.formatId;
                   const isActive = isDgActive || isBlActive;
                   const isBuiltIn =
-                    fmt.formatId === 'standard_imo_dg_v1' || fmt.formatId === 'standard_ocean_bl_v1';
+                    fmt.formatId.endsWith('_DG') ||
+                    fmt.formatId === 'standard_imo_dg_v1' ||
+                    fmt.formatId === 'standard_ocean_bl_v1';
 
                   return (
                     <tr key={fmt.formatId} className="hover:bg-surface-secondary transition-colors">

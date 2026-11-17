@@ -653,11 +653,11 @@ export function WorkspacePage({
               <div className="flex items-center space-x-2">
                 {/* Carrier Format Selector */}
                 <div className="flex items-center space-x-1.5">
-                  <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
+                  <span className="text-xs font-semibold text-content-secondary hidden sm:inline">DG Format:</span>
                   <select
                     value={selectedDgFormatId}
                     onChange={(e) => onSelectDgFormat(e.target.value)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
+                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[260px] truncate font-medium shadow-xs"
                   >
                     {dgFormats.map((fmt) => (
                       <option key={fmt.formatId} value={fmt.formatId}>
@@ -674,6 +674,7 @@ export function WorkspacePage({
               <DgDocumentCanvas
                 shipmentJson={scopedDgShipmentJson}
                 onUpdateShipment={handleScopedDgUpdateShipment}
+                templateId={selectedDgFormatId}
                 onFieldChange={(fieldId, val) => {
                   const field = mappedDgFields.find((f) => f.fieldId === fieldId) || {
                     fieldId,
