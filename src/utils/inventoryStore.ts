@@ -306,7 +306,8 @@ export function ingestShipmentToLedger(shipment: ExtractedShipmentJSON): CFSLedg
         stuffingDate: existing.stuffingDate || '',
         pickupDate: existing.pickupDate || '',
         portGateInDate: existing.portGateInDate || '',
-        pallets: preservedPallets.length > 0 ? preservedPallets : (existing.pallets || [])
+        pallets: preservedPallets.length > 0 ? preservedPallets : (existing.pallets || []),
+        sourceShipmentJson: shipment
       });
       newlyCreated.push(merged);
     } else {
@@ -344,7 +345,8 @@ export function ingestShipmentToLedger(shipment: ExtractedShipmentJSON): CFSLedg
         portGateInDate: '',
         daysInCFS: 0,
         remarks: 'IN CFS - READY',
-        pallets: palletUnits
+        pallets: palletUnits,
+        sourceShipmentJson: shipment
       });
       newlyCreated.push(entry);
     }
@@ -667,6 +669,200 @@ export function buildShipmentFromStockPallets(
     sourceFiles: ['CFS_WAREHOUSE_LEDGER'],
     extractedAt: new Date().toISOString()
   };
+}
+
+/**
+ * Builds unified ExtractedShipmentJSON from one or more selected inventory invoices (Sprint 6).
+ * Scoped strictly to remaining available pallets, populates autoAllocate20GPContainers,
+ * and attaches sourceLedgerIds & selectedPalletIds for closed-loop dispatch tracking.
+ */
+export function buildShipmentFromInventoryInvoices(
+  selections: { entry: CFSLedgerEntry; palletIds?: string[] }[]
+): ExtractedShipmentJSON {
+  if (selections.length === 0) {
+    return createEmptyShipmentJSON('SINGLE_INVOICE');
+  }
+
+  // If single selection and it has sourceShipmentJson
+  if (selections.length === 1 && selections[0].entry.sourceShipmentJson) {
+    const { entry, palletIds } = selections[0];
+    const source = JSON.parse(JSON.stringify(selections[0].entry.sourceShipmentJson)) as ExtractedShipmentJSON;
+
+    // Filter to selected pallet IDs or available pallets
+    const palletIdSet = palletIds && palletIds.length > 0 ? new Set(palletIds) : null;
+    const availableStockPallets = (entry.pallets || []).filter((p) =>
+      palletIdSet ? palletIdSet.has(p.id) : p.status === 'IN_WAREHOUSE'
+    );
+    const selectedPalletNumbers = new Set(availableStockPallets.map((p) => String(p.palletNumber).trim()));
+
+    const filteredPallets = source.pallets.filter((p) =>
+      selectedPalletNumbers.has(String(p.palletNumber).trim())
+    );
+
+    if (filteredPallets.length > 0) {
+      source.pallets = filteredPallets;
+      source.totalPallets = filteredPallets.length;
+      source.totalBoxes = filteredPallets.reduce((s, p) => s + (p.boxCount || 0), 0);
+      source.totalPackages = source.totalBoxes;
+      source.outerPackagingCount = filteredPallets.length;
+      source.innerPackageCount = source.totalBoxes;
+      source.grossWeightKg = Math.round(filteredPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0));
+      source.netWeightKg = Math.round(filteredPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0));
+      source.containers = autoAllocate20GPContainers(filteredPallets, [], '', '');
+      source.tareWeightKg = source.containers.reduce((sum, c) => sum + (c.tareWeightKg || 2150), 0);
+      source.volumeCbm = Number((filteredPallets.length * 1.15).toFixed(2));
+    }
+
+    source.sourceLedgerIds = [entry.id];
+    source.selectedPalletIds = availableStockPallets.map((p) => p.id);
+    source.isDispatched = false;
+    return source;
+  }
+
+  // Multi-invoice or synthesized fallback:
+  const allPallets: PalletStockUnit[] = [];
+  const sourceLedgerIds: string[] = [];
+  const selectedPalletIds: string[] = [];
+
+  selections.forEach(({ entry, palletIds }) => {
+    sourceLedgerIds.push(entry.id);
+    const availableUnits = (entry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
+    const toInclude = palletIds && palletIds.length > 0
+      ? availableUnits.filter((p) => palletIds.includes(p.id))
+      : availableUnits;
+    toInclude.forEach((p) => {
+      allPallets.push(p);
+      selectedPalletIds.push(p.id);
+    });
+  });
+
+  const firstEntry = selections[0].entry;
+  const customerName = firstEntry.customer || 'Consignee';
+  const destinationPort = firstEntry.pod || '';
+  const exporterShipper = firstEntry.exporterShipper || '';
+
+  const shipment = buildShipmentFromStockPallets(allPallets, customerName, destinationPort, exporterShipper);
+
+  const invoiceNumbers = Array.from(new Set(selections.map((s) => s.entry.customInvoiceNo).filter(Boolean)));
+  if (invoiceNumbers.length > 0) {
+    shipment.invoiceNumbers = invoiceNumbers;
+    shipment.shipperReference = invoiceNumbers.join(', ');
+  }
+  shipment.uploadMode = invoiceNumbers.length > 1 ? 'MULTI_INVOICE' : 'SINGLE_INVOICE';
+  shipment.sourceLedgerIds = sourceLedgerIds;
+  shipment.selectedPalletIds = selectedPalletIds;
+  shipment.isDispatched = false;
+
+  return shipment;
+}
+
+/**
+ * Closed-Loop Workspace Dispatch Execution (Sprint 6):
+ * Deducts dispatched pallets/batteries from linked CFS Ledger rows,
+ * updates balance counters, marks entries DONE/PARTIAL, and records STOCK-OUT movement logs.
+ */
+export function executeWorkspaceDispatch(
+  shipment: ExtractedShipmentJSON,
+  dispatchDetails: {
+    containerNo: string;
+    sealNo: string;
+    shippingBillNo?: string;
+    shippingBillDate?: string;
+    stuffingDate?: string;
+    portGateInDate?: string;
+    vehicleNo?: string;
+  }
+): { updatedEntries: CFSLedgerEntry[]; stuffedCount: number } {
+  const existing = getCFSLedgerEntries();
+  const today = formatToDDMMYYYY(new Date());
+
+  const targetPalletIds = new Set(shipment.selectedPalletIds || []);
+  const targetInvoiceSet = new Set((shipment.invoiceNumbers || []).map((i) => i.trim().toUpperCase()));
+  const targetLedgerIdSet = new Set(shipment.sourceLedgerIds || []);
+
+  const affectedEntries: CFSLedgerEntry[] = [];
+  let totalStuffedCount = 0;
+
+  const updatedEntries = existing.map((entry) => {
+    const isTargetLedger = targetLedgerIdSet.has(entry.id);
+    const isTargetInvoice = targetInvoiceSet.has(entry.customInvoiceNo.trim().toUpperCase());
+    if (!isTargetLedger && !isTargetInvoice) return entry;
+
+    let newlyStuffedPallets = 0;
+    let newlyStuffedBatteries = 0;
+    const newlyStuffedPalletIds: string[] = [];
+
+    const updatedPallets = (entry.pallets || []).map((p) => {
+      const isMatch = targetPalletIds.size > 0
+        ? targetPalletIds.has(p.id)
+        : p.status === 'IN_WAREHOUSE';
+
+      if (isMatch && p.status !== 'STUFFED_DISPATCHED') {
+        newlyStuffedPallets += 1;
+        newlyStuffedBatteries += (p.receivedBatteries || p.invoicedBatteries || 0);
+        newlyStuffedPalletIds.push(p.id);
+        return {
+          ...p,
+          status: 'STUFFED_DISPATCHED' as const,
+          containerNo: dispatchDetails.containerNo,
+          stuffedDate: dispatchDetails.stuffingDate || today
+        };
+      }
+      return p;
+    });
+
+    totalStuffedCount += newlyStuffedPallets;
+
+    const currentDispatched = new Set(entry.dispatchedPalletIds || []);
+    newlyStuffedPalletIds.forEach((id) => currentDispatched.add(id));
+
+    const updated = recomputeCFSDerivedFields({
+      ...entry,
+      actualStuffedPallets: (entry.actualStuffedPallets || 0) + newlyStuffedPallets,
+      actualStuffedBatteries: (entry.actualStuffedBatteries || 0) + newlyStuffedBatteries,
+      containerNo: dispatchDetails.containerNo || entry.containerNo,
+      sealNo: dispatchDetails.sealNo || entry.sealNo,
+      shippingBillNo: dispatchDetails.shippingBillNo || entry.shippingBillNo,
+      shippingBillDate: dispatchDetails.shippingBillDate || entry.shippingBillDate,
+      stuffingDate: dispatchDetails.stuffingDate || entry.stuffingDate || today,
+      portGateInDate: dispatchDetails.portGateInDate || entry.portGateInDate || today,
+      vehicleNo: dispatchDetails.vehicleNo || entry.vehicleNo,
+      pallets: updatedPallets,
+      dispatchedPalletIds: Array.from(currentDispatched)
+    });
+
+    // Record movement log
+    if (newlyStuffedPallets > 0) {
+      const grossKg = entry.invoicedPallets > 0
+        ? Math.round((entry.invoicedGrossWeightKg / entry.invoicedPallets) * newlyStuffedPallets)
+        : 0;
+
+      recordMovementLog({
+        movementDate: dispatchDetails.stuffingDate || today,
+        direction: 'STOCK_OUT',
+        customer: entry.customer,
+        customInvoiceNo: entry.customInvoiceNo,
+        modelDescription: (entry.pallets || []).map((p) => p.model).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ') || '-',
+        pallets: newlyStuffedPallets,
+        batteries: newlyStuffedBatteries,
+        grossWeightKg: grossKg,
+        containerNo: dispatchDetails.containerNo,
+        sealNo: dispatchDetails.sealNo,
+        shippingBillNo: dispatchDetails.shippingBillNo || entry.shippingBillNo,
+        shippingBillDate: dispatchDetails.shippingBillDate || entry.shippingBillDate,
+        vehicleNo: dispatchDetails.vehicleNo || entry.vehicleNo,
+        remainingBalancePallets: updated.balancePallets,
+        remainingBalanceBatteries: updated.balanceBatteries,
+        remarks: updated.balancePallets === 0 ? 'Full Dispatch (Stock-Out)' : 'Partial Dispatch'
+      });
+    }
+
+    affectedEntries.push(updated);
+    return updated;
+  });
+
+  saveCFSLedgerEntries(updatedEntries);
+  return { updatedEntries: affectedEntries, stuffedCount: totalStuffedCount };
 }
 
 /**

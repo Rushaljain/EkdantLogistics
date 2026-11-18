@@ -11,7 +11,6 @@ import {
   Check,
   ExternalLink,
   ChevronDown,
-  Plus,
   RotateCcw,
   Sparkles,
   CheckCircle2,
@@ -27,7 +26,8 @@ import { DgDocumentCanvas } from './DgDocumentCanvas.tsx';
 import { BlDocumentCanvas } from './BlDocumentCanvas.tsx';
 import { ContainerBayWorkspace } from './ContainerBayWorkspace.tsx';
 import { synthesizePalletRanges } from '../utils/manifestKeywordReference.ts';
-import { syncStage2FieldsToLedger } from '../utils/inventoryStore.ts';
+import { syncStage2FieldsToLedger, executeWorkspaceDispatch, formatToDDMMYYYY } from '../utils/inventoryStore.ts';
+import { InventoryStockSelector } from './InventoryStockSelector.tsx';
 
 export type WorkspaceTab = 'dg_manifest' | 'bl_manifest' | 'container_bay' | 'extracted_data' | 'export_center';
 
@@ -91,7 +91,7 @@ export function WorkspacePage({
   dgCustomOverrides,
   blCustomOverrides,
   onOpenContainerModal: _onOpenContainerModal,
-  onNewUpload,
+  onNewUpload: _onNewUpload,
   onSaveWork,
   onHardReset,
   isPurging,
@@ -133,6 +133,45 @@ export function WorkspacePage({
   };
 
   const calculatedVgm = (shipmentJson.grossWeightKg || 0) + (shipmentJson.tareWeightKg || 0);
+
+  // Sprint 6: Invoice Selection Modal & Closed-Loop Dispatch
+  const [showInvoiceSelectorModal, setShowInvoiceSelectorModal] = useState(false);
+  const [showDispatchConfirmModal, setShowDispatchConfirmModal] = useState(false);
+  const [dispatchToast, setDispatchToast] = useState<string | null>(null);
+
+  const [dispatchDetails, setDispatchDetails] = useState(() => {
+    const today = formatToDDMMYYYY(new Date());
+    return {
+      containerNo: shipmentJson.containerNumber || shipmentJson.containers?.[0]?.containerNumber || '',
+      sealNo: shipmentJson.sealNumber || shipmentJson.containers?.[0]?.sealNumber || '',
+      shippingBillNo: shipmentJson.shippingBillNumbers || '',
+      shippingBillDate: shipmentJson.invoiceDates?.[0] || today,
+      stuffingDate: today,
+      portGateInDate: today,
+      vehicleNo: ''
+    };
+  });
+
+  const handleExecuteWorkspaceDispatch = () => {
+    if (!dispatchDetails.containerNo.trim() || !dispatchDetails.sealNo.trim()) {
+      alert('Please enter Container No and Seal No before dispatching.');
+      return;
+    }
+
+    const { stuffedCount } = executeWorkspaceDispatch(shipmentJson, dispatchDetails);
+    const updated = {
+      ...shipmentJson,
+      containerNumber: dispatchDetails.containerNo,
+      sealNumber: dispatchDetails.sealNo,
+      shippingBillNumbers: dispatchDetails.shippingBillNo || shipmentJson.shippingBillNumbers,
+      isDispatched: true,
+      dispatchedAt: new Date().toISOString()
+    };
+    onUpdateShipment(updated);
+    setShowDispatchConfirmModal(false);
+    setDispatchToast(`Dispatched & Deducted ${stuffedCount} Pallets from Inventory!`);
+    setTimeout(() => setDispatchToast(null), 4000);
+  };
 
   // Stage-2 Pending Fields Tracking & Instant Cycling
   const pendingStage2DgKeys = useMemo(() => {
@@ -348,16 +387,34 @@ export function WorkspacePage({
             </button>
           )}
 
-          {/* New Upload Button */}
+          {/* Select Invoices from Inventory */}
           <button
             type="button"
-            onClick={onNewUpload}
-            className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-medium border border-divider transition-colors flex items-center space-x-1 cursor-pointer"
-            title="Upload new shipment batch"
+            onClick={() => setShowInvoiceSelectorModal(true)}
+            className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
+            title="Search and select invoices from active warehouse inventory"
           >
-            <Plus className="w-3.5 h-3.5 text-brand-primary" />
-            <span className="hidden lg:inline">New Upload</span>
+            <Boxes className="w-3.5 h-3.5 text-brand-primary" />
+            <span className="hidden lg:inline">Select Invoices</span>
           </button>
+
+          {/* Confirm Dispatch (Stock-Out) Action */}
+          {shipmentJson.isDispatched ? (
+            <span className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center space-x-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="hidden sm:inline">Dispatched &amp; Deducted</span>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDispatchConfirmModal(true)}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
+              title="Confirm dispatch and automatically deduct from warehouse inventory"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Confirm Dispatch (Stock-Out)</span>
+            </button>
+          )}
 
           {/* Reset Session */}
           <button
@@ -1052,6 +1109,141 @@ export function WorkspacePage({
           )}
         </div>
       </footer>
+
+      {/* Dispatch Confirmation Toast */}
+      {dispatchToast && (
+        <div className="fixed top-16 right-6 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-lg shadow-xl text-xs font-semibold flex items-center space-x-2 animate-fade-in border border-emerald-400">
+          <CheckCircle2 className="w-4 h-4 text-white" />
+          <span>{dispatchToast}</span>
+        </div>
+      )}
+
+      {/* Modal: Select Invoices from Active Warehouse Inventory */}
+      {showInvoiceSelectorModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+            <InventoryStockSelector
+              isModal={true}
+              onSelectShipment={(unified) => {
+                onUpdateShipment(unified);
+                setShowInvoiceSelectorModal(false);
+              }}
+              onOpenInventory={() => {
+                setShowInvoiceSelectorModal(false);
+                if (onOpenInventory) onOpenInventory();
+              }}
+              onCancel={() => setShowInvoiceSelectorModal(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirm Dispatch & Update Inventory (Stock-Out) */}
+      {showDispatchConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between pb-2 border-b border-divider">
+              <div className="flex items-center space-x-2 text-sm font-bold text-content-primary">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Confirm Dispatch &amp; Update Inventory</span>
+              </div>
+              <button
+                onClick={() => setShowDispatchConfirmModal(false)}
+                className="text-content-muted hover:text-content-primary cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-content-secondary leading-relaxed">
+              Deduct <strong className="font-mono text-content-primary font-bold">{shipmentJson.totalPallets} pallets</strong> ({shipmentJson.totalBoxes} units) from warehouse inventory for <strong className="text-content-primary">{shipmentJson.consigneeName}</strong>.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block text-content-secondary mb-1">Container Number *</label>
+                <input
+                  type="text"
+                  value={dispatchDetails.containerNo}
+                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, containerNo: e.target.value.toUpperCase() })}
+                  placeholder="e.g. MSKU1234567"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-content-secondary mb-1">Seal Number *</label>
+                <input
+                  type="text"
+                  value={dispatchDetails.sealNo}
+                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, sealNo: e.target.value.toUpperCase() })}
+                  placeholder="e.g. SL987654"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-content-secondary mb-1">Shipping Bill No.</label>
+                <input
+                  type="text"
+                  value={dispatchDetails.shippingBillNo}
+                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, shippingBillNo: e.target.value })}
+                  placeholder="e.g. 5622160"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-content-secondary mb-1">Shipping Bill Date</label>
+                <input
+                  type="text"
+                  value={dispatchDetails.shippingBillDate}
+                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, shippingBillDate: e.target.value })}
+                  placeholder="DD.MM.YYYY"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-content-secondary mb-1">Stuffing Date</label>
+                <input
+                  type="text"
+                  value={dispatchDetails.stuffingDate}
+                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, stuffingDate: e.target.value })}
+                  placeholder="DD.MM.YYYY"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-content-secondary mb-1">Port Gate-in Date</label>
+                <input
+                  type="text"
+                  value={dispatchDetails.portGateInDate}
+                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, portGateInDate: e.target.value })}
+                  placeholder="DD.MM.YYYY"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-divider">
+              <button
+                onClick={() => setShowDispatchConfirmModal(false)}
+                className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExecuteWorkspaceDispatch}
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                Confirm Dispatch &amp; Deduct
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -196,6 +196,12 @@ export interface ExtractedShipmentJSON {
   // Source Provenance
   sourceFiles: string[];
   extractedAt: string;
+
+  // Inventory Provenance & Dispatch Tracking (Sprint 6)
+  sourceLedgerIds?: string[];
+  selectedPalletIds?: string[];
+  isDispatched?: boolean;
+  dispatchedAt?: string;
 }
 
 /**
@@ -656,6 +662,10 @@ export interface CFSLedgerEntry {
 
   // Pallet-level units
   pallets: PalletStockUnit[];
+
+  // Sprint 6: Persisted full source shipment json & dispatch pallet ids
+  sourceShipmentJson?: ExtractedShipmentJSON;
+  dispatchedPalletIds?: string[];
 }
 
 export type CustomerStockAlert = 'STOCK_OUT' | 'LOW_STOCK' | 'FACTORY_SHORTFALL' | 'OK';

@@ -14,7 +14,9 @@ import {
   ChevronRight,
   X,
   Printer,
-  History
+  History,
+  Plus,
+  Loader2
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -35,8 +37,10 @@ import {
   importCFSExcel,
   formatToDDMMYYYY,
   getDerivedInventoryMovements,
-  exportCFSMovementLogsXlsx
+  exportCFSMovementLogsXlsx,
+  ingestShipmentToLedger
 } from '../utils/inventoryStore.ts';
+import { parseDocumentsToJSON, type ParseSessionProgress } from '../utils/documentParser.ts';
 
 interface WarehouseInventoryHubProps {
   onLoadShipmentIntoWorkspace: (shipment: ExtractedShipmentJSON) => void;
@@ -182,6 +186,37 @@ export function WarehouseInventoryHub({
   const reloadEntries = () => {
     const loaded = getCFSLedgerEntries();
     setEntries(loaded);
+  };
+
+  // Invoice Upload (Stock-In) States
+  const invoiceInputRef = useRef<HTMLInputElement | null>(null);
+  const [isParsingInvoice, setIsParsingInvoice] = useState(false);
+  const [invoiceParseProgress, setInvoiceParseProgress] = useState<ParseSessionProgress | null>(null);
+
+  const handleInvoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+    setIsParsingInvoice(true);
+    setInvoiceParseProgress(null);
+    try {
+      const customKey = localStorage.getItem('ekdant_custom_gemini_key') || undefined;
+      const result = await parseDocumentsToJSON(files, 'SINGLE_INVOICE', customKey, (p) => setInvoiceParseProgress(p));
+      if (result.shipmentJson && result.shipmentJson.invoiceNumbers.length > 0) {
+        ingestShipmentToLedger(result.shipmentJson);
+        reloadEntries();
+        showToast(`Uploaded & Ingested ${result.shipmentJson.invoiceNumbers[0]} (${result.shipmentJson.totalPallets} Pallets) into Warehouse!`);
+      } else if (result.warnings && result.warnings.length > 0) {
+        showToast(`Parsing warning: ${result.warnings.join(' ')}`);
+      } else {
+        showToast('Document parsed without invoice numbers. Please verify file.');
+      }
+    } catch (err: any) {
+      showToast(`Upload failed: ${err?.message || 'Error parsing document'}`);
+    } finally {
+      setIsParsingInvoice(false);
+      setInvoiceParseProgress(null);
+      if (invoiceInputRef.current) invoiceInputRef.current.value = '';
+    }
   };
 
   // Customer Summaries for Customer Dropdown
@@ -527,7 +562,7 @@ export function WarehouseInventoryHub({
         </div>
       )}
 
-      {/* Hidden File Input */}
+      {/* Hidden CFS Excel File Input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -536,8 +571,30 @@ export function WarehouseInventoryHub({
         className="hidden"
       />
 
+      {/* Hidden Commercial Invoice / Packing List Input */}
+      <input
+        type="file"
+        ref={invoiceInputRef}
+        onChange={handleInvoiceUpload}
+        accept=".pdf,.xlsx,.xls,.docx"
+        className="hidden"
+      />
+
       {/* TOP HEADER */}
       <header className="bg-surface border-b border-divider shrink-0 z-20 shadow-xs">
+        {/* Real-time Invoice Parsing Banner */}
+        {isParsingInvoice && (
+          <div className="bg-emerald-600 text-white px-4 py-2 text-xs flex items-center justify-between animate-fade-in shadow-inner">
+            <div className="flex items-center space-x-2">
+              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              <span className="font-semibold">
+                Parsing Invoice into Inventory: {invoiceParseProgress?.message || 'Extracting data with AI...'}
+              </span>
+            </div>
+            <span className="font-mono font-bold">{invoiceParseProgress?.percent || 45}%</span>
+          </div>
+        )}
+
         <div className="h-12 px-4 sm:px-6 flex items-center justify-between border-b border-divider/60">
           <div>
             <h1 className="text-sm font-bold text-content-primary tracking-tight">
@@ -546,10 +603,25 @@ export function WarehouseInventoryHub({
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Prominent + Upload Invoice to Inventory (Stock-In) Button */}
+            <button
+              onClick={() => invoiceInputRef.current?.click()}
+              disabled={isParsingInvoice}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+              title="Upload new commercial invoice or packing list (PDF, Excel, Word) into warehouse inventory"
+            >
+              {isParsingInvoice ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>{isParsingInvoice ? 'Parsing...' : '+ Upload Invoice to Inventory (Stock-In)'}</span>
+            </button>
+
             <button
               onClick={() => fileInputRef.current?.click()}
               className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Import Excel file"
+              title="Import historical CFS Excel file"
             >
               <Upload className="w-3.5 h-3.5 text-brand-primary" />
               <span className="hidden sm:inline">Import Excel</span>

@@ -23,8 +23,6 @@ import {
   deleteSavedWorkSession,
   type ArchivedShipment
 } from './utils/storageReset.ts';
-import { parseDocumentsToJSON, type ParseSessionProgress, type ParseResult } from './utils/documentParser.ts';
-import type { PreFilterResult } from './utils/spreadsheetPreFilter.ts';
 import {
   DEFAULT_DG_FORMAT,
   DEFAULT_BL_FORMAT,
@@ -52,25 +50,19 @@ import { NavigationSidebar, type PageId } from './components/NavigationSidebar.t
 import { WorkspacePage } from './components/WorkspacePage.tsx';
 import { FilesPage } from './components/FilesPage.tsx';
 import { FormatAdderPage } from './components/FormatAdderPage.tsx';
-import { UploadLandingView } from './components/UploadLandingView.tsx';
+import { InventoryStockSelector } from './components/InventoryStockSelector.tsx';
 import { WarehouseInventoryHub } from './components/WarehouseInventoryHub.tsx';
-import { ingestShipmentToLedger, getCFSLedgerEntries, syncStage2FieldsToLedger } from './utils/inventoryStore.ts';
+import { getCFSLedgerEntries, syncStage2FieldsToLedger } from './utils/inventoryStore.ts';
 
 export function App(): React.JSX.Element {
   // Navigation & Shell State
   const [activePage, setActivePage] = useState<PageId>('workspace');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [_mode, setMode] = useState<UploadMode | ''>('SINGLE_INVOICE');
 
   // Ingestion & File State
-  const [mode, setMode] = useState<UploadMode | ''>('');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [isParsing, setIsParsing] = useState(false);
-  const [parseProgress, setParseProgress] = useState<ParseSessionProgress | null>(null);
-  const [, setParseResult] = useState<ParseResult | null>(null);
-  const [, setFilterResults] = useState<PreFilterResult[]>([]);
-  const [, setLogs] = useState<string[]>([]);
   const [hasParsed, setHasParsed] = useState(false);
-  const [apiError, setApiError] = useState<string | null>(null);
 
   // Storage Purge & Reset State
   const [isPurging, setIsPurging] = useState(false);
@@ -111,7 +103,7 @@ export function App(): React.JSX.Element {
   const [savedWorkSessions, setSavedWorkSessions] = useState<ArchivedShipment[]>(() => getSavedWorkSessions());
   const [showUploadConfirmModal, setShowUploadConfirmModal] = useState(false);
   const [saveToastMessage, setSaveToastMessage] = useState<string | null>(null);
-  const [cfsLedgerCount, setCfsLedgerCount] = useState<number>(() => getCFSLedgerEntries().length);
+  const [cfsLedgerCount] = useState<number>(() => getCFSLedgerEntries().length);
 
   // Purge workspace storage on initial mount
   useEffect(() => {
@@ -139,11 +131,7 @@ export function App(): React.JSX.Element {
     setDgManifest(freshDg);
     setBlManifest(freshBl);
     setUploadedFiles([]);
-    setParseResult(null);
-    setFilterResults([]);
-    setLogs([]);
     setHasParsed(false);
-    setApiError(null);
     setDgCustomOverrides({});
     setBlCustomOverrides({});
   };
@@ -152,7 +140,6 @@ export function App(): React.JSX.Element {
     setIsPurging(true);
     try {
       await purgeAllWorkspaceStorage();
-      setMode('');
       resetSessionState('');
       setLastPurgedAt(new Date().toLocaleTimeString());
     } finally {
@@ -220,19 +207,6 @@ export function App(): React.JSX.Element {
     handlePromptNewUpload();
   };
 
-  const handleModeChange = (newMode: UploadMode | '') => {
-    setMode(newMode);
-    if (!newMode) {
-      setUploadedFiles([]);
-      return;
-    }
-    if (!hasParsed) {
-      resetSessionState(newMode);
-    } else {
-      setShipmentJson((prev) => ({ ...prev, uploadMode: newMode }));
-    }
-  };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
@@ -264,120 +238,6 @@ export function App(): React.JSX.Element {
       localStorage.removeItem('ekdant_custom_gemini_key');
     }
     setShowKeyModal(false);
-  };
-
-  const handleExecuteParsing = async () => {
-    if (uploadedFiles.length === 0) return;
-
-    setIsParsing(true);
-    setParseProgress(null);
-    setApiError(null);
-    setLogs([]);
-    setFilterResults([]);
-
-    try {
-      const result = await parseDocumentsToJSON(
-        uploadedFiles,
-        mode || 'SINGLE_INVOICE',
-        customApiKey || undefined,
-        (progress) => {
-          setParseProgress(progress);
-        }
-      );
-
-      setParseResult(result);
-      setShipmentJson(result.shipmentJson);
-      setFilterResults(result.filterResults);
-      setLogs(result.logs);
-      
-      const derivedDg = deriveDGManifestFromJSON(result.shipmentJson);
-      setDgManifest(derivedDg);
-      const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, result.shipmentJson);
-      setBlManifest(derivedBl);
-
-      // Auto-populate CFS Warehouse Inventory & Stock Ledger
-      ingestShipmentToLedger(result.shipmentJson);
-      setCfsLedgerCount(getCFSLedgerEntries().length);
-
-      // Auto-detect recommended DG Template from carrier
-      if (result.shipmentJson.carrierName) {
-        const recommendedTemplate = detectRecommendedDgTemplate(result.shipmentJson.carrierName);
-        setSelectedDgFormatId(recommendedTemplate);
-      }
-
-      // Trigger smooth skeleton fade-in transition
-      setIsTransitioningToWorkspace(true);
-      setHasParsed(true);
-      setTimeout(() => {
-        setIsTransitioningToWorkspace(false);
-      }, 700);
-    } catch (err: any) {
-      console.error('Document parsing halted due to error:', err);
-      setApiError(err?.message || 'An unexpected error occurred during extraction.');
-      setHasParsed(false);
-    } finally {
-      setIsParsing(false);
-    }
-  };
-
-  // Instant Demo Shipment Loader (Zero hardcoded forbidden tokens)
-  const handleLoadDemoJson = () => {
-    const demoPallets = Array.from({ length: 22 }).map((_, i) => {
-      const pNum = `P-${(i + 1).toString().padStart(2, '0')}`;
-      return {
-        palletNumber: pNum,
-        modelCode: 'BATT-12V-75AH',
-        boxCount: 40,
-        grossWeightKg: 1020,
-        netWeightKg: 980,
-        sourceFile: 'Verified Demo Manifest'
-      };
-    });
-
-    const demoJson: ExtractedShipmentJSON = {
-      ...createEmptyShipmentJSON('SINGLE_INVOICE'),
-      shipperName: 'GLOBAL EXPORT MARITIME LTD',
-      shipperAddress: '124 HARBOR INDUSTRIAL PARK, CHENNAI 600001, INDIA',
-      shipperIec: '0512034981',
-      shipperGstin: '33AABCP1234F1ZX',
-      consigneeName: 'INTERNATIONAL LOGISTICS & COMMERCE PTE LTD',
-      consigneeAddress: '88 ENTERPRISE ROAD, JURONG INDUSTRIAL ESTATE, SINGAPORE 629824',
-      notifyPartyName: 'SAME AS CONSIGNEE',
-      invoiceNumbers: ['INV-2026-001'],
-      invoiceDates: ['2026-03-15'],
-      bookingNumber: 'BKG-99201',
-      carrierName: 'PACIFIC MARITIME LINES',
-      vesselName: 'PACIFIC ENDEAVOUR',
-      voyageNumber: '2602E',
-      portOfLoading: 'CHENNAI, INDIA',
-      portOfDischarge: 'SINGAPORE',
-      portOfDischargeDg: 'SINGAPORE',
-      containerNumber: 'PMLU2001234',
-      sealNumber: 'SL-901234',
-      containerType: '20GP',
-      tareWeightKg: 2150,
-      unNumber: '2794',
-      imoClass: '8',
-      properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
-      productDescription: 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
-      shippingMarks: 'PMLU2001234 / SEAL: SL-901234\nP-01 TO P-22',
-      totalPallets: 22,
-      totalBoxes: 880,
-      totalPackages: 880,
-      grossWeightKg: 22440,
-      netWeightKg: 21560,
-      pallets: demoPallets
-    };
-
-    setShipmentJson(demoJson);
-    const derivedDg = deriveDGManifestFromJSON(demoJson);
-    setDgManifest(derivedDg);
-    const derivedBl = deriveBLManifestFromDG(derivedDg, undefined, demoJson);
-    setBlManifest(derivedBl);
-    ingestShipmentToLedger(demoJson);
-    setCfsLedgerCount(getCFSLedgerEntries().length);
-    setHasParsed(true);
-    setApiError(null);
   };
 
   // Load unified truth JSON generated from picked warehouse pallets into Workspace
@@ -588,7 +448,6 @@ export function App(): React.JSX.Element {
 
   // Condition to determine if shipment data is loaded
   const isShipmentLoaded = hasParsed || shipmentJson.invoiceNumbers.length > 0;
-  const [isTransitioningToWorkspace, setIsTransitioningToWorkspace] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-cyan-500 selection:text-white overflow-hidden">
@@ -611,28 +470,7 @@ export function App(): React.JSX.Element {
       {/* Primary Page Canvas (All 3 pages keep state alive) */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {activePage === 'workspace' && (
-          isTransitioningToWorkspace ? (
-            <div className="flex-1 flex flex-col p-6 bg-app animate-fade-in overflow-hidden space-y-5">
-              {/* Header Skeleton */}
-              <div className="h-14 bg-surface border border-divider rounded-xl p-3 flex items-center justify-between animate-pulse">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 rounded-lg bg-surface-secondary border border-divider" />
-                  <div className="space-y-1.5">
-                    <div className="h-3 w-20 bg-surface-secondary rounded" />
-                    <div className="h-2 w-32 bg-surface-secondary rounded" />
-                  </div>
-                </div>
-                <div className="h-7 w-40 bg-surface-secondary rounded-lg" />
-                <div className="h-7 w-24 bg-surface-secondary rounded-lg" />
-              </div>
-              {/* Main Canvas Skeleton */}
-              <div className="flex-1 bg-surface border border-divider rounded-2xl p-8 flex flex-col items-center justify-center space-y-4 animate-pulse">
-                <div className="h-6 w-96 bg-surface-secondary rounded" />
-                <div className="h-4 w-64 bg-surface-secondary rounded" />
-                <div className="w-full max-w-2xl h-80 bg-surface-secondary/60 rounded-xl border border-divider border-dashed mt-4" />
-              </div>
-            </div>
-          ) : isShipmentLoaded ? (
+          isShipmentLoaded ? (
             <div className="flex-1 flex flex-col h-full overflow-hidden animate-fade-in transition-opacity duration-300">
               <WorkspacePage
                 shipmentJson={shipmentJson}
@@ -670,20 +508,8 @@ export function App(): React.JSX.Element {
               />
             </div>
           ) : (
-            <UploadLandingView
-              mode={mode}
-              onModeChange={handleModeChange}
-              uploadedFiles={uploadedFiles}
-              onFileSelect={handleFileSelect}
-              onDrop={handleDrop}
-              onRemoveFile={handleRemoveFile}
-              onClearFiles={handleClearFiles}
-              isParsing={isParsing}
-              parseProgress={parseProgress}
-              apiError={apiError}
-              onExecuteParsing={handleExecuteParsing}
-              onLoadDemoJson={handleLoadDemoJson}
-              onOpenFormatLibrary={() => setActivePage('formats')}
+            <InventoryStockSelector
+              onSelectShipment={handleLoadShipmentFromWarehouse}
               onOpenInventory={() => setActivePage('inventory')}
             />
           )
