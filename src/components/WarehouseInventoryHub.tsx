@@ -1388,31 +1388,30 @@ export function WarehouseInventoryHub({
 
             {/* Bottom Docked Pallet Action Bar */}
             {selectedPalletIds.size > 0 && (
-              <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface border-t border-divider p-3 sm:p-4 shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
-                <div className="flex items-center space-x-3 text-xs font-mono">
-                  <span className="px-2.5 py-1 rounded-md bg-brand-primary text-white font-bold">
-                    Selected: {selectedPalletsStats.count} Pallets
+              <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-divider px-4 sm:px-6 py-3 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fade-in">
+                {/* Left: Summary Metrics */}
+                <div className="flex flex-wrap items-center gap-2.5 text-xs font-mono">
+                  <span className="px-2.5 py-1.5 rounded-lg bg-brand-primary text-white font-bold tracking-tight shadow-xs">
+                    Selected: {selectedPalletsStats.count} Pallet{selectedPalletsStats.count > 1 ? 's' : ''}
                   </span>
-                  <span className="text-content-secondary">
-                    {selectedPalletsStats.batteries.toLocaleString()} Units • {selectedPalletsStats.grossKg.toLocaleString()} kg
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold hidden md:inline">
-                    Requires {selectedPalletsStats.required20GP} × 20' GP
-                  </span>
-                  {selectedDispatchCustomer && (
-                    <span className="text-content-muted hidden lg:inline">
-                      Customer: <strong className="text-content-primary font-sans">{selectedDispatchCustomer}</strong>
-                    </span>
-                  )}
+                  <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-surface-secondary border border-divider text-content-secondary font-medium">
+                    <span className="text-content-primary font-bold">{selectedPalletsStats.batteries.toLocaleString()}</span>
+                    <span>Units</span>
+                    <span className="text-divider">•</span>
+                    <span className="text-content-primary font-bold">{selectedPalletsStats.grossKg.toLocaleString()}</span>
+                    <span>kg</span>
+                  </div>
                 </div>
 
-                <div className="flex items-center space-x-2 text-xs">
+                {/* Right: Uniform Actions Group */}
+                <div className="flex items-center gap-2 text-xs">
                   <button
+                    type="button"
                     onClick={() => {
                       setSelectedPalletIds(new Set());
                       setSelectedDispatchCustomer('');
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary border border-divider cursor-pointer"
+                    className="px-3 py-2 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary hover:text-content-primary border border-divider font-medium transition-colors cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1420,22 +1419,24 @@ export function WarehouseInventoryHub({
                   <button
                     type="button"
                     onClick={promptDeleteSelectedPallets}
-                    className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs transition-colors"
+                    className="px-3 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
                     title="Delete selected pallets from inventory"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Selected ({selectedPalletsStats.count})</span>
+                    <span>Delete ({selectedPalletsStats.count})</span>
                   </button>
 
                   <button
+                    type="button"
                     onClick={handleLoadSelectedIntoWorkspace}
-                    className="px-3.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-brand-primary border border-brand-primary font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                    className="px-3.5 py-2 rounded-lg bg-surface hover:bg-surface-secondary text-brand-primary border border-brand-primary font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
                   >
                     <span>Load into Dispatch Tool</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => {
                       if (!dispatchDetails.containerNo) {
                         const firstPallet = selectedPalletsStats.palletList[0];
@@ -1448,7 +1449,7 @@ export function WarehouseInventoryHub({
                       }
                       setShowDispatchModal(true);
                     }}
-                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Confirm Dispatch (Stock-Out)</span>
