@@ -399,10 +399,11 @@ export function InventoryStockSelector({
                       <span className="text-content-muted font-normal text-[11px]">Check/uncheck individual pallets to adjust selection</span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 font-mono text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-6 gap-2.5 font-mono text-xs">
                       {(entry.pallets || []).map((p) => {
                         const isPalletSelected = isSelected && selectedPalletIds.has(p.id);
                         const isStuffed = p.status === 'STUFFED_DISPATCHED';
+                        const displayPalletNum = String(p.palletNumber || '').replace(/^PLT\s*#?/i, '').replace(/^#/, '');
 
                         return (
                           <div
@@ -412,7 +413,7 @@ export function InventoryStockSelector({
                                 handleTogglePallet(entry.id, p.id);
                               }
                             }}
-                            className={`p-2 rounded-lg border text-xs transition-all ${
+                            className={`p-2.5 rounded-lg border text-xs transition-all flex flex-col justify-between ${
                               isStuffed
                                 ? 'bg-slate-100 text-content-muted border-slate-200 cursor-not-allowed opacity-60'
                                 : isPalletSelected
@@ -420,16 +421,27 @@ export function InventoryStockSelector({
                                 : 'bg-surface border-divider hover:border-brand-primary cursor-pointer'
                             }`}
                           >
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-brand-primary">PLT #{p.palletNumber}</span>
-                              <span className="text-[10px] px-1 rounded bg-surface-secondary truncate max-w-[50px]">{p.model}</span>
+                            <div className="flex items-start justify-between gap-1.5 min-w-0">
+                              <span className="font-bold text-brand-primary truncate text-[11px]" title={`PLT #${displayPalletNum}`}>
+                                PLT #{displayPalletNum}
+                              </span>
+                              <span
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-surface-secondary border border-divider text-content-secondary font-medium truncate max-w-[85px] shrink-0"
+                                title={p.model}
+                              >
+                                {p.model}
+                              </span>
                             </div>
-                            <div className="mt-1 flex items-center justify-between text-[11px]">
-                              <span className="text-content-secondary">Qty:</span>
-                              <strong className="text-content-primary">{p.receivedBatteries || p.invoicedBatteries}u</strong>
-                            </div>
-                            <div className="mt-0.5 text-[10px] text-content-muted text-right">
-                              {isStuffed ? 'Shipped' : `${p.grossWeightKg}kg`}
+                            <div className="mt-2 pt-1.5 border-t border-divider/40 flex items-center justify-between text-[11px]">
+                              <div className="flex items-center space-x-1 text-content-secondary">
+                                <span>Qty:</span>
+                                <strong className="text-content-primary font-bold">
+                                  {p.receivedBatteries || p.invoicedBatteries}u
+                                </strong>
+                              </div>
+                              <div className="text-[10px] text-content-muted font-medium text-right">
+                                {isStuffed ? 'Shipped' : `${p.grossWeightKg}kg`}
+                              </div>
                             </div>
                           </div>
                         );

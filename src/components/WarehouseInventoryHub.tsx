@@ -1300,11 +1300,12 @@ export function WarehouseInventoryHub({
                             <span className="text-content-muted font-normal">Click a pallet to select for container loading</span>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 font-mono">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-6 gap-2.5 font-mono">
                             {(entry.pallets || []).map((pallet) => {
                               const isSelected = selectedPalletIds.has(pallet.id);
                               const isStuffed = pallet.status === 'STUFFED_DISPATCHED';
                               const isPending = pallet.status === 'PENDING_GATE_IN';
+                              const displayPalletNum = String(pallet.palletNumber || '').replace(/^PLT\s*#?/i, '').replace(/^#/, '');
 
                               return (
                                 <div
@@ -1314,32 +1315,37 @@ export function WarehouseInventoryHub({
                                       togglePalletSelection(pallet.id, entry.customer);
                                     }
                                   }}
-                                  className={`p-2 rounded-lg border text-xs transition-all ${
+                                  className={`p-2.5 rounded-lg border text-xs transition-all flex flex-col justify-between ${
                                     isStuffed
                                       ? 'bg-slate-100 text-content-muted border-slate-200 cursor-not-allowed opacity-75'
                                       : isPending
                                       ? 'bg-amber-50/50 text-amber-900 border-amber-200 cursor-not-allowed'
                                       : isSelected
                                       ? 'bg-brand-primary-soft border-brand-primary ring-1 ring-brand-primary cursor-pointer shadow-xs'
-                                      : 'bg-surface border-divider hover:border-brand-primary cursor-pointer'
+                                      : 'bg-surface border-divider hover:border-brand-primary cursor-pointer shadow-2xs'
                                   }`}
                                 >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-1.5">
+                                  {/* Top Row: Checkbox + Pallet identifier & Model badge + Delete */}
+                                  <div className="flex items-start justify-between gap-1.5 min-w-0">
+                                    <div className="flex items-center space-x-1.5 min-w-0 flex-1">
                                       {!isStuffed && !isPending && (
                                         <input
                                           type="checkbox"
                                           checked={isSelected}
                                           onChange={() => {}}
-                                          className="rounded border-divider text-brand-primary focus:ring-brand-primary"
+                                          className="rounded border-divider text-brand-primary focus:ring-brand-primary shrink-0"
                                         />
                                       )}
-                                      <span className="font-bold text-brand-primary">
-                                        PLT #{pallet.palletNumber}
+                                      <span className="font-bold text-brand-primary truncate text-[11px]" title={`PLT #${displayPalletNum}`}>
+                                        PLT #{displayPalletNum}
                                       </span>
                                     </div>
-                                    <div className="flex items-center space-x-1">
-                                      <span className="text-[10px] px-1 py-0.2 rounded bg-surface-secondary border border-divider text-content-secondary truncate max-w-[70px]">
+
+                                    <div className="flex items-center space-x-1 shrink-0">
+                                      <span
+                                        className="text-[10px] px-1.5 py-0.5 rounded bg-surface-secondary border border-divider text-content-secondary font-medium truncate max-w-[85px]"
+                                        title={pallet.model}
+                                      >
                                         {pallet.model}
                                       </span>
                                       {!isStuffed && (
@@ -1349,8 +1355,8 @@ export function WarehouseInventoryHub({
                                             e.stopPropagation();
                                             promptDeletePallet(entry, pallet);
                                           }}
-                                          className="p-0.5 rounded text-content-muted hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                          title={`Delete Pallet #${pallet.palletNumber}`}
+                                          className="p-1 rounded text-content-muted hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                          title={`Delete Pallet #${displayPalletNum}`}
                                         >
                                           <Trash2 className="w-3 h-3" />
                                         </button>
@@ -1358,16 +1364,28 @@ export function WarehouseInventoryHub({
                                     </div>
                                   </div>
 
-                                  <div className="mt-1 flex items-center justify-between text-[11px]">
-                                    <span className="text-content-secondary">Qty:</span>
-                                    <strong className="text-content-primary">{pallet.receivedBatteries || pallet.invoicedBatteries} u</strong>
-                                  </div>
-
-                                  <div className="mt-0.5 flex items-center justify-between text-[10px] text-content-muted">
-                                    <span>{pallet.grossWeightKg} kg</span>
-                                    <span className="uppercase font-semibold">
-                                      {isStuffed ? (pallet.containerNo ? `Shipped (${pallet.containerNo})` : 'Shipped') : isPending ? 'Pending' : 'Ready'}
-                                    </span>
+                                  {/* Bottom Row: Qty, Weight, Status */}
+                                  <div className="mt-2 pt-1.5 border-t border-divider/40 flex items-center justify-between text-[11px]">
+                                    <div className="flex items-center space-x-1 text-content-secondary">
+                                      <span>Qty:</span>
+                                      <strong className="text-content-primary font-bold">
+                                        {pallet.receivedBatteries || pallet.invoicedBatteries} u
+                                      </strong>
+                                    </div>
+                                    <div className="flex items-center space-x-1.5 text-[10px]">
+                                      <span className="text-content-muted font-medium">{pallet.grossWeightKg} kg</span>
+                                      <span
+                                        className={`px-1 py-0.2 rounded font-semibold uppercase text-[9px] ${
+                                          isStuffed
+                                            ? 'bg-slate-200/70 text-slate-700'
+                                            : isPending
+                                            ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-emerald-50 text-emerald-700'
+                                        }`}
+                                      >
+                                        {isStuffed ? (pallet.containerNo ? `Shipped (${pallet.containerNo})` : 'Shipped') : isPending ? 'Pending' : 'Ready'}
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
                               );
