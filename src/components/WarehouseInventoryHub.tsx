@@ -801,7 +801,7 @@ export function WarehouseInventoryHub({
                   <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
                     Weight
                   </span>
-                  <span className="text-sm sm:text-base font-bold text-content-primary leading-tight font-mono truncate max-w-full">
+                  <span className="text-xs sm:text-sm font-bold text-content-primary leading-tight font-mono whitespace-nowrap" title={`${kpis.totalBalanceGrossKg.toLocaleString()} kg`}>
                     {kpis.totalBalanceGrossKg.toLocaleString()} <span className="text-[10px] font-normal text-content-muted">kg</span>
                   </span>
                 </div>
