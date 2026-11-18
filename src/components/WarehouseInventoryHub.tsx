@@ -1602,7 +1602,7 @@ export function WarehouseInventoryHub({
 
                         {/* Group 6 */}
                         <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/30 font-bold text-emerald-700">Bal Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/30 font-bold text-indigo-700 sticky right-0 bg-amber-50 z-20 shadow-xs">
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/30 font-bold text-indigo-700">
                           Bal Bat
                         </th>
                         <th className="p-2 border-r border-divider text-center whitespace-nowrap bg-slate-50">Days</th>
@@ -1856,8 +1856,8 @@ export function WarehouseInventoryHub({
                                 {e.balancePallets || 0}
                               </td>
 
-                              {/* 23. Balance Batteries (Sticky Right) */}
-                              <td className="p-2 border-r border-divider text-right bg-amber-50/40 font-bold text-indigo-700 sticky right-0 z-10 shadow-2xs">
+                              {/* 23. Balance Batteries */}
+                              <td className="p-2 border-r border-divider text-right bg-amber-50/40 font-bold text-indigo-700">
                                 {(e.balanceBatteries || 0).toLocaleString()}
                               </td>
 
