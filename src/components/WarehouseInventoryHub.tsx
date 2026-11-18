@@ -160,7 +160,7 @@ export function WarehouseInventoryHub({
   const [reportDensity, setReportDensity] = useState<'core_11' | 'full_25'>('core_11');
 
   // Logs States
-  const [logDirectionFilter, setLogDirectionFilter] = useState<'ALL' | 'STOCK_OUT' | 'STOCK_IN'>('ALL');
+  const [logStatusFilter, setLogStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'DISPATCHED'>('ALL');
 
   // Stuffing & Dispatch Modal State
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
@@ -606,14 +606,21 @@ export function WarehouseInventoryHub({
   // Filtered Movement Records
   const filteredMovementRecords = useMemo(() => {
     return allMovementRecords.filter((r) => {
-      if (logDirectionFilter !== 'ALL' && r.direction !== logDirectionFilter) {
+      if (logStatusFilter === 'IN_STOCK' && r.status !== 'IN_STOCK' && r.status !== 'PARTIAL_DISPATCHED') {
+        return false;
+      }
+      if (logStatusFilter === 'DISPATCHED' && r.status !== 'DISPATCHED' && r.status !== 'PARTIAL_DISPATCHED') {
         return false;
       }
       if (customerFilter !== 'ALL' && r.customer.trim().toUpperCase() !== customerFilter.toUpperCase()) {
         return false;
       }
       if (dateFrom || dateTo) {
-        const time = parseDateStrToTime(r.movementDate) || parseDateStrToTime(r.createdAt);
+        const time =
+          parseDateStrToTime(r.receivedDate) ||
+          parseDateStrToTime(r.dispatchedDate) ||
+          parseDateStrToTime(r.movementDate) ||
+          parseDateStrToTime(r.createdAt);
         if (time) {
           if (dateFrom && time < new Date(`${dateFrom}T00:00:00`).getTime()) return false;
           if (dateTo && time > new Date(`${dateTo}T23:59:59`).getTime()) return false;
@@ -632,13 +639,13 @@ export function WarehouseInventoryHub({
       }
       return true;
     });
-  }, [allMovementRecords, logDirectionFilter, customerFilter, dateFrom, dateTo, searchQuery]);
+  }, [allMovementRecords, logStatusFilter, customerFilter, dateFrom, dateTo, searchQuery]);
 
   // Customer Outgoing Summary
   const customerOutgoingSummaries = useMemo(() => {
     const map = new Map<string, { pallets: number; batteries: number; containers: Set<string> }>();
     allMovementRecords.forEach((r) => {
-      if (r.direction === 'STOCK_OUT') {
+      if (r.status === 'DISPATCHED' || r.status === 'PARTIAL_DISPATCHED' || r.direction === 'STOCK_OUT') {
         const cur = map.get(r.customer) || { pallets: 0, batteries: 0, containers: new Set() };
         cur.pallets += r.pallets || 0;
         cur.batteries += r.batteries || 0;
@@ -1923,20 +1930,20 @@ export function WarehouseInventoryHub({
                 </div>
               </div>
 
-              {/* Direction Filter Buttons */}
+              {/* Status Filter Buttons */}
               <div className="pt-2 border-t border-divider/60 flex items-center space-x-1.5 text-xs font-mono">
-                <span className="text-content-secondary font-sans mr-1 font-medium">Movement:</span>
-                {(['ALL', 'STOCK_OUT', 'STOCK_IN'] as const).map((dir) => (
+                <span className="text-content-secondary font-sans mr-1 font-medium">Status:</span>
+                {(['ALL', 'IN_STOCK', 'DISPATCHED'] as const).map((st) => (
                   <button
-                    key={dir}
-                    onClick={() => setLogDirectionFilter(dir)}
+                    key={st}
+                    onClick={() => setLogStatusFilter(st)}
                     className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer font-sans text-xs ${
-                      logDirectionFilter === dir
+                      logStatusFilter === st
                         ? 'bg-brand-primary text-white font-semibold'
                         : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
                     }`}
                   >
-                    {dir === 'ALL' ? 'All Movements' : dir === 'STOCK_OUT' ? 'Stock-Out (Dispatched)' : 'Stock-In (Gate-In)'}
+                    {st === 'ALL' ? 'All Invoices' : st === 'IN_STOCK' ? 'In Stock' : 'Dispatched'}
                   </button>
                 ))}
               </div>
@@ -1948,8 +1955,9 @@ export function WarehouseInventoryHub({
                 <table className="w-full text-xs font-mono border-collapse select-text">
                   <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
                     <tr className="text-[11px] font-semibold text-content-primary border-b border-divider text-left">
-                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Date</th>
-                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Direction</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Received Date</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Dispatched Date</th>
+                      <th className="p-2.5 border-r border-divider whitespace-nowrap">Status</th>
                       <th className="p-2.5 border-r border-divider whitespace-nowrap min-w-[140px]">Customer</th>
                       <th className="p-2.5 border-r border-divider whitespace-nowrap">Invoice No</th>
                       <th className="p-2.5 border-r border-divider whitespace-nowrap">Battery / Model</th>
@@ -1967,62 +1975,107 @@ export function WarehouseInventoryHub({
                   <tbody className="divide-y divide-divider/60">
                     {filteredMovementRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={13} className="p-12 text-center text-content-muted">
+                        <td colSpan={14} className="p-12 text-center text-content-muted">
                           <History className="w-8 h-8 mx-auto mb-1 opacity-50" />
                           <p>No inventory movements recorded matching criteria.</p>
                         </td>
                       </tr>
                     ) : (
                       filteredMovementRecords.map((r) => {
-                        const isStockOut = r.direction === 'STOCK_OUT';
+                        const isDispatched = r.status === 'DISPATCHED';
+                        const isPartial = r.status === 'PARTIAL_DISPATCHED';
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                            {/* Received Date */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap font-medium text-content-primary">
-                              {r.movementDate}
+                              {r.receivedDate || '-'}
                             </td>
+
+                            {/* Dispatched Date */}
+                            <td className="p-2.5 border-r border-divider whitespace-nowrap font-medium text-content-primary">
+                              {r.dispatchedDate && r.dispatchedDate !== '-' ? (
+                                <span className="text-emerald-700 font-semibold">{r.dispatchedDate}</span>
+                              ) : (
+                                <span className="text-content-muted">-</span>
+                              )}
+                            </td>
+
+                            {/* Status */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap">
                               <span
                                 className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono tracking-wider ${
-                                  isStockOut
+                                  isDispatched
                                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                    : isPartial
+                                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                    : 'bg-blue-50 text-blue-800 border border-blue-200'
                                 }`}
                               >
-                                {isStockOut ? 'STOCK-OUT' : 'STOCK-IN'}
+                                {isDispatched ? 'DISPATCHED' : isPartial ? 'PARTIAL' : 'IN STOCK'}
                               </span>
                             </td>
+
+                            {/* Customer */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary max-w-[150px] truncate" title={r.customer}>
                               {r.customer}
                             </td>
+
+                            {/* Invoice No */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
                               {r.customInvoiceNo}
                             </td>
+
+                            {/* Battery / Model */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary max-w-[160px] truncate" title={r.modelDescription}>
                               {r.modelDescription || '-'}
                             </td>
+
+                            {/* Pallets */}
                             <td className="p-2.5 border-r border-divider text-right font-bold text-content-primary">
                               {r.pallets}
                             </td>
+
+                            {/* Units */}
                             <td className="p-2.5 border-r border-divider text-right text-content-primary">
                               {r.batteries.toLocaleString()}
                             </td>
+
+                            {/* Gross kg */}
                             <td className="p-2.5 border-r border-divider text-right text-content-secondary">
                               {(r.grossWeightKg || 0).toLocaleString()}
                             </td>
+
+                            {/* Container No */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap font-bold text-blue-700">
                               {r.containerNo || '-'}
                             </td>
+
+                            {/* Seal No */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary">
                               {r.sealNo || '-'}
                             </td>
+
+                            {/* Shipping Bill */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary">
-                              {r.shippingBillNo ? `${r.shippingBillNo} (${r.shippingBillDate || '-'})` : '-'}
+                              {r.shippingBillNo && r.shippingBillNo !== '-'
+                                ? (r.shippingBillDate && r.shippingBillDate !== '-' ? `${r.shippingBillNo} (${r.shippingBillDate})` : r.shippingBillNo)
+                                : '-'}
                             </td>
+
+                            {/* Vehicle No */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap text-content-secondary">
                               {r.vehicleNo || '-'}
                             </td>
-                            <td className="p-2.5 text-right whitespace-nowrap font-bold text-emerald-700">
-                              {r.remainingBalancePallets} Plt / {r.remainingBalanceBatteries}u
+
+                            {/* Remaining Balance */}
+                            <td className="p-2.5 text-right whitespace-nowrap font-mono font-bold">
+                              {r.remainingBalancePallets > 0 ? (
+                                <span className="text-emerald-700">
+                                  {r.remainingBalancePallets} Plt <span className="text-content-muted">/</span> {r.remainingBalanceBatteries}u
+                                </span>
+                              ) : (
+                                <span className="text-content-muted font-normal">0 (Cleared)</span>
+                              )}
                             </td>
                           </tr>
                         );

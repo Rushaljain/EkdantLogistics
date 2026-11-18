@@ -694,11 +694,15 @@ export interface CustomerStockSummary {
 // =========================================================================
 
 export type InventoryMovementDirection = 'STOCK_OUT' | 'STOCK_IN';
+export type InventoryMovementStatus = 'IN_STOCK' | 'DISPATCHED' | 'PARTIAL_DISPATCHED';
 
 export interface InventoryMovementRecord {
   id: string;
-  movementDate: string;
-  direction: InventoryMovementDirection;
+  receivedDate: string;
+  dispatchedDate?: string;
+  movementDate?: string;
+  status: InventoryMovementStatus;
+  direction?: InventoryMovementDirection;
   customer: string;
   customInvoiceNo: string;
   modelDescription: string;
