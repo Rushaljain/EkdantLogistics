@@ -245,8 +245,11 @@ export async function parseDocumentsToJSON(
     }
   };
 
-  // Supported model endpoints to attempt in sequence (with automatic fallback on 404/503)
+  // Supported model endpoints to attempt in sequence (with automatic fallback on 404/503/timeout)
+  // Prioritize ultra-fast flash-lite models (1-4s response) before falling back to full flash models
   const models = [
+    'gemini-3.5-flash-lite',
+    'gemini-flash-lite-latest',
     'gemini-flash-latest',
     'gemini-3.8-flash'
   ];
@@ -268,17 +271,22 @@ export async function parseDocumentsToJSON(
       ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
       : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: requestHeaders,
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errorText = await res.text();
-        // If model is not found (404) or temporarily overloaded (503), attempt next candidate
-        if ((res.status === 404 || res.status === 503) && models.indexOf(model) < models.length - 1) {
+        // If model is not found (404), temporarily overloaded (503), or rate-limited (429), attempt next candidate
+        if ((res.status === 404 || res.status === 503 || res.status === 429) && models.indexOf(model) < models.length - 1) {
           console.warn(`Model ${model} returned HTTP ${res.status}, attempting next model candidate...`);
           lastError = new Error(`Gemini API Error (HTTP ${res.status} on ${model}): ${errorText}`);
           continue;
@@ -302,10 +310,13 @@ export async function parseDocumentsToJSON(
         throw new Error(`Failed to parse JSON from Gemini (${model}): ${jsonErr?.message}\nRaw Text:\n${rawText.slice(0, 300)}`);
       }
     } catch (fetchErr: any) {
+      clearTimeout(timeoutId);
       lastError = fetchErr;
-      if (models.indexOf(model) === models.length - 1) {
-        break;
+      if (models.indexOf(model) < models.length - 1) {
+        console.warn(`Model ${model} failed (${fetchErr?.name || fetchErr?.message}), attempting next model candidate...`);
+        continue;
       }
+      break;
     }
   }
 
