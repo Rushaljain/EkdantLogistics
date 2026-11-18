@@ -201,9 +201,10 @@ export function WorkspacePage({
     if (!shipmentJson.sealNumber?.trim()) pending.push('sealNumber');
     if (!shipmentJson.tareWeightKg || shipmentJson.tareWeightKg === 0) pending.push('tareWeightKg');
     if (!shipmentJson.shippingBillNumbers?.trim()) pending.push('shippingBillNumbers');
-    if (!shipmentJson.freeTimeClause?.trim()) pending.push('freeTimeClause');
+    const freeTimeVal = shipmentJson.freeTimeClause || blCustomOverrides?.['free_time_clause'] || blCustomOverrides?.['bl_free_time'] || '14 DAYS DETENTION FREE AT DESTINATION';
+    if (!freeTimeVal?.trim()) pending.push('freeTimeClause');
     return pending;
-  }, [shipmentJson]);
+  }, [shipmentJson, blCustomOverrides]);
 
   const [stage2JumpIdx, setStage2JumpIdx] = useState(0);
 
@@ -238,7 +239,7 @@ export function WorkspacePage({
     } else {
       setSelectedContainerScope('');
     }
-  }, [shipmentJson.containers]);
+  }, [shipmentJson.containers, selectedContainerScope]);
 
   const activeScopedContainerId = useMemo(() => {
     if (!shipmentJson.containers || shipmentJson.containers.length === 0) return '';
@@ -1018,12 +1019,13 @@ export function WorkspacePage({
                 shipmentJson={shipmentJson}
                 onUpdateShipment={onUpdateShipment}
                 onFieldChange={(fieldId, val) => {
-                  const field = mappedBlFields.find((f) => f.fieldId === fieldId) || {
-                    fieldId,
-                    labelInTemplate: fieldId,
+                  const targetFieldId = fieldId === 'free_time_clause' ? 'bl_free_time' : fieldId;
+                  const field = mappedBlFields.find((f) => f.fieldId === targetFieldId || f.fieldId === fieldId) || {
+                    fieldId: targetFieldId,
+                    labelInTemplate: targetFieldId,
                     sectionName: 'BOL Fields',
                     fieldType: 'text' as const,
-                    mappedShipmentKey: '',
+                    mappedShipmentKey: fieldId === 'free_time_clause' || targetFieldId === 'bl_free_time' ? 'freeTimeClause' : '',
                     value: val,
                     status: 'POPULATED' as const
                   };

@@ -20,6 +20,12 @@ export function BlDocumentCanvas({
     if (customOverrides[overrideKey] !== undefined) {
       return customOverrides[overrideKey];
     }
+    if (overrideKey === 'free_time_clause' && customOverrides['bl_free_time'] !== undefined) {
+      return customOverrides['bl_free_time'];
+    }
+    if (overrideKey === 'bl_free_time' && customOverrides['free_time_clause'] !== undefined) {
+      return customOverrides['free_time_clause'];
+    }
     return fallbackVal || '';
   };
 
@@ -29,6 +35,9 @@ export function BlDocumentCanvas({
     shipmentKey?: keyof ExtractedShipmentJSON
   ) => {
     onFieldChange(overrideKey, newValue);
+    if (overrideKey === 'free_time_clause') {
+      onFieldChange('bl_free_time', newValue);
+    }
 
     if (shipmentKey) {
       const updated = { ...shipmentJson };

@@ -72,6 +72,24 @@ export function buildMappedManifest(
       }
     }
 
+    // Free Time Clause: synchronize across bl_free_time, free_time_clause, and freeTimeClause
+    const isFreeTimeField =
+      field.mappedShipmentKey === 'freeTimeClause' ||
+      fieldIdLower === 'bl_free_time' ||
+      fieldIdLower === 'free_time' ||
+      fieldIdLower === 'free_time_clause' ||
+      labelLower.includes('free time');
+
+    if (isFreeTimeField) {
+      resolvedValue =
+        customOverrides[field.fieldId] ||
+        customOverrides['bl_free_time'] ||
+        customOverrides['free_time_clause'] ||
+        customOverrides['free_time'] ||
+        shipment.freeTimeClause ||
+        '14 DAYS DETENTION FREE AT DESTINATION';
+    }
+
     // 4. Composite Party Blocks (Shipper, Consignee, Notify Party)
     const hasSeparateShipperAddress = format.fields.some(
       f => f.fieldId !== field.fieldId && f.mappedShipmentKey === 'shipperAddress'
@@ -725,6 +743,17 @@ export function updateShipmentFromManifestField(
     if (!isNaN(enteredVgm) && updated.grossWeightKg > 0 && enteredVgm > updated.grossWeightKg) {
       updated.tareWeightKg = Number((enteredVgm - updated.grossWeightKg).toFixed(2));
     }
+  }
+
+  // 8. Free Time Clause synchronization
+  if (
+    key === 'freeTimeClause' ||
+    fieldIdLower === 'bl_free_time' ||
+    fieldIdLower === 'free_time' ||
+    fieldIdLower === 'free_time_clause' ||
+    labelLower.includes('free time')
+  ) {
+    updated.freeTimeClause = newValue;
   }
 
   return updated;

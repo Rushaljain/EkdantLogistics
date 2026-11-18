@@ -544,6 +544,17 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
     }
   }
 
+  // Commercial & Terms defaults
+  if (!clean.freightTerms || clean.freightTerms.trim() === '') {
+    clean.freightTerms = 'FREIGHT PREPAID';
+  }
+  if (!clean.movementType || clean.movementType.trim() === '') {
+    clean.movementType = 'FCL/FCL';
+  }
+  if (!clean.freeTimeClause || clean.freeTimeClause.trim() === '') {
+    clean.freeTimeClause = '14 DAYS DETENTION FREE AT DESTINATION';
+  }
+
   return clean;
 }
 
@@ -1345,7 +1356,7 @@ export const KEYWORD_RULES: KeywordRule[] = [
     description: 'Free Time & Detention Clause',
     keywords: ['free time', 'detention clause', 'demurrage'],
     resolver: (shipment) => {
-      return shipment.freeTimeClause || '';
+      return shipment.freeTimeClause || '14 DAYS DETENTION FREE AT DESTINATION';
     }
   }
 ];

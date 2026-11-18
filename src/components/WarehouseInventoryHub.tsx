@@ -925,10 +925,30 @@ export function WarehouseInventoryHub({
           </div>
         </div>
 
-        {/* CONTROLS BAR: SECTION DROPDOWN + CUSTOMER DROPDOWN + SEARCH */}
+        {/* CONTROLS BAR: SEARCH (FIRST OPTION) + SECTION DROPDOWN + CUSTOMER DROPDOWN + STATUS (FOR INVENTORY / LOGS) */}
         <div className="px-4 sm:px-6 py-2.5 bg-surface border-t border-divider flex items-center justify-between gap-3 text-xs overflow-x-auto">
           <div className="flex items-center gap-3 shrink-0">
-            {/* Section Selector Dropdown (Yellow items placed in clean dropdown) */}
+            {/* Search Input - FIRST OPTION in row */}
+            <div className="relative w-56 sm:w-64 shrink-0">
+              <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search invoice, container, vehicle..."
+                className="w-full pl-8 pr-7 py-1.5 bg-surface-secondary/50 border border-divider rounded-lg text-xs text-content-primary placeholder-content-muted focus:outline-none focus:border-brand-primary"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-content-muted hover:text-content-primary cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Section Selector Dropdown */}
             <div className="flex items-center space-x-1.5 shrink-0">
               <label htmlFor="section-select" className="text-content-secondary font-medium shrink-0">Section:</label>
               <select
@@ -961,25 +981,26 @@ export function WarehouseInventoryHub({
               </select>
             </div>
 
-            {/* Search Input */}
-            <div className="relative w-56 sm:w-64 shrink-0">
-              <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search invoice, container, vehicle..."
-                className="w-full pl-8 pr-7 py-1.5 bg-surface-secondary/50 border border-divider rounded-lg text-xs text-content-primary placeholder-content-muted focus:outline-none focus:border-brand-primary"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-content-muted hover:text-content-primary cursor-pointer"
+            {/* Status Filter Dropdown for Inventory Section (Placed here in controls row) */}
+            {activeSection === 'inventory' && (
+              <div className="flex items-center space-x-1.5 text-xs shrink-0">
+                <label htmlFor="status-filter-select" className="text-content-secondary font-medium shrink-0">
+                  Status:
+                </label>
+                <select
+                  id="status-filter-select"
+                  value={inventoryStatusFilter}
+                  onChange={(e) => setInventoryStatusFilter(e.target.value as any)}
+                  className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+                  <option value="ALL">All Active</option>
+                  <option value="PENDING_GATE_IN">Pending Gate-In</option>
+                  <option value="IN_WAREHOUSE">Ready in Warehouse</option>
+                  <option value="DISPATCHED">Dispatched (Stock-Out)</option>
+                  <option value="SHORTFALL">Shortfall</option>
+                </select>
+              </div>
+            )}
 
             {/* Status Filter Dropdown for Logs */}
             {activeSection === 'logs' && (
@@ -1037,35 +1058,14 @@ export function WarehouseInventoryHub({
             ===================================================================== */}
         {activeSection === 'inventory' && (
           <div className="space-y-4 pb-24">
-            {/* Filter & Status Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface border border-divider rounded-xl p-3 shadow-xs">
-              <div>
-                <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
-                  Floor Stock &amp; Pallet Picking
-                </h2>
-                <p className="text-xs text-content-secondary mt-0.5">
-                  {activeStockInvoices.length} active invoices • {availablePalletUnits.length} available pallets on floor
-                </p>
-              </div>
-
-              {/* Status Filter Dropdown */}
-              <div className="flex items-center space-x-2 text-xs">
-                <label htmlFor="status-filter-select" className="text-content-secondary font-medium shrink-0">
-                  Status:
-                </label>
-                <select
-                  id="status-filter-select"
-                  value={inventoryStatusFilter}
-                  onChange={(e) => setInventoryStatusFilter(e.target.value as any)}
-                  className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
-                >
-                  <option value="ALL">All Active</option>
-                  <option value="PENDING_GATE_IN">Pending Gate-In</option>
-                  <option value="IN_WAREHOUSE">Ready in Warehouse</option>
-                  <option value="DISPATCHED">Dispatched (Stock-Out)</option>
-                  <option value="SHORTFALL">Shortfall</option>
-                </select>
-              </div>
+            {/* Header info */}
+            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs">
+              <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
+                Floor Stock &amp; Pallet Picking
+              </h2>
+              <p className="text-xs text-content-secondary mt-0.5">
+                {activeStockInvoices.length} active invoices • {availablePalletUnits.length} available pallets on floor
+              </p>
             </div>
 
             {/* Invoices List */}
