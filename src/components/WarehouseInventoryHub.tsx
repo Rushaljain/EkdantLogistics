@@ -149,6 +149,7 @@ export function WarehouseInventoryHub({
   const [selectedMonth, setSelectedMonth] = useState<CFSMonth>('ALL');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [reportDensity, setReportDensity] = useState<'core_11' | 'full_25'>('core_11');
 
   // Inventory States
   const [selectedPalletIds, setSelectedPalletIds] = useState<Set<string>>(new Set());
@@ -156,15 +157,14 @@ export function WarehouseInventoryHub({
   const [expandedInventoryInvoiceIds, setExpandedInventoryInvoiceIds] = useState<Set<string>>(new Set());
   const [inventoryStatusFilter, setInventoryStatusFilter] = useState<'ALL' | 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'DISPATCHED' | 'SHORTFALL'>('ALL');
 
-  // Reports States
-  const [reportDensity, setReportDensity] = useState<'core_11' | 'full_25'>('core_11');
-
   // Logs States
   const [logStatusFilter, setLogStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'DISPATCHED'>('ALL');
 
   // Stuffing & Dispatch Modal State
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
   const [showVarianceModal, setShowVarianceModal] = useState<boolean>(false);
+  const [showLowStockModal, setShowLowStockModal] = useState<boolean>(false);
+  const [lowStockModalFilter, setLowStockModalFilter] = useState<'ALL' | 'NIL' | 'LOW'>('ALL');
   const [dispatchDetails, setDispatchDetails] = useState(() => {
     const today = formatToDDMMYYYY(new Date());
     return {
@@ -284,6 +284,11 @@ export function WarehouseInventoryHub({
     const totalShortfallPallets = entries.reduce((s, e) => s + (e.shortfallPallets || 0), 0);
     const totalShortfallBatteries = entries.reduce((s, e) => s + (e.shortfallBatteries || 0), 0);
 
+    // Low Stock (< 22 Pallets or < 100 Units) and Nil Stock (0 Balance)
+    const lowStockEntries = entries.filter((e) => (e.balancePallets || 0) > 0 && (e.balancePallets || 0) < 22);
+    const nilStockEntries = entries.filter((e) => (e.balancePallets || 0) === 0 && (e.invoicedPallets || 0) > 0);
+    const lowNilStockEntries = entries.filter((e) => (e.balancePallets || 0) < 22);
+
     return {
       totalBalancePallets,
       totalBalanceBatteries,
@@ -297,7 +302,12 @@ export function WarehouseInventoryHub({
       varianceEntries,
       varianceCount: varianceEntries.length,
       totalShortfallPallets,
-      totalShortfallBatteries
+      totalShortfallBatteries,
+      lowStockEntries,
+      lowStockCount: lowStockEntries.length,
+      nilStockEntries,
+      nilStockCount: nilStockEntries.length,
+      lowNilStockEntries
     };
   }, [entries]);
 
@@ -721,7 +731,7 @@ export function WarehouseInventoryHub({
           </div>
 
           <div className="flex items-center space-x-2">
-            {/* Prominent + Upload Invoice to Inventory (Stock-In) Button */}
+            {/* Prominent Upload Invoice to Inventory (Stock-In) Button */}
             <button
               onClick={() => invoiceInputRef.current?.click()}
               disabled={uploadBannerState !== 'idle'}
@@ -740,7 +750,7 @@ export function WarehouseInventoryHub({
                   ? 'Uploading...'
                   : uploadBannerState === 'uploaded'
                   ? 'Uploaded'
-                  : '+ Upload Invoice to Inventory (Stock-In)'}
+                  : 'Upload Invoice to Inventory (Stock-In)'}
               </span>
             </button>
 
@@ -764,17 +774,14 @@ export function WarehouseInventoryHub({
           </div>
         </div>
 
-        {/* 3 CLEAN KPI CARDS (Redundant badges & exception card removed) */}
+        {/* 4 CLEAN KPI CARDS: Available Stock, Dispatched, Invoiced vs Actual Variance, Low/Nil Stock */}
         <div className="p-3 sm:p-4 bg-surface-secondary/30">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono tabular-nums">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono tabular-nums">
             {/* Card 1: Available Stock */}
             <div className="bg-surface border border-divider rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
               <div className="flex items-center justify-between pb-1.5 border-b border-divider/60">
                 <span className="text-xs font-semibold text-content-primary font-sans">
                   Available Stock
-                </span>
-                <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-brand-primary-soft text-brand-primary border border-brand-primary/20">
-                  On-Floor
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-2 pt-0.5 text-center">
@@ -810,9 +817,6 @@ export function WarehouseInventoryHub({
               <div className="flex items-center justify-between pb-1.5 border-b border-divider/60">
                 <span className="text-xs font-semibold text-content-primary font-sans">
                   Dispatched
-                </span>
-                <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
-                  Shipped
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-2 pt-0.5 text-center">
@@ -883,9 +887,47 @@ export function WarehouseInventoryHub({
                   </span>
                 </div>
               </div>
-              <div className="mt-1.5 text-[10px] text-content-muted flex items-center justify-between group-hover:text-brand-primary">
-                <span>Click to view breakdown</span>
-                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+
+            {/* Card 4: Low & Nil Stock Alerts */}
+            <div
+              onClick={() => setShowLowStockModal(true)}
+              className="bg-surface border border-divider hover:border-rose-500/60 rounded-xl p-3.5 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group select-none"
+              title="Click to view units and products with low or nil warehouse stock"
+            >
+              <div className="flex items-center justify-between pb-1.5 border-b border-divider/60">
+                <span className="text-xs font-semibold text-content-primary font-sans flex items-center space-x-1.5">
+                  <span>Low / Nil Stock</span>
+                </span>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors ${
+                  kpis.lowStockCount > 0 || kpis.nilStockCount > 0
+                    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30 group-hover:bg-rose-500/20'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                }`}>
+                  {kpis.lowStockCount + kpis.nilStockCount > 0 ? `${kpis.lowStockCount + kpis.nilStockCount} Alerts` : 'Optimal'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2 pt-0.5 text-center">
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Low Stock
+                  </span>
+                  <span className={`text-lg font-bold leading-tight font-mono ${
+                    kpis.lowStockCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-content-primary'
+                  }`}>
+                    {kpis.lowStockCount}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Nil Stock
+                  </span>
+                  <span className={`text-lg font-bold leading-tight font-mono ${
+                    kpis.nilStockCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-content-primary'
+                  }`}>
+                    {kpis.nilStockCount}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -2325,6 +2367,169 @@ export function WarehouseInventoryHub({
               <button
                 type="button"
                 onClick={() => setShowVarianceModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Low & Nil Stock Breakdown Modal */}
+      {showLowStockModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in">
+          <div className="bg-surface border border-divider rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
+            <div className="p-4 sm:p-5 border-b border-divider flex items-center justify-between bg-surface-secondary/40">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
+                  <Boxes className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-content-primary">
+                    Warehouse Low & Nil Stock Ledger
+                  </h3>
+                  <p className="text-xs text-content-secondary mt-0.5">
+                    Breakdown of items with zero balance (Nil Stock) or under 22 pallets (Low Stock)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLowStockModal(false)}
+                className="p-1.5 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="px-4 py-2.5 bg-surface border-b border-divider flex items-center space-x-2">
+              <span className="text-[11px] font-semibold text-content-secondary uppercase tracking-wider mr-1">Filter:</span>
+              <button
+                type="button"
+                onClick={() => setLowStockModalFilter('ALL')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  lowStockModalFilter === 'ALL'
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-surface-secondary text-content-secondary hover:text-content-primary'
+                }`}
+              >
+                All ({kpis.lowStockCount + kpis.nilStockCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLowStockModalFilter('NIL')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  lowStockModalFilter === 'NIL'
+                    ? 'bg-rose-600 text-white'
+                    : 'bg-surface-secondary text-content-secondary hover:text-content-primary'
+                }`}
+              >
+                Nil Stock ({kpis.nilStockCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLowStockModalFilter('LOW')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  lowStockModalFilter === 'LOW'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-surface-secondary text-content-secondary hover:text-content-primary'
+                }`}
+              >
+                Low Stock ({kpis.lowStockCount})
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+              {(() => {
+                const filtered = entries.filter((e) => {
+                  const bal = e.balancePallets || 0;
+                  if (lowStockModalFilter === 'NIL') return bal === 0 && (e.invoicedPallets || 0) > 0;
+                  if (lowStockModalFilter === 'LOW') return bal > 0 && bal < 22;
+                  return bal < 22;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-8 text-center bg-surface-secondary/40 border border-dashed border-divider rounded-xl">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                      <p className="text-xs font-semibold text-content-primary">No Low or Nil Stock Items</p>
+                      <p className="text-xs text-content-muted mt-1">All inventory items are currently above healthy stock thresholds.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="border border-divider rounded-xl overflow-hidden shadow-xs">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead className="bg-surface-secondary/80 border-b border-divider font-semibold text-content-secondary uppercase text-[10px] tracking-wider font-mono">
+                          <tr>
+                            <th className="py-2.5 px-3 border-r border-divider">Customer</th>
+                            <th className="py-2.5 px-3 border-r border-divider">Custom Invoice No</th>
+                            <th className="py-2.5 px-3 border-r border-divider">Model / Details</th>
+                            <th className="py-2.5 px-3 border-r border-divider text-right">Invoiced (Plt/Units)</th>
+                            <th className="py-2.5 px-3 border-r border-divider text-right">Dispatched</th>
+                            <th className="py-2.5 px-3 border-r border-divider text-right font-bold">Remaining Balance</th>
+                            <th className="py-2.5 px-3 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-divider font-mono">
+                          {filtered.map((e) => {
+                            const balPallets = e.balancePallets || 0;
+                            const balBatteries = e.balanceBatteries || 0;
+                            const isNil = balPallets === 0;
+
+                            return (
+                              <tr key={e.id} className="hover:bg-surface-secondary/40 transition-colors">
+                                <td className="py-2.5 px-3 border-r border-divider font-sans font-semibold text-content-primary">
+                                  {e.customer || '—'}
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-divider font-bold text-brand-primary">
+                                  {e.customInvoiceNo}
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-divider font-sans text-content-secondary max-w-xs truncate" title={e.remarks || e.unloadingRemarks || ''}>
+                                  {e.remarks || e.unloadingRemarks || '—'}
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-divider text-right text-content-secondary">
+                                  {e.invoicedPallets} plt / {e.invoicedBatteries.toLocaleString()} u
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-divider text-right text-content-secondary">
+                                  {e.actualStuffedPallets || 0} plt / {(e.actualStuffedBatteries || 0).toLocaleString()} u
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-divider text-right font-bold text-content-primary">
+                                  <span className={isNil ? 'text-rose-600' : 'text-amber-600'}>
+                                    {balPallets} plt / {balBatteries.toLocaleString()} u
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-sans">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                    isNil
+                                      ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20'
+                                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20'
+                                  }`}>
+                                    {isNil ? 'Nil Stock' : 'Low Stock'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="p-3 sm:p-4 bg-surface-secondary/40 border-t border-divider flex items-center justify-between">
+              <span className="text-xs text-content-secondary font-mono">
+                Total Low/Nil Stock Items: <strong className="text-content-primary font-bold">{kpis.lowStockCount + kpis.nilStockCount}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowLowStockModal(false)}
                 className="px-4 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
               >
                 Close
