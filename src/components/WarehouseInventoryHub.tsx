@@ -849,15 +849,15 @@ export function WarehouseInventoryHub({
               </div>
             </div>
 
-            {/* Card 3: Invoiced vs Actual Received Variance */}
+            {/* Card 3: Shortfall (Invoiced vs Actual Received Variance) */}
             <div
               onClick={() => setShowVarianceModal(true)}
               className="bg-surface border border-divider hover:border-amber-500/60 rounded-xl p-3.5 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group select-none"
-              title="Click to view list of invoices with difference between Invoiced and Actual Received quantities"
+              title="Click to view list of invoices with shortfall/variance between Invoiced and Actual Received quantities"
             >
               <div className="flex items-center justify-between pb-1.5 border-b border-divider/60">
                 <span className="text-xs font-semibold text-content-primary font-sans flex items-center space-x-1.5">
-                  <span>Invoiced vs Actual Recd</span>
+                  <span>Shortfall</span>
                 </span>
                 <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors ${
                   kpis.varianceCount > 0
