@@ -5,7 +5,6 @@ import React, { useState, useMemo, useRef } from 'react';
 import {
   Boxes,
   FileSpreadsheet,
-  Upload,
   Download,
   CheckCircle2,
   ArrowRight,
@@ -754,15 +753,6 @@ export function WarehouseInventoryHub({
                   ? 'Uploaded'
                   : 'Upload Invoice to Inventory (Stock-In)'}
               </span>
-            </button>
-
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium flex items-center space-x-1.5 transition-colors cursor-pointer"
-              title="Import historical CFS Excel file"
-            >
-              <Upload className="w-3.5 h-3.5 text-brand-primary" />
-              <span className="hidden sm:inline">Import Excel</span>
             </button>
 
             <button
