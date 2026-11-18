@@ -747,8 +747,8 @@ export function WorkspacePage({
             {/* Top Document Action Bar */}
             <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
               <div className="flex items-center space-x-3">
-                {/* Pending Stage-2 Fields Jump Button / All Complete Badge */}
-                {pendingStage2DgKeys.length > 0 ? (
+                {/* Pending Fields Jump Button / "Ready" Complete Badge */}
+                {dgStats.total - dgStats.populated > 0 ? (
                   <button
                     type="button"
                     onClick={handleJumpToNextPending}
@@ -758,9 +758,9 @@ export function WorkspacePage({
                     <span>Fields Pending {dgStats.total - dgStats.populated}/{dgStats.total}</span>
                   </button>
                 ) : (
-                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-state-success text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
+                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>All Critical Boxes Complete</span>
+                    <span>Ready</span>
                   </span>
                 )}
 
@@ -951,8 +951,8 @@ export function WorkspacePage({
             {/* Top Document Action Bar */}
             <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
               <div className="flex items-center space-x-3">
-                {/* Pending Stage-2 Fields Jump Button / All Complete Badge */}
-                {pendingStage2BlKeys.length > 0 ? (
+                {/* Pending Fields Jump Button / "Ready" Complete Badge */}
+                {blStats.total - blStats.populated > 0 ? (
                   <button
                     type="button"
                     onClick={handleJumpToNextPending}
@@ -962,9 +962,9 @@ export function WorkspacePage({
                     <span>Fields Pending {blStats.total - blStats.populated}/{blStats.total}</span>
                   </button>
                 ) : (
-                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-state-success text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
+                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>All BOL Fields Complete</span>
+                    <span>Ready</span>
                   </span>
                 )}
 
