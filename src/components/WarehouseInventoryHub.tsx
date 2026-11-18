@@ -205,11 +205,13 @@ export function WarehouseInventoryHub({
     setInvoiceParseProgress(null);
     try {
       const customKey = localStorage.getItem('ekdant_custom_gemini_key') || undefined;
-      const result = await parseDocumentsToJSON(files, 'SINGLE_INVOICE', customKey, (p) => setInvoiceParseProgress(p));
+      const mode = files.length > 1 ? 'MULTI_INVOICE' : 'SINGLE_INVOICE';
+      const result = await parseDocumentsToJSON(files, mode, customKey, (p) => setInvoiceParseProgress(p));
       if (result.shipmentJson && result.shipmentJson.invoiceNumbers.length > 0) {
         ingestShipmentToLedger(result.shipmentJson);
         reloadEntries();
-        showToast(`Uploaded & Ingested ${result.shipmentJson.invoiceNumbers[0]} (${result.shipmentJson.totalPallets} Pallets) into Warehouse!`);
+        const invoiceList = result.shipmentJson.invoiceNumbers.join(', ');
+        showToast(`Uploaded & Ingested ${invoiceList} (${result.shipmentJson.totalPallets} Pallets) into Warehouse!`);
       } else if (result.warnings && result.warnings.length > 0) {
         showToast(`Parsing warning: ${result.warnings.join(' ')}`);
       } else {
@@ -648,12 +650,13 @@ export function WarehouseInventoryHub({
         className="hidden"
       />
 
-      {/* Hidden Commercial Invoice / Packing List Input */}
+      {/* Hidden Commercial Invoice / Packing List Input (Supports multiple PDF/Excel/Word files) */}
       <input
         type="file"
         ref={invoiceInputRef}
         onChange={handleInvoiceUpload}
         accept=".pdf,.xlsx,.xls,.docx"
+        multiple
         className="hidden"
       />
 
@@ -685,7 +688,7 @@ export function WarehouseInventoryHub({
               onClick={() => invoiceInputRef.current?.click()}
               disabled={isParsingInvoice}
               className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
-              title="Upload new commercial invoice or packing list (PDF, Excel, Word) into warehouse inventory"
+              title="Upload commercial invoices or packing lists (select single or multiple PDF, Excel, Word files) into warehouse inventory"
             >
               {isParsingInvoice ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
