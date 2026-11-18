@@ -1040,13 +1040,9 @@ export function ContainerBayWorkspace({
 
               <div className="flex items-center space-x-2">
                 <label className="text-xs text-content-secondary font-medium">Equipment:</label>
-                <select
-                  value="20GP"
-                  disabled
-                  className="bg-input-bg border border-divider text-xs text-content-primary rounded-lg px-2.5 py-1 font-mono focus:outline-none focus:border-brand-primary font-medium opacity-85 cursor-not-allowed"
-                >
-                  <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
-                </select>
+                <span className="bg-input-bg border border-divider text-xs text-content-primary rounded-lg px-2.5 py-1 font-semibold shadow-2xs">
+                  20Ft Container
+                </span>
               </div>
             </div>
 
@@ -1472,13 +1468,9 @@ export function ContainerBayWorkspace({
                 <label className="block text-[11px] font-medium text-content-secondary mb-1">
                   Container Equipment Type
                 </label>
-                <select
-                  value={containerForm.containerType}
-                  disabled
-                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary opacity-80 cursor-not-allowed"
-                >
-                  <option value="20GP">20&apos; GP (Max 22 Pallets / 25,000 kg)</option>
-                </select>
+                <div className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-semibold text-xs">
+                  20Ft Container
+                </div>
               </div>
 
               <div>

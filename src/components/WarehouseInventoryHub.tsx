@@ -18,7 +18,8 @@ import {
   Plus,
   Loader2,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Truck
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -153,7 +154,7 @@ export function WarehouseInventoryHub({
   const [selectedPalletIds, setSelectedPalletIds] = useState<Set<string>>(new Set());
   const [selectedDispatchCustomer, setSelectedDispatchCustomer] = useState<string>('');
   const [expandedInventoryInvoiceIds, setExpandedInventoryInvoiceIds] = useState<Set<string>>(new Set());
-  const [inventoryStatusFilter, setInventoryStatusFilter] = useState<'ALL' | 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'SHORTFALL'>('ALL');
+  const [inventoryStatusFilter, setInventoryStatusFilter] = useState<'ALL' | 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'DISPATCHED' | 'SHORTFALL'>('ALL');
 
   // Reports States
   const [reportDensity, setReportDensity] = useState<'core_11' | 'full_25'>('core_11');
@@ -338,6 +339,9 @@ export function WarehouseInventoryHub({
       if (inventoryStatusFilter === 'IN_WAREHOUSE') {
         return e.balancePallets > 0;
       }
+      if (inventoryStatusFilter === 'DISPATCHED') {
+        return (e.actualStuffedPallets || 0) > 0 || (e.pallets || []).some((p) => p.status === 'STUFFED_DISPATCHED');
+      }
       if (inventoryStatusFilter === 'SHORTFALL') {
         return e.shortfallPallets > 0 || e.shortfallBatteries > 0;
       }
@@ -450,20 +454,49 @@ export function WarehouseInventoryHub({
     onNavigateToWorkspace();
   };
 
-  // Action: Confirm Stuffing & Stock-Out Dispatch
-  const handleExecuteDispatch = () => {
-    if (selectedPalletsStats.palletList.length === 0) return;
-    if (!dispatchDetails.containerNo.trim() || !dispatchDetails.sealNo.trim()) {
-      showToast('Please enter Container No and Seal No.');
+  // Action: Open Dispatch Dialog for a specific Invoice in the List
+  const handleOpenDispatchForInvoice = (entry: CFSLedgerEntry) => {
+    const availablePallets = (entry.pallets || []).filter((p) => p.status !== 'STUFFED_DISPATCHED');
+    if (availablePallets.length === 0) {
+      showToast(`Invoice ${entry.customInvoiceNo} has already been fully dispatched.`);
       return;
     }
 
+    const palletIds = new Set(availablePallets.map((p) => p.id));
+    setSelectedPalletIds(palletIds);
+    setSelectedDispatchCustomer(entry.customer);
+
+    const today = formatToDDMMYYYY(new Date());
+    setDispatchDetails({
+      containerNo: entry.containerNo || `CONT-${entry.customInvoiceNo}`,
+      sealNo: entry.sealNo || `SL-${Date.now().toString().slice(-6)}`,
+      shippingBillNo: entry.shippingBillNo || '',
+      shippingBillDate: entry.shippingBillDate || today,
+      stuffingDate: entry.stuffingDate || today,
+      pickupDate: entry.pickupDate || today,
+      portGateInDate: entry.portGateInDate || today
+    });
+
+    setShowDispatchModal(true);
+  };
+
+  // Action: Confirm Stuffing & Stock-Out Dispatch
+  const handleExecuteDispatch = () => {
+    if (selectedPalletsStats.palletList.length === 0) return;
+
+    const containerNo = dispatchDetails.containerNo.trim() || `CONT-${Date.now().toString().slice(-4)}`;
+    const sealNo = dispatchDetails.sealNo.trim() || `SEAL-${Date.now().toString().slice(-4)}`;
+
     const { stuffedCount } = confirmStuffingDispatch(
       Array.from(selectedPalletIds),
-      dispatchDetails
+      {
+        ...dispatchDetails,
+        containerNo,
+        sealNo
+      }
     );
 
-    showToast(`Dispatched ${stuffedCount} pallets into Container ${dispatchDetails.containerNo}!`);
+    showToast(`Dispatched ${stuffedCount} pallets into Container ${containerNo}! Stock deducted from warehouse.`);
     setShowDispatchModal(false);
     setSelectedPalletIds(new Set());
     setSelectedDispatchCustomer('');
@@ -875,11 +908,12 @@ export function WarehouseInventoryHub({
 
               {/* Status Filter Buttons */}
               <div className="flex items-center space-x-1.5 text-xs font-mono">
-                {(['ALL', 'PENDING_GATE_IN', 'IN_WAREHOUSE', 'SHORTFALL'] as const).map((st) => {
+                {(['ALL', 'PENDING_GATE_IN', 'IN_WAREHOUSE', 'DISPATCHED', 'SHORTFALL'] as const).map((st) => {
                   const labels = {
                     ALL: 'All Active',
                     PENDING_GATE_IN: 'Pending Gate-In',
                     IN_WAREHOUSE: 'Ready in Warehouse',
+                    DISPATCHED: 'Dispatched (Stock-Out)',
                     SHORTFALL: 'Shortfall'
                   };
                   return (
@@ -996,6 +1030,24 @@ export function WarehouseInventoryHub({
                             >
                               {allSelected ? 'Deselect Invoice' : `Select All (${availableUnits.length} Plt)`}
                             </button>
+                          )}
+
+                          {/* Dispatch (Stock-Out) Action Button */}
+                          {entry.balancePallets > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDispatchForInvoice(entry)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+                              title={`Dispatch ${entry.balancePallets} pallets for invoice ${entry.customInvoiceNo} (Stock-Out)`}
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                              <span>Dispatch ({entry.balancePallets} Plt)</span>
+                            </button>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 text-xs font-medium flex items-center space-x-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Dispatched ({entry.actualStuffedPallets || 0} Plt)</span>
+                            </span>
                           )}
 
                           {/* Delete Invoice */}
@@ -1145,7 +1197,7 @@ export function WarehouseInventoryHub({
                                   <div className="mt-0.5 flex items-center justify-between text-[10px] text-content-muted">
                                     <span>{pallet.grossWeightKg} kg</span>
                                     <span className="uppercase font-semibold">
-                                      {isStuffed ? 'Shipped' : isPending ? 'Pending' : 'Ready'}
+                                      {isStuffed ? (pallet.containerNo ? `Shipped (${pallet.containerNo})` : 'Shipped') : isPending ? 'Pending' : 'Ready'}
                                     </span>
                                   </div>
                                 </div>
@@ -1210,7 +1262,18 @@ export function WarehouseInventoryHub({
                   </button>
 
                   <button
-                    onClick={() => setShowDispatchModal(true)}
+                    onClick={() => {
+                      if (!dispatchDetails.containerNo) {
+                        const firstPallet = selectedPalletsStats.palletList[0];
+                        const inv = firstPallet?.invoiceNumber || '20GP';
+                        setDispatchDetails((prev) => ({
+                          ...prev,
+                          containerNo: prev.containerNo || `CONT-${inv}`,
+                          sealNo: prev.sealNo || `SL-${Date.now().toString().slice(-6)}`
+                        }));
+                      }
+                      setShowDispatchModal(true);
+                    }}
                     className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
