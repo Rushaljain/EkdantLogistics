@@ -38,14 +38,14 @@ export interface ContainerItem {
 interface ContainerBayWorkspaceProps {
   shipmentJson: ExtractedShipmentJSON;
   onUpdateShipment: (updated: ExtractedShipmentJSON) => void;
-  onSwitchTab?: (tab: 'dg_manifest' | 'bl_manifest') => void;
+  onSwitchTab?: (tab: 'dg_manifest' | 'bl_manifest' | 'container_bay') => void;
   registerSyncHandler?: (handler: () => void) => void;
 }
 
 export function ContainerBayWorkspace({
   shipmentJson,
   onUpdateShipment,
-  onSwitchTab: _onSwitchTab,
+  onSwitchTab,
   registerSyncHandler
 }: ContainerBayWorkspaceProps): React.JSX.Element {
   // Hard-locked 20' GP container type and default tare
@@ -1046,6 +1046,25 @@ export function ContainerBayWorkspace({
             </h2>
           </div>
         </div>
+
+        {onSwitchTab && (
+          <div className="relative flex items-center">
+            <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
+              <Boxes className="w-3.5 h-3.5" />
+            </div>
+            <select
+              aria-label="Select workspace view"
+              value="container_bay"
+              onChange={(e) => onSwitchTab(e.target.value as any)}
+              className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
+            >
+              <option value="dg_manifest">DG Manifest</option>
+              <option value="bl_manifest">Bill of Lading</option>
+              <option value="container_bay">Container Placement ({shipmentJson.pallets?.length || 0}p)</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
+          </div>
+        )}
       </div>
 
       {/* Main Grid: 5 Cols Left (Pallets List) | 7 Cols Right (Bay Grid & Equipment) */}

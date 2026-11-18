@@ -417,45 +417,6 @@ export function WorkspacePage({
 
         {/* Right: Header Utilities */}
         <div className="flex items-center space-x-2 shrink-0">
-          {/* Primary View Selector Dropdown (Flushed elegantly in ribbon) */}
-          <div className="relative flex items-center">
-            <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
-              {activeTab === 'dg_manifest' && <FileText className="w-3.5 h-3.5" />}
-              {activeTab === 'bl_manifest' && <ExternalLink className="w-3.5 h-3.5" />}
-              {activeTab === 'container_bay' && <Boxes className="w-3.5 h-3.5" />}
-            </div>
-            <select
-              aria-label="Select workspace view"
-              value={activeTab === 'extracted_data' || activeTab === 'export_center' ? 'dg_manifest' : activeTab}
-              onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
-              className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
-            >
-              <option value="dg_manifest">
-                DG Manifest ({dgStats.populated}/{dgStats.total})
-              </option>
-              <option value="bl_manifest">
-                Bill of Lading ({blStats.populated}/{blStats.total})
-              </option>
-              <option value="container_bay">
-                Container Placement ({shipmentJson.pallets.length}p)
-              </option>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
-          </div>
-
-          {/* Quick Access to Warehouse */}
-          {onOpenInventory && (
-            <button
-              type="button"
-              onClick={onOpenInventory}
-              className="px-2.5 py-1.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 text-xs font-semibold border border-indigo-700/50 transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
-              title="Open Warehouse"
-            >
-              <Boxes className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden md:inline">Warehouse</span>
-            </button>
-          )}
-
           {/* Save Work Button (Saves BL, DG, layouts, and truth JSON for files repository) */}
           {onSaveWork && (
             <button
@@ -468,17 +429,6 @@ export function WorkspacePage({
               <span>Save</span>
             </button>
           )}
-
-          {/* Select Invoices from Inventory */}
-          <button
-            type="button"
-            onClick={() => setShowInvoiceSelectorModal(true)}
-            className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary text-xs font-semibold border border-divider transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
-            title="Search and select invoices from active warehouse inventory"
-          >
-            <Boxes className="w-3.5 h-3.5 text-brand-primary" />
-            <span className="hidden lg:inline">Select Invoices</span>
-          </button>
 
           {/* Confirm Dispatch (Stock-Out) Action */}
           {shipmentJson.isDispatched ? (
@@ -765,6 +715,30 @@ export function WorkspacePage({
                   </span>
                 )}
 
+                {/* Primary Workspace View Selector Dropdown (Default Sub-Header Position) */}
+                <div className="relative flex items-center">
+                  <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
+                    <FileText className="w-3.5 h-3.5" />
+                  </div>
+                  <select
+                    aria-label="Select workspace view"
+                    value={activeTab}
+                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
+                    className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
+                  >
+                    <option value="dg_manifest">
+                      DG Manifest ({dgStats.populated}/{dgStats.total})
+                    </option>
+                    <option value="bl_manifest">
+                      Bill of Lading ({blStats.populated}/{blStats.total})
+                    </option>
+                    <option value="container_bay">
+                      Container Placement ({shipmentJson.pallets.length}p)
+                    </option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
+                </div>
+
                 {/* ELEGANT "DG Items" DROPDOWN */}
                 {dgCargoItems.length > 0 && (
                   <div className="relative" ref={dgItemsDropdownRef}>
@@ -968,6 +942,30 @@ export function WorkspacePage({
                     <span>Ready</span>
                   </span>
                 )}
+
+                {/* Primary Workspace View Selector Dropdown (Default Sub-Header Position) */}
+                <div className="relative flex items-center">
+                  <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </div>
+                  <select
+                    aria-label="Select workspace view"
+                    value={activeTab}
+                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
+                    className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
+                  >
+                    <option value="dg_manifest">
+                      DG Manifest ({dgStats.populated}/{dgStats.total})
+                    </option>
+                    <option value="bl_manifest">
+                      Bill of Lading ({blStats.populated}/{blStats.total})
+                    </option>
+                    <option value="container_bay">
+                      Container Placement ({shipmentJson.pallets.length}p)
+                    </option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
+                </div>
 
                 {/* Multi-Container Switcher Pill Bar (When Multi-Container) */}
                 {shipmentJson.containers && shipmentJson.containers.length > 1 && (
