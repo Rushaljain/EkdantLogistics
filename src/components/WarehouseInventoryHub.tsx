@@ -34,11 +34,9 @@ import {
   deletePalletFromCFSEntry,
   deletePalletsFromCFS,
   confirmFullGateIn,
-  updatePalletReceivedQuantity,
   confirmStuffingDispatch,
   buildShipmentFromStockPallets,
-  exportCFSStockReportXlsx,
-  exportCFSCartingReportXlsx,
+  exportCFSMasterReportXlsx,
   importCFSExcel,
   formatToDDMMYYYY,
   getDerivedInventoryMovements,
@@ -158,8 +156,7 @@ export function WarehouseInventoryHub({
   const [inventoryStatusFilter, setInventoryStatusFilter] = useState<'ALL' | 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'SHORTFALL'>('ALL');
 
   // Reports States
-  const [reportType, setReportType] = useState<'stock_22' | 'carting_17'>('stock_22');
-  const [expandedCartingInvoiceIds, setExpandedCartingInvoiceIds] = useState<Set<string>>(new Set());
+  const [reportDensity, setReportDensity] = useState<'core_11' | 'full_25'>('core_11');
 
   // Logs States
   const [logDirectionFilter, setLogDirectionFilter] = useState<'ALL' | 'STOCK_OUT' | 'STOCK_IN'>('ALL');
@@ -1226,107 +1223,37 @@ export function WarehouseInventoryHub({
         )}
 
         {/* =====================================================================
-            SECTION 2: MONTHLY LIVE REPORTS (22-COL STOCK & 17-COL CARTING)
+            SECTION 2: UNIFIED 25-COLUMN MASTER REPORT (MERGED STOCK & CARTING)
             ===================================================================== */}
         {activeSection === 'reports' && (
-          <div className="space-y-4 pb-20">
-            {/* Reports Control Bar */}
-            <div className="bg-surface border border-divider rounded-xl p-3 sm:p-4 shadow-xs space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
-                    Monthly Live Reports
-                  </h2>
-                  <p className="text-xs text-content-secondary mt-0.5">
-                    {reportType === 'stock_22' ? '22-Column CFS Stock Report' : '17-Column CFS Carting Gate-In Report'}
-                  </p>
+          <div className="space-y-3 pb-20">
+            {/* Slim 44px Unified Control Bar */}
+            <div className="bg-surface border border-divider rounded-lg px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+              {/* Left: Fiscal Month & Date Range */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Fiscal Month Selector */}
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-content-secondary font-medium shrink-0">Month:</span>
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value as CFSMonth)}
+                    className="px-2.5 py-1 bg-surface-secondary border border-divider rounded-md font-semibold text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
+                  >
+                    <option value="ALL">All Months</option>
+                    {CFS_MONTHS.filter((m) => m !== 'ALL').map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
                 </div>
 
-                {/* Report Type Switcher + Export Buttons */}
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <div className="bg-surface-secondary border border-divider p-0.5 rounded-lg flex items-center space-x-0.5 font-semibold">
-                    <button
-                      onClick={() => setReportType('stock_22')}
-                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                        reportType === 'stock_22'
-                          ? 'bg-surface text-brand-primary shadow-xs'
-                          : 'text-content-secondary hover:text-content-primary'
-                      }`}
-                    >
-                      22-Col Stock Report
-                    </button>
-                    <button
-                      onClick={() => setReportType('carting_17')}
-                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                        reportType === 'carting_17'
-                          ? 'bg-surface text-brand-primary shadow-xs'
-                          : 'text-content-secondary hover:text-content-primary'
-                      }`}
-                    >
-                      17-Col Carting Report
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => exportCFSStockReportXlsx(entries, selectedMonth)}
-                    className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                    title="Export 22-column CFS Stock Report with live formulas"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Export Stock (.xlsx)</span>
-                  </button>
-
-                  <button
-                    onClick={() => exportCFSCartingReportXlsx(entries)}
-                    className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                    title="Export 17-column CFS Carting Report"
-                  >
-                    <Download className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Export Carting (.xlsx)</span>
-                  </button>
-
-                  <button
-                    onClick={() => window.print()}
-                    className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                    title="Print active report"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-slate-700" />
-                    <span>Print / PDF</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Month Selector Pills & Custom Date Range */}
-              <div className="pt-2 border-t border-divider/60 flex flex-col md:flex-row md:items-center justify-between gap-2.5 text-xs">
-                {/* Month Pills */}
-                <div className="flex items-center space-x-1 overflow-x-auto pb-1 font-mono text-[11px]">
-                  <span className="text-content-secondary font-sans text-xs mr-1 shrink-0 font-medium">Month:</span>
-                  {CFS_MONTHS.map((m) => {
-                    const isSelected = selectedMonth === m;
-                    return (
-                      <button
-                        key={m}
-                        onClick={() => setSelectedMonth(m)}
-                        className={`px-2 py-0.5 rounded transition-colors shrink-0 cursor-pointer ${
-                          isSelected
-                            ? 'bg-brand-primary text-white font-bold shadow-2xs'
-                            : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
-                        }`}
-                      >
-                        {m === 'ALL' ? 'ALL' : m}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Custom Date Range */}
-                <div className="flex items-center space-x-1.5 font-mono text-xs">
-                  <span className="text-content-secondary font-sans text-xs mr-1 shrink-0 font-medium">Date Range:</span>
+                {/* Date Range with Clear Link */}
+                <div className="flex items-center space-x-1.5 font-mono">
+                  <span className="text-content-secondary font-sans text-xs shrink-0 font-medium">Dates:</span>
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="px-2 py-1 rounded bg-surface border border-divider text-xs text-content-primary focus:outline-none focus:border-brand-primary"
+                    className="px-2 py-0.5 rounded bg-surface border border-divider text-xs text-content-primary focus:outline-none focus:border-brand-primary"
                     title="From Date"
                   />
                   <span className="text-content-muted">–</span>
@@ -1334,447 +1261,547 @@ export function WarehouseInventoryHub({
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="px-2 py-1 rounded bg-surface border border-divider text-xs text-content-primary focus:outline-none focus:border-brand-primary"
+                    className="px-2 py-0.5 rounded bg-surface border border-divider text-xs text-content-primary focus:outline-none focus:border-brand-primary"
                     title="To Date"
                   />
                   {(dateFrom || dateTo) && (
                     <button
+                      type="button"
                       onClick={() => {
                         setDateFrom('');
                         setDateTo('');
                       }}
-                      className="text-xs text-rose-600 hover:underline cursor-pointer ml-1"
+                      className="text-xs text-rose-600 hover:underline font-sans font-medium cursor-pointer ml-1"
                     >
                       Clear
                     </button>
                   )}
                 </div>
               </div>
+
+              {/* Right: Density Toggle & Export Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Column Density Toggle */}
+                <div className="bg-surface-secondary border border-divider p-0.5 rounded-lg flex items-center space-x-0.5 font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setReportDensity('core_11')}
+                    className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer text-xs ${
+                      reportDensity === 'core_11'
+                        ? 'bg-surface text-brand-primary font-bold shadow-2xs'
+                        : 'text-content-secondary hover:text-content-primary'
+                    }`}
+                  >
+                    Core View (11 Cols)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportDensity('full_25')}
+                    className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer text-xs ${
+                      reportDensity === 'full_25'
+                        ? 'bg-surface text-brand-primary font-bold shadow-2xs'
+                        : 'text-content-secondary hover:text-content-primary'
+                    }`}
+                  >
+                    Full Report (25 Cols)
+                  </button>
+                </div>
+
+                {/* Single Primary Export Button: Export Master Report (.xlsx) */}
+                <button
+                  type="button"
+                  onClick={() => exportCFSMasterReportXlsx(filteredEntries, selectedMonth)}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer text-xs"
+                  title="Export unified 25-column Master Report with live Excel formulas and zero row loss"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Export Master Report (.xlsx)</span>
+                </button>
+
+                {/* Print / PDF */}
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer text-xs"
+                  title="Print report"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-700" />
+                  <span>Print / PDF</span>
+                </button>
+              </div>
             </div>
 
-            {/* REPORT VIEW 1: 22-COLUMN STOCK REPORT */}
-            {reportType === 'stock_22' && (
-              <div className="bg-surface border border-divider rounded-xl shadow-xs overflow-hidden">
-                <div className="overflow-x-auto max-h-[700px]">
+            {/* UNIFIED MASTER TABLE CONTAINER */}
+            <div className="bg-surface border border-divider rounded-lg shadow-xs overflow-hidden">
+              <div className="overflow-x-auto max-h-[720px]">
+                {/* 1. CORE VIEW (11 HIGH-PRIORITY DAILY OPERATIONAL COLUMNS) */}
+                {reportDensity === 'core_11' ? (
                   <table className="w-full text-xs font-mono border-collapse select-text">
-                    {/* Color-coded Group Headers */}
-                    <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
-                      <tr className="text-[10px] uppercase font-bold text-content-secondary text-center tracking-wider">
-                        <th colSpan={4} className="py-1 border-r border-divider bg-slate-100">
-                          Shipment Details
-                        </th>
-                        <th colSpan={2} className="py-1 border-r border-divider bg-blue-50 text-blue-900">
-                          As Received (Invoice)
-                        </th>
-                        <th colSpan={3} className="py-1 border-r border-divider bg-emerald-50 text-emerald-900">
-                          Actual Received
-                        </th>
-                        <th colSpan={2} className="py-1 border-r border-divider bg-rose-50 text-rose-900">
-                          Short Fall
-                        </th>
-                        <th colSpan={2} className="py-1 border-r border-divider bg-purple-50 text-purple-900">
-                          Actual Stuffed
-                        </th>
-                        <th colSpan={2} className="py-1 border-r border-divider bg-amber-50 text-amber-900">
-                          Balance
-                        </th>
-                        <th colSpan={2} className="py-1 border-r border-divider bg-indigo-50 text-indigo-900">
-                          Shipping Bill
-                        </th>
-                        <th colSpan={4} className="py-1 border-r border-divider bg-slate-100">
-                          Container &amp; Gate-In
-                        </th>
-                        <th className="py-1 bg-slate-200 text-slate-800">
-                          CFS
-                        </th>
-                      </tr>
-
-                      {/* 22 Column Sub-headers */}
-                      <tr className="text-[11px] font-semibold text-content-primary border-b border-divider bg-surface text-left">
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Month</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap min-w-[140px]">Customer</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Invoice No</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">POD</th>
-
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-blue-50/40">Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-blue-50/40">Units</th>
-
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50/40">Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50/40">Units</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/40">Recd Date</th>
-
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50/40">Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50/40">Units</th>
-
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-purple-50/40">Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-purple-50/40">Units</th>
-
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/40 font-bold text-emerald-700">Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/40 font-bold text-indigo-700">Units</th>
-
-                        <th className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/40">SB No</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/40">SB Date</th>
-
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Container No</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Stuffing Date</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Pickup Date</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Port Gate-In</th>
-
-                        <th className="p-2 text-center whitespace-nowrap bg-slate-50">Days</th>
+                    <thead className="bg-surface-secondary/70 sticky top-0 z-10 border-b border-divider">
+                      <tr className="text-[11px] font-semibold text-content-secondary uppercase tracking-wider text-left">
+                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">Invoice No.</th>
+                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap min-w-[160px]">Customer</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Invoiced (Plt/Units)</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Received (Plt/Units)</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Shortfall</th>
+                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">Vehicle &amp; Carting</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Stuffed (Plt/Units)</th>
+                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">Container / Seal</th>
+                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">SB No.</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Balance (Plt/Units)</th>
+                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Days</th>
                       </tr>
                     </thead>
-
-                    <tbody className="divide-y divide-divider/60">
+                    <tbody className="divide-y divide-divider/60 tabular-nums">
                       {filteredEntries.length === 0 ? (
                         <tr>
-                          <td colSpan={22} className="p-12 text-center text-content-muted">
-                            No stock records found matching filters.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredEntries.map((e) => (
-                          <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="p-2 border-r border-divider whitespace-nowrap text-content-secondary font-medium">
-                              {e.month}
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap text-content-primary font-sans font-medium max-w-[160px] truncate" title={e.customer}>
-                              {e.customer}
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
-                              {e.customInvoiceNo}
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap text-content-secondary">
-                              {e.pod || '-'}
-                            </td>
-
-                            {/* Invoiced */}
-                            <td className="p-2 border-r border-divider text-right bg-blue-50/20">
-                              {e.invoicedPallets}
-                            </td>
-                            <td className="p-2 border-r border-divider text-right bg-blue-50/20">
-                              {e.invoicedBatteries.toLocaleString()}
-                            </td>
-
-                            {/* Actual Received */}
-                            <td className="p-2 border-r border-divider text-right bg-emerald-50/20">
-                              <InlineCell
-                                value={e.actualReceivedPallets}
-                                type="number"
-                                align="right"
-                                onChange={(val) => {
-                                  const v = parseInt(val, 10) || 0;
-                                  addOrUpdateCFSEntry({ ...e, actualReceivedPallets: v });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-                            <td className="p-2 border-r border-divider text-right bg-emerald-50/20">
-                              <InlineCell
-                                value={e.actualReceivedBatteries}
-                                type="number"
-                                align="right"
-                                onChange={(val) => {
-                                  const v = parseInt(val, 10) || 0;
-                                  addOrUpdateCFSEntry({ ...e, actualReceivedBatteries: v });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/20">
-                              <InlineCell
-                                value={e.lastPltRecdDate || e.cartingInDate}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, lastPltRecdDate: val });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-
-                            {/* Short Fall */}
-                            <td className="p-2 border-r border-divider text-right bg-rose-50/20 font-bold text-rose-700">
-                              {e.shortfallPallets || 0}
-                            </td>
-                            <td className="p-2 border-r border-divider text-right bg-rose-50/20 text-rose-700">
-                              {e.shortfallBatteries || 0}
-                            </td>
-
-                            {/* Actual Stuffed */}
-                            <td className="p-2 border-r border-divider text-right bg-purple-50/20 font-semibold">
-                              {e.actualStuffedPallets || 0}
-                            </td>
-                            <td className="p-2 border-r border-divider text-right bg-purple-50/20">
-                              {(e.actualStuffedBatteries || 0).toLocaleString()}
-                            </td>
-
-                            {/* Balance */}
-                            <td className="p-2 border-r border-divider text-right bg-amber-50/30 font-bold text-emerald-700">
-                              {e.balancePallets}
-                            </td>
-                            <td className="p-2 border-r border-divider text-right bg-amber-50/30 font-bold text-indigo-700">
-                              {e.balanceBatteries.toLocaleString()}
-                            </td>
-
-                            {/* Shipping Bill */}
-                            <td className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/20">
-                              <InlineCell
-                                value={e.shippingBillNo}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, shippingBillNo: val });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap bg-indigo-50/20">
-                              <InlineCell
-                                value={e.shippingBillDate}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, shippingBillDate: val });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-
-                            {/* Container & Logistics */}
-                            <td className="p-2 border-r border-divider whitespace-nowrap font-bold text-blue-700">
-                              <InlineCell
-                                value={e.containerNo}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, containerNo: val.toUpperCase() });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap">
-                              <InlineCell
-                                value={e.stuffingDate}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, stuffingDate: val });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap">
-                              <InlineCell
-                                value={e.pickupDate}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, pickupDate: val });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-                            <td className="p-2 border-r border-divider whitespace-nowrap">
-                              <InlineCell
-                                value={e.portGateInDate}
-                                onChange={(val) => {
-                                  addOrUpdateCFSEntry({ ...e, portGateInDate: val });
-                                  reloadEntries();
-                                }}
-                              />
-                            </td>
-
-                            {/* Days in CFS */}
-                            <td className="p-2 text-center whitespace-nowrap font-bold bg-slate-50">
-                              {e.daysInCFS || 0}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* REPORT VIEW 2: 17-COLUMN CARTING GATE-IN REPORT */}
-            {reportType === 'carting_17' && (
-              <div className="bg-surface border border-divider rounded-xl shadow-xs overflow-hidden">
-                <div className="overflow-x-auto max-h-[700px]">
-                  <table className="w-full text-xs font-mono border-collapse select-text">
-                    <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
-                      <tr className="text-[11px] font-semibold text-content-primary border-b border-divider text-left">
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Month</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Carting In Date</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Vehicle No</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap min-w-[140px]">Customer</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Invoice No</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Invoice Date</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">POD</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap">Inv Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap">Inv Qty</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap">Gross Wt (kg)</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50 text-emerald-900 font-bold">Recd Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50 text-emerald-900 font-bold">Recd Qty</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50 text-rose-900">Short Plt</th>
-                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50 text-rose-900">Short Qty</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Last Plt Recd</th>
-                        <th className="p-2 border-r border-divider whitespace-nowrap">Model Breakdown</th>
-                        <th className="p-2 text-center whitespace-nowrap">Pallet Details</th>
-                      </tr>
-                    </thead>
-
-                    <tbody className="divide-y divide-divider/60">
-                      {filteredEntries.length === 0 ? (
-                        <tr>
-                          <td colSpan={17} className="p-12 text-center text-content-muted">
-                            No carting records found matching filters.
+                          <td colSpan={11} className="p-12 text-center text-content-muted">
+                            No ledger records found matching selected filters.
                           </td>
                         </tr>
                       ) : (
                         filteredEntries.map((e) => {
-                          const isExpanded = expandedCartingInvoiceIds.has(e.id);
+                          const hasShortfall = e.shortfallPallets > 0 || e.shortfallBatteries > 0;
                           return (
-                            <React.Fragment key={e.id}>
-                              <tr className="hover:bg-slate-50/80 transition-colors">
-                                <td className="p-2 border-r border-divider whitespace-nowrap">{e.month}</td>
-                                <td className="p-2 border-r border-divider whitespace-nowrap font-bold">
-                                  <InlineCell
-                                    value={e.cartingInDate}
-                                    onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, cartingInDate: val });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
-                                <td className="p-2 border-r border-divider whitespace-nowrap">
-                                  <InlineCell
-                                    value={e.vehicleNo}
-                                    onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, vehicleNo: val });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
-                                <td className="p-2 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary">
-                                  {e.customer}
-                                </td>
-                                <td className="p-2 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
-                                  {e.customInvoiceNo}
-                                </td>
-                                <td className="p-2 border-r border-divider whitespace-nowrap">{e.createdAt ? formatToDDMMYYYY(new Date(e.createdAt)) : '-'}</td>
-                                <td className="p-2 border-r border-divider whitespace-nowrap">{e.pod || '-'}</td>
+                            <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
+                              {/* 1. Custom Invoice No */}
+                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
+                                {e.customInvoiceNo}
+                              </td>
 
-                                <td className="p-2 border-r border-divider text-right">{e.invoicedPallets}</td>
-                                <td className="p-2 border-r border-divider text-right">{e.invoicedBatteries.toLocaleString()}</td>
-                                <td className="p-2 border-r border-divider text-right">{e.invoicedGrossWeightKg.toLocaleString()}</td>
+                              {/* 2. Customer */}
+                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary">
+                                {e.customer}
+                              </td>
 
-                                <td className="p-2 border-r border-divider text-right bg-emerald-50/30 font-bold text-emerald-800">
-                                  <InlineCell
-                                    value={e.actualReceivedPallets}
-                                    type="number"
-                                    align="right"
-                                    onChange={(val) => {
-                                      const v = parseInt(val, 10) || 0;
-                                      addOrUpdateCFSEntry({ ...e, actualReceivedPallets: v });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
-                                <td className="p-2 border-r border-divider text-right bg-emerald-50/30 font-bold text-emerald-800">
-                                  <InlineCell
-                                    value={e.actualReceivedBatteries}
-                                    type="number"
-                                    align="right"
-                                    onChange={(val) => {
-                                      const v = parseInt(val, 10) || 0;
-                                      addOrUpdateCFSEntry({ ...e, actualReceivedBatteries: v });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
+                              {/* 3. Invoiced (Plt / Units) */}
+                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
+                                <span className="font-semibold text-content-primary">{e.invoicedPallets}</span>
+                                <span className="text-content-muted"> p • </span>
+                                <span className="text-content-secondary">{e.invoicedBatteries.toLocaleString()}</span>
+                                <span className="text-content-muted"> u</span>
+                              </td>
 
-                                <td className="p-2 border-r border-divider text-right bg-rose-50/30 font-bold text-rose-700">
-                                  {e.shortfallPallets || 0}
-                                </td>
-                                <td className="p-2 border-r border-divider text-right bg-rose-50/30 font-bold text-rose-700">
-                                  {e.shortfallBatteries || 0}
-                                </td>
+                              {/* 4. Received (Plt / Units) */}
+                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
+                                <span className="font-semibold text-emerald-800">{e.actualReceivedPallets}</span>
+                                <span className="text-content-muted"> p • </span>
+                                <span className="text-content-secondary">{e.actualReceivedBatteries.toLocaleString()}</span>
+                                <span className="text-content-muted"> u</span>
+                              </td>
 
-                                <td className="p-2 border-r border-divider whitespace-nowrap">
-                                  <InlineCell
-                                    value={e.lastPltRecdDate || e.cartingInDate}
-                                    onChange={(val) => {
-                                      addOrUpdateCFSEntry({ ...e, lastPltRecdDate: val });
-                                      reloadEntries();
-                                    }}
-                                  />
-                                </td>
+                              {/* 5. Shortfall */}
+                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap font-medium">
+                                {hasShortfall ? (
+                                  <span className="text-rose-700 font-bold">
+                                    {e.shortfallPallets}p / {e.shortfallBatteries}u
+                                  </span>
+                                ) : (
+                                  <span className="text-content-muted">-</span>
+                                )}
+                              </td>
 
-                                <td className="p-2 border-r border-divider text-[10px] max-w-[200px] truncate" title={Array.from(new Set((e.pallets || []).map((p) => p.model))).filter(Boolean).join(', ')}>
-                                  {Array.from(new Set((e.pallets || []).map((p) => p.model))).filter(Boolean).join(', ') || '-'}
-                                </td>
+                              {/* 6. Vehicle & Carting Date */}
+                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap text-content-secondary">
+                                {e.vehicleNo ? (
+                                  <span>
+                                    <strong className="text-content-primary">{e.vehicleNo}</strong>
+                                    {e.cartingInDate && <span className="text-content-muted"> • {e.cartingInDate}</span>}
+                                  </span>
+                                ) : (
+                                  <span className="text-content-muted">{e.cartingInDate || '-'}</span>
+                                )}
+                              </td>
 
-                                <td className="p-2 text-center whitespace-nowrap">
-                                  <button
-                                    onClick={() => {
-                                      setExpandedCartingInvoiceIds((prev) => {
-                                        const next = new Set(prev);
-                                        if (next.has(e.id)) next.delete(e.id);
-                                        else next.add(e.id);
-                                        return next;
-                                      });
-                                    }}
-                                    className="px-2 py-0.5 rounded bg-surface hover:bg-surface-secondary border border-divider text-brand-primary font-semibold text-[11px] cursor-pointer"
-                                  >
-                                    {isExpanded ? 'Hide' : `View (${e.pallets?.length || 0})`}
-                                  </button>
-                                </td>
-                              </tr>
+                              {/* 7. Stuffed (Plt / Units) */}
+                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
+                                <span className="font-semibold text-blue-800">{e.actualStuffedPallets}</span>
+                                <span className="text-content-muted"> p • </span>
+                                <span className="text-content-secondary">{e.actualStuffedBatteries.toLocaleString()}</span>
+                                <span className="text-content-muted"> u</span>
+                              </td>
 
-                              {isExpanded && (
-                                <tr>
-                                  <td colSpan={17} className="p-3 bg-surface-secondary/50 border-b border-divider">
-                                    <div className="space-y-2">
-                                      <div className="text-xs font-semibold text-content-primary flex items-center justify-between">
-                                        <span>Gate-In Pallets for {e.customInvoiceNo}:</span>
-                                        <span className="text-content-muted text-[11px]">Click quantity to edit received counts</span>
-                                      </div>
+                              {/* 8. Container / Seal */}
+                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap">
+                                {e.containerNo ? (
+                                  <span>
+                                    <strong className="text-blue-700 font-bold">{e.containerNo}</strong>
+                                    {e.sealNo && <span className="text-content-muted"> / {e.sealNo}</span>}
+                                  </span>
+                                ) : (
+                                  <span className="text-content-muted">-</span>
+                                )}
+                              </td>
 
-                                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                                        {(e.pallets || []).map((p) => {
-                                          return (
-                                            <div
-                                              key={p.id}
-                                              className="p-2 rounded-lg bg-surface border border-divider shadow-xs space-y-1 text-xs"
-                                            >
-                                              <div className="flex items-center justify-between">
-                                                <span className="font-bold text-brand-primary">PLT #{p.palletNumber}</span>
-                                                <span className="text-[10px] px-1 py-0.2 rounded bg-surface-secondary text-content-secondary truncate max-w-[60px]">{p.model}</span>
-                                              </div>
-                                              <div className="flex items-center justify-between text-[11px]">
-                                                <span className="text-content-secondary">INVOICED:</span>
-                                                <strong className="text-content-primary">{p.invoicedBatteries}u</strong>
-                                              </div>
-                                              <div className="mt-0.5 flex items-center justify-between text-[11px] font-mono">
-                                                <span className="text-content-secondary">QTY REC:</span>
-                                                <InlineCell
-                                                  value={p.receivedBatteries}
-                                                  type="number"
-                                                  align="right"
-                                                  className="w-14 font-bold text-emerald-700"
-                                                  onChange={(val) => {
-                                                    const v = parseInt(val, 10) || 0;
-                                                    updatePalletReceivedQuantity(e.id, p.id, v);
-                                                    reloadEntries();
-                                                  }}
-                                                />
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
+                              {/* 9. SB No */}
+                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap text-content-secondary">
+                                {e.shippingBillNo || '-'}
+                              </td>
+
+                              {/* 10. Balance (Plt / Units) */}
+                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
+                                <span className="font-bold text-emerald-700">{e.balancePallets}</span>
+                                <span className="text-content-muted"> p • </span>
+                                <span className="font-bold text-indigo-700">{e.balanceBatteries.toLocaleString()}</span>
+                                <span className="text-content-muted"> u</span>
+                              </td>
+
+                              {/* 11. Days in CFS */}
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap font-bold text-content-secondary">
+                                {e.daysInCFS || 0}
+                              </td>
+                            </tr>
                           );
                         })
                       )}
                     </tbody>
                   </table>
-                </div>
+                ) : (
+                  /* 2. FULL REPORT (ALL 25 INDIVIDUAL COLUMNS WITH ZERO ROW LOSS) */
+                  <table className="w-full text-xs font-mono border-collapse select-text">
+                    <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
+                      {/* Group Header Row */}
+                      <tr className="text-[10px] uppercase font-bold text-content-secondary text-center tracking-wider border-b border-divider/60">
+                        <th colSpan={5} className="py-1 border-r border-divider bg-slate-100">
+                          1. Shipment Identity (5)
+                        </th>
+                        <th colSpan={2} className="py-1 border-r border-divider bg-blue-50/60 text-blue-900">
+                          2. EIL Invoiced Qty (2)
+                        </th>
+                        <th colSpan={6} className="py-1 border-r border-divider bg-emerald-50/60 text-emerald-900">
+                          3. Gate-In &amp; Carting Details (6)
+                        </th>
+                        <th colSpan={2} className="py-1 border-r border-divider bg-rose-50/60 text-rose-900">
+                          4. Factory Shortfall (2)
+                        </th>
+                        <th colSpan={6} className="py-1 border-r border-divider bg-purple-50/60 text-purple-900">
+                          5. Dispatch &amp; Stuffing (6)
+                        </th>
+                        <th colSpan={4} className="py-1 bg-amber-50/60 text-amber-900">
+                          6. Live Balance &amp; Ageing (4)
+                        </th>
+                      </tr>
+
+                      {/* 25 Individual Column Headers */}
+                      <tr className="text-[11px] font-semibold text-content-primary border-b border-divider bg-surface text-left">
+                        {/* Group 1 */}
+                        <th className="p-2 border-r border-divider whitespace-nowrap text-center">Sr.</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap sticky left-0 bg-surface z-20 shadow-xs font-bold text-brand-primary">
+                          Invoice No.
+                        </th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">Invoice Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap min-w-[150px]">Customer</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap">POD</th>
+
+                        {/* Group 2 */}
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-blue-50/30">Inv Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-blue-50/30">Inv Bat</th>
+
+                        {/* Group 3 */}
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/30">Truck Reporting</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/30">Carting Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/30">Vehicle No.</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/30">Carting Slip No.</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50/30 font-bold">Recd Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-emerald-50/30 font-bold">Recd Bat</th>
+
+                        {/* Group 4 */}
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50/30">Short Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-rose-50/30">Short Bat</th>
+
+                        {/* Group 5 */}
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-purple-50/30">Stuffed Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-purple-50/30">Stuffed Bat</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/30">Stuffing Date</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/30 font-bold text-blue-700">Container No.</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/30">Seal No.</th>
+                        <th className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/30">SB No. &amp; Date</th>
+
+                        {/* Group 6 */}
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/30 font-bold text-emerald-700">Bal Plt</th>
+                        <th className="p-2 border-r border-divider text-right whitespace-nowrap bg-amber-50/30 font-bold text-indigo-700 sticky right-0 bg-amber-50 z-20 shadow-xs">
+                          Bal Bat
+                        </th>
+                        <th className="p-2 border-r border-divider text-center whitespace-nowrap bg-slate-50">Days</th>
+                        <th className="p-2 whitespace-nowrap min-w-[120px]">Remarks</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-divider/60 tabular-nums">
+                      {filteredEntries.length === 0 ? (
+                        <tr>
+                          <td colSpan={25} className="p-12 text-center text-content-muted">
+                            No ledger records found matching selected filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredEntries.map((e, idx) => {
+                          const invoiceDate = e.invoiceDate || (e.createdAt ? formatToDDMMYYYY(new Date(e.createdAt)) : '-');
+                          const truckDate = e.truckReportingDate || e.lastPltRecdDate || e.cartingInDate || '';
+                          const slipNo = e.cartingSlipNo || e.gateInStatus || '';
+                          const sbSummary = [e.shippingBillNo, e.shippingBillDate].filter(Boolean).join(' / ') || '-';
+                          const combinedRemarks = [e.remarks, e.unloadingRemarks].filter(Boolean).join(' | ');
+
+                          return (
+                            <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
+                              {/* 1. Sr. No. */}
+                              <td className="p-2 border-r border-divider text-center text-content-muted">
+                                {idx + 1}
+                              </td>
+
+                              {/* 2. Custom Invoice No (Sticky Left) */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap sticky left-0 bg-surface z-10 font-bold text-brand-primary shadow-2xs">
+                                {e.customInvoiceNo}
+                              </td>
+
+                              {/* 3. Invoice Date */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap">
+                                <InlineCell
+                                  value={invoiceDate}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, invoiceDate: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 4. Customer */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary">
+                                {e.customer}
+                              </td>
+
+                              {/* 5. Destination / POD */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap">
+                                <InlineCell
+                                  value={e.pod || '-'}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, pod: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 6. Invoiced Pallets */}
+                              <td className="p-2 border-r border-divider text-right bg-blue-50/10">
+                                <InlineCell
+                                  value={e.invoicedPallets}
+                                  type="number"
+                                  align="right"
+                                  onChange={(val) => {
+                                    const v = parseInt(val, 10) || 0;
+                                    addOrUpdateCFSEntry({ ...e, invoicedPallets: v });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 7. Invoiced Batteries */}
+                              <td className="p-2 border-r border-divider text-right bg-blue-50/10">
+                                <InlineCell
+                                  value={e.invoicedBatteries}
+                                  type="number"
+                                  align="right"
+                                  onChange={(val) => {
+                                    const v = parseInt(val, 10) || 0;
+                                    addOrUpdateCFSEntry({ ...e, invoicedBatteries: v });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 8. Truck Reporting Date */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/10">
+                                <InlineCell
+                                  value={truckDate}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, truckReportingDate: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 9. Carting In Date */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/10">
+                                <InlineCell
+                                  value={e.cartingInDate}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, cartingInDate: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 10. Vehicle / Truck No */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/10 font-bold">
+                                <InlineCell
+                                  value={e.vehicleNo}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, vehicleNo: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 11. Carting Slip / Gate Pass No */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-emerald-50/10">
+                                <InlineCell
+                                  value={slipNo}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, cartingSlipNo: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 12. Actual Received Pallets */}
+                              <td className="p-2 border-r border-divider text-right bg-emerald-50/20 font-bold text-emerald-800">
+                                <InlineCell
+                                  value={e.actualReceivedPallets}
+                                  type="number"
+                                  align="right"
+                                  onChange={(val) => {
+                                    const v = parseInt(val, 10) || 0;
+                                    addOrUpdateCFSEntry({ ...e, actualReceivedPallets: v });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 13. Actual Received Batteries */}
+                              <td className="p-2 border-r border-divider text-right bg-emerald-50/20 font-bold text-emerald-800">
+                                <InlineCell
+                                  value={e.actualReceivedBatteries}
+                                  type="number"
+                                  align="right"
+                                  onChange={(val) => {
+                                    const v = parseInt(val, 10) || 0;
+                                    addOrUpdateCFSEntry({ ...e, actualReceivedBatteries: v });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 14. Shortfall Pallets */}
+                              <td className="p-2 border-r border-divider text-right bg-rose-50/10 font-bold text-rose-700">
+                                {e.shortfallPallets || 0}
+                              </td>
+
+                              {/* 15. Shortfall Batteries */}
+                              <td className="p-2 border-r border-divider text-right bg-rose-50/10 font-bold text-rose-700">
+                                {e.shortfallBatteries || 0}
+                              </td>
+
+                              {/* 16. Stuffed Pallets */}
+                              <td className="p-2 border-r border-divider text-right bg-purple-50/10 font-semibold text-blue-800">
+                                <InlineCell
+                                  value={e.actualStuffedPallets}
+                                  type="number"
+                                  align="right"
+                                  onChange={(val) => {
+                                    const v = parseInt(val, 10) || 0;
+                                    addOrUpdateCFSEntry({ ...e, actualStuffedPallets: v });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 17. Stuffed Batteries */}
+                              <td className="p-2 border-r border-divider text-right bg-purple-50/10 font-semibold text-blue-800">
+                                <InlineCell
+                                  value={e.actualStuffedBatteries}
+                                  type="number"
+                                  align="right"
+                                  onChange={(val) => {
+                                    const v = parseInt(val, 10) || 0;
+                                    addOrUpdateCFSEntry({ ...e, actualStuffedBatteries: v });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 18. Stuffing Date */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/10">
+                                <InlineCell
+                                  value={e.stuffingDate}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, stuffingDate: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 19. Container No */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/10 font-bold text-blue-700">
+                                <InlineCell
+                                  value={e.containerNo}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, containerNo: val.toUpperCase() });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 20. Seal No */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/10 font-mono">
+                                <InlineCell
+                                  value={e.sealNo}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, sealNo: val.toUpperCase() });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 21. Shipping Bill No. & Date */}
+                              <td className="p-2 border-r border-divider whitespace-nowrap bg-purple-50/10">
+                                <InlineCell
+                                  value={sbSummary}
+                                  onChange={(val) => {
+                                    const parts = val.split('/');
+                                    addOrUpdateCFSEntry({
+                                      ...e,
+                                      shippingBillNo: parts[0]?.trim() || '',
+                                      shippingBillDate: parts[1]?.trim() || ''
+                                    });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+
+                              {/* 22. Balance Pallets */}
+                              <td className="p-2 border-r border-divider text-right bg-amber-50/20 font-bold text-emerald-700">
+                                {e.balancePallets || 0}
+                              </td>
+
+                              {/* 23. Balance Batteries (Sticky Right) */}
+                              <td className="p-2 border-r border-divider text-right bg-amber-50/40 font-bold text-indigo-700 sticky right-0 z-10 shadow-2xs">
+                                {(e.balanceBatteries || 0).toLocaleString()}
+                              </td>
+
+                              {/* 24. Days in CFS */}
+                              <td className="p-2 border-r border-divider text-center whitespace-nowrap font-bold bg-slate-50">
+                                {e.daysInCFS || 0}
+                              </td>
+
+                              {/* 25. Remarks */}
+                              <td className="p-2 whitespace-nowrap">
+                                <InlineCell
+                                  value={combinedRemarks}
+                                  onChange={(val) => {
+                                    addOrUpdateCFSEntry({ ...e, remarks: val });
+                                    reloadEntries();
+                                  }}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
-            )}
+            </div>
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Boxes,
   FileText,
@@ -215,13 +215,36 @@ export function WorkspacePage({
   };
 
   // Multi-Container Dynamic Scoping for DG Manifest and Bill of Lading
-  const [selectedContainerScope, setSelectedContainerScope] = useState<string>('all');
+  // Default view is Container 1 whenever multi-container allocation is present
+  const [selectedContainerScope, setSelectedContainerScope] = useState<string>(() => {
+    return shipmentJson.containers && shipmentJson.containers.length > 0 ? shipmentJson.containers[0].id : '';
+  });
+
+  // Ensure default view updates to Container 1 whenever shipmentJson containers are loaded or change
+  useEffect(() => {
+    if (shipmentJson.containers && shipmentJson.containers.length > 0) {
+      const firstContId = shipmentJson.containers[0].id;
+      // If current selection is invalid or not in containers list, default to Container 1
+      const exists = shipmentJson.containers.some((c) => c.id === selectedContainerScope);
+      if (!exists) {
+        setSelectedContainerScope(firstContId);
+      }
+    } else {
+      setSelectedContainerScope('');
+    }
+  }, [shipmentJson.containers]);
+
+  const activeScopedContainerId = useMemo(() => {
+    if (!shipmentJson.containers || shipmentJson.containers.length === 0) return '';
+    const exists = shipmentJson.containers.some((c) => c.id === selectedContainerScope);
+    return exists ? selectedContainerScope : shipmentJson.containers[0].id;
+  }, [shipmentJson.containers, selectedContainerScope]);
 
   const scopedDgShipmentJson = useMemo(() => {
-    if (selectedContainerScope === 'all' || !shipmentJson.containers || shipmentJson.containers.length <= 1) {
+    if (!shipmentJson.containers || shipmentJson.containers.length <= 1) {
       return shipmentJson;
     }
-    const cont = shipmentJson.containers.find((c) => c.id === selectedContainerScope);
+    const cont = shipmentJson.containers.find((c) => c.id === activeScopedContainerId) || shipmentJson.containers[0];
     if (!cont) return shipmentJson;
 
     const scopedPallets = cont.palletIndices && cont.palletIndices.length > 0
@@ -256,16 +279,16 @@ export function WorkspacePage({
       shippingMarks: scopedMarks,
       pallets: scopedPallets
     };
-  }, [shipmentJson, selectedContainerScope]);
+  }, [shipmentJson, activeScopedContainerId]);
 
   const handleScopedDgUpdateShipment = (updated: ExtractedShipmentJSON) => {
     syncStage2FieldsToLedger(updated);
-    if (selectedContainerScope === 'all' || !shipmentJson.containers || shipmentJson.containers.length <= 1) {
+    if (!shipmentJson.containers || shipmentJson.containers.length <= 1) {
       onUpdateShipment(updated);
       return;
     }
     const updatedContainers = shipmentJson.containers.map((c) => {
-      if (c.id === selectedContainerScope) {
+      if (c.id === activeScopedContainerId) {
         return {
           ...c,
           containerNumber: updated.containerNumber,
@@ -686,20 +709,9 @@ export function WorkspacePage({
                 {/* Multi-Container Switcher Pill Bar (When Multi-Container) */}
                 {shipmentJson.containers && shipmentJson.containers.length > 1 && (
                   <div className="flex items-center space-x-1 bg-input-bg p-0.5 rounded-lg border border-divider">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedContainerScope('all')}
-                      className={`px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
-                        selectedContainerScope === 'all'
-                          ? 'bg-brand-primary text-brand-primary-text shadow-xs'
-                          : 'text-content-secondary hover:text-content-primary'
-                      }`}
-                    >
-                      All Containers (Summary)
-                    </button>
                     {shipmentJson.containers.map((c, idx) => {
                       const pCount = c.palletIndices?.length || 0;
-                      const isSelected = selectedContainerScope === c.id;
+                      const isSelected = activeScopedContainerId === c.id;
                       return (
                         <button
                           key={c.id}
@@ -790,20 +802,9 @@ export function WorkspacePage({
                 {/* Multi-Container Switcher Pill Bar (When Multi-Container) */}
                 {shipmentJson.containers && shipmentJson.containers.length > 1 && (
                   <div className="flex items-center space-x-1 bg-input-bg p-0.5 rounded-lg border border-divider">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedContainerScope('all')}
-                      className={`px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
-                        selectedContainerScope === 'all'
-                          ? 'bg-brand-primary text-brand-primary-text shadow-xs'
-                          : 'text-content-secondary hover:text-content-primary'
-                      }`}
-                    >
-                      All Containers (Summary)
-                    </button>
                     {shipmentJson.containers.map((c, idx) => {
                       const pCount = c.palletIndices?.length || 0;
-                      const isSelected = selectedContainerScope === c.id;
+                      const isSelected = activeScopedContainerId === c.id;
                       return (
                         <button
                           key={c.id}

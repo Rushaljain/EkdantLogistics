@@ -618,6 +618,7 @@ export interface CFSLedgerEntry {
   customer: string;
   exporterShipper: string;
   customInvoiceNo: string;
+  invoiceDate?: string;
   pod: string;
 
   // As received from EIL-Export
@@ -634,12 +635,15 @@ export interface CFSLedgerEntry {
   shortfallBatteries: number;
 
   // Carting & Gate-In Logistics
+  truckReportingDate?: string;
   cartingInDate: string;
   vehicleNo: string;
+  cartingSlipNo?: string;
   lastPltRecdDate: string;
   secondVehicleDate?: string;
   secondVehicleNo?: string;
   gateInStatus?: string;
+  unloadingRemarks?: string;
 
   // Actual Stuffed Qty (Stock-Out)
   actualStuffedPallets: number;

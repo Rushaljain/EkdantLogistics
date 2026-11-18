@@ -948,6 +948,165 @@ export function executeWorkspaceDispatch(
 }
 
 /**
+ * 1-Click Multi-Tab Unified 25-Column Master Report Export (.xlsx)
+ * Consolidates CFS Stock and Carting into a single master sheet with zero row loss.
+ * Includes Grouped 2-Row Headers and Live Excel Formulas (=F3-L3, =G3-M3, =+L3-P3, =+M3-Q3)
+ */
+export function exportCFSMasterReportXlsx(entries: CFSLedgerEntry[], targetMonth: CFSMonth = 'ALL'): void {
+  const wb = XLSX.utils.book_new();
+
+  const monthsToExport: string[] = targetMonth === 'ALL'
+    ? Array.from(new Set(entries.map((e) => e.month || 'OCT'))).filter(Boolean)
+    : [targetMonth];
+
+  if (monthsToExport.length === 0) {
+    monthsToExport.push('OCT');
+  }
+
+  // Helper to build a sheet for a given set of rows
+  const buildSheetForRows = (rows: CFSLedgerEntry[]) => {
+    const wsData: any[][] = [];
+
+    // Row 1: Merged Group Headers (25 Columns)
+    wsData.push([
+      'Shipment Identity', '', '', '', '', // 1-5 (A-E)
+      'EIL Invoiced Qty', '',             // 6-7 (F-G)
+      'Gate-In & Carting Details', '', '', '', '', '', // 8-13 (H-M)
+      'Factory Shortfall', '',            // 14-15 (N-O)
+      'Dispatch & Stuffing', '', '', '', '', '', // 16-21 (P-U)
+      'Live Balance & Ageing', '', '', '' // 22-25 (V-Y)
+    ]);
+
+    // Row 2: Detailed 25 Columns
+    wsData.push([
+      'Sr. No.',                      // 1 (A)
+      'Custom Invoice No.',           // 2 (B)
+      'Invoice Date',                 // 3 (C)
+      'Customer / Buyer',             // 4 (D)
+      'Destination / POD',            // 5 (E)
+      'Invoiced Pallets',             // 6 (F)
+      'Invoiced Batteries',           // 7 (G)
+      'Truck Reporting Date',         // 8 (H)
+      'Carting In Date',              // 9 (I)
+      'Vehicle / Truck No.',          // 10 (J)
+      'Carting Slip / Gate Pass No.', // 11 (K)
+      'Actual Received Pallets',      // 12 (L)
+      'Actual Received Batteries',    // 13 (M)
+      'Shortfall Pallets',            // 14 (N = F - L)
+      'Shortfall Batteries',          // 15 (O = G - M)
+      'Stuffed Pallets',              // 16 (P)
+      'Stuffed Batteries',            // 17 (Q)
+      'Stuffing Date',                // 18 (R)
+      'Container No.',                // 19 (S)
+      'Seal No.',                     // 20 (T)
+      'Shipping Bill No. & Date',     // 21 (U)
+      'Balance Pallets',              // 22 (V = L - P)
+      'Balance Batteries',            // 23 (W = M - Q)
+      'Days in CFS',                  // 24 (X)
+      'Remarks'                       // 25 (Y)
+    ]);
+
+    // Row 3+: Data Rows with Live Formulas (Every unique row is preserved intact)
+    rows.forEach((e, idx) => {
+      const r = idx + 3; // 1-based Excel row number
+      const invoiceDate = e.invoiceDate || (e.createdAt ? formatToDDMMYYYY(new Date(e.createdAt)) : '');
+      const truckDate = e.truckReportingDate || e.lastPltRecdDate || e.cartingInDate || '';
+      const slipNo = e.cartingSlipNo || e.gateInStatus || '';
+      const sbSummary = [e.shippingBillNo, e.shippingBillDate].filter(Boolean).join(' / ');
+      const combinedRemarks = [e.remarks, e.unloadingRemarks].filter(Boolean).join(' | ');
+
+      wsData.push([
+        idx + 1,                                       // 1: Sr. No.
+        e.customInvoiceNo || '',                       // 2: Custom Invoice No.
+        invoiceDate,                                   // 3: Invoice Date
+        e.customer || '',                              // 4: Customer / Buyer
+        e.pod || '',                                   // 5: Destination / POD
+        e.invoicedPallets || 0,                        // 6: Invoiced Pallets
+        e.invoicedBatteries || 0,                      // 7: Invoiced Batteries
+        truckDate,                                     // 8: Truck Reporting Date
+        e.cartingInDate || '',                         // 9: Carting In Date
+        e.vehicleNo || '',                             // 10: Vehicle / Truck No.
+        slipNo,                                        // 11: Carting Slip / Gate Pass No.
+        e.actualReceivedPallets || 0,                  // 12: Actual Received Pallets
+        e.actualReceivedBatteries || 0,                // 13: Actual Received Batteries
+        { f: `F${r}-L${r}` },                          // 14: Shortfall Pallets formula
+        { f: `G${r}-M${r}` },                          // 15: Shortfall Batteries formula
+        e.actualStuffedPallets || 0,                   // 16: Stuffed Pallets
+        e.actualStuffedBatteries || 0,                 // 17: Stuffed Batteries
+        e.stuffingDate || '',                          // 18: Stuffing Date
+        e.containerNo || '',                           // 19: Container No.
+        e.sealNo || '',                                // 20: Seal No.
+        sbSummary,                                     // 21: Shipping Bill No. & Date
+        { f: `+L${r}-P${r}` },                         // 22: Balance Pallets formula
+        { f: `+M${r}-Q${r}` },                         // 23: Balance Batteries formula
+        e.daysInCFS || 0,                              // 24: Days in CFS
+        combinedRemarks                                // 25: Remarks
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Apply header merges (25 columns)
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },  // 1-5: Shipment Identity (A-E)
+      { s: { r: 0, c: 5 }, e: { r: 0, c: 6 } },  // 6-7: EIL Invoiced Qty (F-G)
+      { s: { r: 0, c: 7 }, e: { r: 0, c: 12 } }, // 8-13: Gate-In & Carting Details (H-M)
+      { s: { r: 0, c: 13 }, e: { r: 0, c: 14 } },// 14-15: Factory Shortfall (N-O)
+      { s: { r: 0, c: 15 }, e: { r: 0, c: 20 } },// 16-21: Dispatch & Stuffing (P-U)
+      { s: { r: 0, c: 21 }, e: { r: 0, c: 24 } } // 22-25: Live Balance & Ageing (V-Y)
+    ];
+
+    // Set 25 column widths
+    ws['!cols'] = [
+      { wch: 8 },  // 1: Sr. No.
+      { wch: 20 }, // 2: Custom Invoice No.
+      { wch: 14 }, // 3: Invoice Date
+      { wch: 26 }, // 4: Customer / Buyer
+      { wch: 16 }, // 5: Destination / POD
+      { wch: 14 }, // 6: Invoiced Pallets
+      { wch: 16 }, // 7: Invoiced Batteries
+      { wch: 16 }, // 8: Truck Reporting Date
+      { wch: 16 }, // 9: Carting In Date
+      { wch: 18 }, // 10: Vehicle / Truck No.
+      { wch: 22 }, // 11: Carting Slip / Gate Pass No.
+      { wch: 16 }, // 12: Actual Received Pallets
+      { wch: 16 }, // 13: Actual Received Batteries
+      { wch: 15 }, // 14: Shortfall Pallets
+      { wch: 15 }, // 15: Shortfall Batteries
+      { wch: 14 }, // 16: Stuffed Pallets
+      { wch: 16 }, // 17: Stuffed Batteries
+      { wch: 14 }, // 18: Stuffing Date
+      { wch: 16 }, // 19: Container No.
+      { wch: 14 }, // 20: Seal No.
+      { wch: 24 }, // 21: Shipping Bill No. & Date
+      { wch: 15 }, // 22: Balance Pallets
+      { wch: 16 }, // 23: Balance Batteries
+      { wch: 12 }, // 24: Days in CFS
+      { wch: 24 }  // 25: Remarks
+    ];
+
+    return ws;
+  };
+
+  // If ALL selected, prepend Master All sheet
+  if (targetMonth === 'ALL') {
+    const masterWs = buildSheetForRows(entries);
+    XLSX.utils.book_append_sheet(wb, masterWs, 'MASTER REPORT ALL');
+  }
+
+  // Add individual month sheets
+  monthsToExport.forEach((month) => {
+    const monthRows = entries.filter((e) => (e.month || '').toUpperCase() === month.toUpperCase());
+    const sheetTitle = `CFS ${month}`;
+    const ws = buildSheetForRows(monthRows.length > 0 ? monthRows : entries);
+    XLSX.utils.book_append_sheet(wb, ws, sheetTitle.slice(0, 31));
+  });
+
+  const timestamp = formatToDDMMYYYY(new Date()).replace(/\./g, '-');
+  XLSX.writeFile(wb, `CFS_Unified_Master_Report_${targetMonth}_${timestamp}.xlsx`);
+}
+
+/**
  * 1-Click Multi-Tab .xlsx Export matching CFS STOCK REPORT 2026-2027 (2).xlsx
  * Includes Grouped 2-Row Headers and Live Excel Formulas (=C3-E3, =D3-F3, =+E3-J3, =+F3-K3, =T3-I3)
  */
