@@ -960,16 +960,16 @@ export function WarehouseInventoryHub({
         </div>
 
         {/* CONTROLS BAR: SECTION DROPDOWN + CUSTOMER DROPDOWN + SEARCH */}
-        <div className="px-4 sm:px-6 py-2.5 bg-surface border-t border-divider flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="px-4 sm:px-6 py-2.5 bg-surface border-t border-divider flex items-center justify-between gap-3 text-xs overflow-x-auto">
+          <div className="flex items-center gap-3 shrink-0">
             {/* Section Selector Dropdown (Yellow items placed in clean dropdown) */}
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center space-x-1.5 shrink-0">
               <label htmlFor="section-select" className="text-content-secondary font-medium shrink-0">Section:</label>
               <select
                 id="section-select"
                 value={activeSection}
                 onChange={(e) => setActiveSection(e.target.value as 'inventory' | 'reports' | 'logs')}
-                className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-semibold text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
+                className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-semibold text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs shrink-0"
               >
                 <option value="inventory">Inventory ({availablePalletUnits.length} pallets)</option>
                 <option value="reports">Monthly Live Reports</option>
@@ -978,13 +978,13 @@ export function WarehouseInventoryHub({
             </div>
 
             {/* Customer Dropdown */}
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center space-x-1.5 shrink-0">
               <label htmlFor="customer-select" className="text-content-secondary font-medium shrink-0">Customer:</label>
               <select
                 id="customer-select"
                 value={customerFilter}
                 onChange={(e) => setCustomerFilter(e.target.value)}
-                className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs max-w-[220px] truncate"
+                className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs max-w-[220px] truncate shrink-0"
               >
                 <option value="ALL">All Customers ({kpis.totalBalancePallets}p)</option>
                 {customerDropdownData.map((c) => (
@@ -996,7 +996,7 @@ export function WarehouseInventoryHub({
             </div>
 
             {/* Search Input */}
-            <div className="relative w-64">
+            <div className="relative w-56 sm:w-64 shrink-0">
               <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
@@ -1017,7 +1017,7 @@ export function WarehouseInventoryHub({
 
             {/* Status Filter Dropdown for Logs */}
             {activeSection === 'logs' && (
-              <div className="flex items-center space-x-1.5 text-xs">
+              <div className="flex items-center space-x-1.5 text-xs shrink-0">
                 <label htmlFor="log-status-select" className="text-content-secondary font-medium shrink-0">
                   Status:
                 </label>
@@ -1033,21 +1033,23 @@ export function WarehouseInventoryHub({
                 </select>
               </div>
             )}
-          </div>
 
-          {/* Right Actions */}
-          <div className="flex items-center space-x-2">
+            {/* Export Logs Button (In-line on single row) */}
             {activeSection === 'logs' && (
               <button
+                type="button"
                 onClick={() => exportCFSMovementLogsXlsx(filteredMovementRecords)}
-                className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+                className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer shrink-0"
                 title="Export movement logs to Excel"
               >
                 <Download className="w-3.5 h-3.5 text-blue-600" />
                 <span>Export Logs (.xlsx)</span>
               </button>
             )}
+          </div>
 
+          {/* Right Actions */}
+          <div className="flex items-center space-x-2 shrink-0">
             {hasActiveFilters && (
               <button
                 onClick={handleClearFilters}
