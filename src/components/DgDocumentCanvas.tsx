@@ -2,18 +2,14 @@
 // Implements 7 Carrier-Specific Reference Templates + Selective Multi-Item DG Cargo Picker
 // Strict zero-hardcoding: dynamic resolution from ExtractedShipmentJSON
 
-import React, { useState, useMemo } from 'react';
-import { Layers, ChevronDown } from 'lucide-react';
+import React, { useMemo } from 'react';
 import type {
   ExtractedShipmentJSON,
-  DgTemplateId,
-  DgCargoItemLine
+  DgTemplateId
 } from '../types/index.ts';
 import { EditableDocCell } from './EditableDocCell.tsx';
 import {
   DG_TEMPLATE_DEFINITIONS,
-  buildDgCargoItems,
-  filterShipmentByDgCargoItems,
   buildTemplateCargoBlock
 } from '../utils/dgTemplates.ts';
 
@@ -23,7 +19,6 @@ interface DgDocumentCanvasProps {
   onFieldChange: (fieldId: string, newValue: string) => void;
   customOverrides: Record<string, string>;
   templateId?: DgTemplateId | string;
-  onSelectedItemsChange?: (selectedIds: string[]) => void;
 }
 
 function getCleanShipperValue(shipment: ExtractedShipmentJSON): string {
@@ -69,11 +64,8 @@ export function DgDocumentCanvas({
   onUpdateShipment,
   onFieldChange,
   customOverrides,
-  templateId = 'COMMON_DG',
-  onSelectedItemsChange
+  templateId = 'COMMON_DG'
 }: DgDocumentCanvasProps): React.JSX.Element {
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-
   // Normalize template ID
   const activeTemplateId: DgTemplateId = useMemo(() => {
     if (templateId && templateId in DG_TEMPLATE_DEFINITIONS) {
@@ -82,47 +74,8 @@ export function DgDocumentCanvas({
     return 'COMMON_DG';
   }, [templateId]);
 
-  // Extract distinct item lines from cargo
-  const cargoItems = useMemo<DgCargoItemLine[]>(() => {
-    return buildDgCargoItems(shipmentJson);
-  }, [shipmentJson]);
-
-  // Track unselected items to eliminate useEffect and cascading renders
-  const [unselectedItemIds, setUnselectedItemIds] = useState<Set<string>>(new Set());
-
-  // Derive selected items
-  const selectedItemIds = useMemo<string[]>(() => {
-    const list = cargoItems.map((i) => i.id).filter((id) => !unselectedItemIds.has(id));
-    if (onSelectedItemsChange) {
-      onSelectedItemsChange(list);
-    }
-    return list;
-  }, [cargoItems, unselectedItemIds, onSelectedItemsChange]);
-
-  const handleToggleItem = (itemId: string) => {
-    setUnselectedItemIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      return next;
-    });
-  };
-
-  const handleSelectAll = () => {
-    setUnselectedItemIds(new Set());
-  };
-
-  const handleDeselectAll = () => {
-    setUnselectedItemIds(new Set(cargoItems.map((i) => i.id)));
-  };
-
-  // Derive filtered active shipment based on selected cargo items
-  const activeShipment = useMemo<ExtractedShipmentJSON>(() => {
-    return filterShipmentByDgCargoItems(shipmentJson, selectedItemIds);
-  }, [shipmentJson, selectedItemIds]);
+  // Active shipment (already filtered with selective DG cargo items by header dropdown)
+  const activeShipment = shipmentJson;
 
   // Computed live totals from active shipment
   const activeGrossWeight = activeShipment.grossWeightKg || 0;
@@ -195,100 +148,6 @@ export function DgDocumentCanvas({
 
   return (
     <div className="w-full max-w-[920px] mx-auto space-y-4 pb-12">
-      {/* =========================================================================
-          TOP TOOLBAR: SELECTIVE MULTI-ITEM DG CARGO PICKER & PALLET ANNEX TOGGLE
-          ========================================================================= */}
-      <div className="space-y-3">
-        {/* Multi-Item Cargo Picker Bar */}
-        {cargoItems.length > 0 && (
-          <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs">
-            <div
-              className="flex items-center justify-between cursor-pointer select-none"
-              onClick={() => setIsPickerOpen(!isPickerOpen)}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="flex items-center space-x-1.5 text-xs font-bold text-content-primary">
-                  <Layers className="w-4 h-4 text-brand-primary" />
-                  <span>DG Cargo Items Included ({selectedItemIds.length} of {cargoItems.length} Selected)</span>
-                </span>
-                <span className="text-[11px] font-mono font-semibold text-content-secondary bg-surface-secondary px-2 py-0.5 rounded border border-divider">
-                  {activeGrossWeight.toLocaleString()} kg &bull; {activeBoxes.toLocaleString()} boxes &bull; {activePallets} pallets &bull; VGM: {activeVgm.toLocaleString()} kg
-                </span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectAll();
-                  }}
-                  className="text-[11px] font-semibold text-brand-primary hover:underline px-1.5 py-0.5"
-                >
-                  Select All
-                </button>
-                <span className="text-divider">|</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeselectAll();
-                  }}
-                  className="text-[11px] font-semibold text-content-secondary hover:text-content-primary px-1.5 py-0.5"
-                >
-                  Deselect All
-                </button>
-                <ChevronDown
-                  className={`w-4 h-4 text-content-secondary transition-transform duration-200 ${
-                    isPickerOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </div>
-            </div>
-
-            {isPickerOpen && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mt-3 pt-3 border-t border-divider">
-                {cargoItems.map((item) => {
-                  const isChecked = selectedItemIds.includes(item.id);
-                  return (
-                    <label
-                      key={item.id}
-                      className={`flex items-start space-x-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
-                        isChecked
-                          ? 'bg-brand-primary/5 border-brand-primary/40 text-content-primary'
-                          : 'bg-surface-secondary/40 border-divider text-content-secondary opacity-60'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => handleToggleItem(item.id)}
-                        className="mt-0.5 rounded border-divider text-brand-primary focus:ring-brand-primary h-3.5 w-3.5"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-content-primary truncate">{item.modelCode}</div>
-                        <div className="text-[10px] text-content-secondary font-mono">
-                          {item.palletCount} plts ({item.palletRange || 'P-01'}) &bull; {item.boxCount} boxes
-                        </div>
-                        <div className="text-[10px] font-mono text-content-secondary">
-                          GW: {item.grossWeightKg.toLocaleString()} kg &bull; NW: {item.netWeightKg.toLocaleString()} kg
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Template info bar */}
-        <div className="flex items-center justify-between px-1">
-          <div className="text-xs font-semibold text-content-secondary">
-            Template: <span className="text-content-primary font-bold">{DG_TEMPLATE_DEFINITIONS[activeTemplateId].name}</span>
-          </div>
-        </div>
-      </div>
-
       {/* =========================================================================
           VIEW A: KMTC / CMA CGM ANL HAZ FORMAT (GRID LAYOUT MODELED ON KMTC & CMA CGM DG.XLS)
           ========================================================================= */}

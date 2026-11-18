@@ -14,7 +14,8 @@ import {
   RotateCcw,
   Sparkles,
   CheckCircle2,
-  Save
+  Save,
+  Layers
 } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
@@ -28,6 +29,11 @@ import { ContainerBayWorkspace } from './ContainerBayWorkspace.tsx';
 import { synthesizePalletRanges } from '../utils/manifestKeywordReference.ts';
 import { syncStage2FieldsToLedger, executeWorkspaceDispatch, formatToDDMMYYYY } from '../utils/inventoryStore.ts';
 import { InventoryStockSelector } from './InventoryStockSelector.tsx';
+import {
+  buildDgCargoItems,
+  filterShipmentByDgCargoItems,
+  type DgCargoItemLine
+} from '../utils/dgTemplates.ts';
 
 export type WorkspaceTab = 'dg_manifest' | 'bl_manifest' | 'container_bay' | 'extracted_data' | 'export_center';
 
@@ -280,6 +286,58 @@ export function WorkspacePage({
       pallets: scopedPallets
     };
   }, [shipmentJson, activeScopedContainerId]);
+
+  // DG Cargo Items for Selective Inclusion
+  const dgCargoItems = useMemo<DgCargoItemLine[]>(() => {
+    return buildDgCargoItems(scopedDgShipmentJson);
+  }, [scopedDgShipmentJson]);
+
+  const [unselectedDgItemIds, setUnselectedDgItemIds] = useState<Set<string>>(new Set());
+  const [isDgItemsDropdownOpen, setIsDgItemsDropdownOpen] = useState(false);
+  const dgItemsDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dgItemsDropdownRef.current && !dgItemsDropdownRef.current.contains(e.target as Node)) {
+        setIsDgItemsDropdownOpen(false);
+      }
+    };
+    if (isDgItemsDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDgItemsDropdownOpen]);
+
+  const selectedDgItemIds = useMemo<string[]>(() => {
+    return dgCargoItems.map((i) => i.id).filter((id) => !unselectedDgItemIds.has(id));
+  }, [dgCargoItems, unselectedDgItemIds]);
+
+  const handleToggleDgItem = (itemId: string) => {
+    setUnselectedDgItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllDgItems = () => {
+    setUnselectedDgItemIds(new Set());
+  };
+
+  const handleDeselectAllDgItems = () => {
+    setUnselectedDgItemIds(new Set(dgCargoItems.map((i) => i.id)));
+  };
+
+  const activeFilteredDgShipment = useMemo<ExtractedShipmentJSON>(() => {
+    return filterShipmentByDgCargoItems(scopedDgShipmentJson, selectedDgItemIds);
+  }, [scopedDgShipmentJson, selectedDgItemIds]);
 
   const handleScopedDgUpdateShipment = (updated: ExtractedShipmentJSON) => {
     syncStage2FieldsToLedger(updated);
@@ -706,6 +764,117 @@ export function WorkspacePage({
                   </span>
                 )}
 
+                {/* ELEGANT "DG Items" DROPDOWN */}
+                {dgCargoItems.length > 0 && (
+                  <div className="relative" ref={dgItemsDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsDgItemsDropdownOpen(!isDgItemsDropdownOpen)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg border shadow-xs inline-flex items-center space-x-1.5 transition-all cursor-pointer ${
+                        isDgItemsDropdownOpen
+                          ? 'bg-brand-primary-soft text-brand-primary border-brand-primary ring-2 ring-brand-primary/20'
+                          : 'bg-surface hover:bg-surface-secondary text-content-primary border-divider'
+                      }`}
+                      title="Select DG Cargo items included in this declaration"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-brand-primary" />
+                      <span>DG Items</span>
+                      <span className="ml-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-brand-primary/10 text-brand-primary">
+                        {selectedDgItemIds.length}/{dgCargoItems.length}
+                      </span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-content-muted transition-transform duration-200 ${
+                          isDgItemsDropdownOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {/* Dropping Elegantly Menu */}
+                    {isDgItemsDropdownOpen && (
+                      <div className="absolute left-0 mt-2 w-80 sm:w-96 bg-surface border border-divider rounded-xl shadow-2xl z-50 p-3.5 animate-scale-in">
+                        {/* Header with Quick Actions */}
+                        <div className="flex items-center justify-between pb-2 border-b border-divider">
+                          <div>
+                            <div className="text-xs font-bold text-content-primary flex items-center space-x-1.5">
+                              <span>DG Cargo Items</span>
+                              <span className="text-[10px] font-mono font-semibold text-content-secondary">
+                                ({selectedDgItemIds.length} of {dgCargoItems.length} Selected)
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-content-muted font-mono mt-0.5">
+                              {(activeFilteredDgShipment.grossWeightKg || 0).toLocaleString()} kg • {activeFilteredDgShipment.totalPallets || 0} pallets
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-1.5 text-[11px]">
+                            <button
+                              type="button"
+                              onClick={handleSelectAllDgItems}
+                              className="font-semibold text-brand-primary hover:underline px-1 py-0.5 cursor-pointer"
+                            >
+                              Select All
+                            </button>
+                            <span className="text-divider">|</span>
+                            <button
+                              type="button"
+                              onClick={handleDeselectAllDgItems}
+                              className="font-semibold text-content-secondary hover:text-content-primary px-1 py-0.5 cursor-pointer"
+                            >
+                              Deselect All
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Scrollable Checkbox List */}
+                        <div className="max-h-72 overflow-y-auto space-y-1.5 my-2.5 pr-1">
+                          {dgCargoItems.map((item) => {
+                            const isChecked = selectedDgItemIds.includes(item.id);
+                            return (
+                              <label
+                                key={item.id}
+                                className={`flex items-start space-x-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? 'bg-brand-primary/5 border-brand-primary/40 text-content-primary'
+                                    : 'bg-surface-secondary/40 border-divider text-content-secondary opacity-60'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleToggleDgItem(item.id)}
+                                  className="mt-0.5 rounded border-divider text-brand-primary focus:ring-brand-primary h-3.5 w-3.5 cursor-pointer"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-bold text-content-primary truncate">{item.modelCode}</div>
+                                  <div className="text-[10px] text-content-secondary font-mono">
+                                    {item.palletCount} plts ({item.palletRange || 'P-01'}) • {item.boxCount} boxes
+                                  </div>
+                                  <div className="text-[10px] font-mono text-content-secondary">
+                                    GW: {item.grossWeightKg.toLocaleString()} kg • NW: {item.netWeightKg.toLocaleString()} kg
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="pt-2 border-t border-divider flex items-center justify-between text-[11px] text-content-secondary font-mono">
+                          <span>
+                            VGM: <strong className="text-content-primary">{((activeFilteredDgShipment.grossWeightKg || 0) + (activeFilteredDgShipment.tareWeightKg || 2150)).toLocaleString()} kg</strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsDgItemsDropdownOpen(false)}
+                            className="px-2.5 py-1 rounded bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover shadow-xs transition-colors cursor-pointer"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Multi-Container Switcher Pill Bar (When Multi-Container) */}
                 {shipmentJson.containers && shipmentJson.containers.length > 1 && (
                   <div className="flex items-center space-x-1 bg-input-bg p-0.5 rounded-lg border border-divider">
@@ -748,12 +917,12 @@ export function WorkspacePage({
                   </select>
                 </div>
               </div>
-              </div>
+            </div>
 
             {/* Full-Width Centered A4 Carrier Document Canvas */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center">
               <DgDocumentCanvas
-                shipmentJson={scopedDgShipmentJson}
+                shipmentJson={activeFilteredDgShipment}
                 onUpdateShipment={handleScopedDgUpdateShipment}
                 templateId={selectedDgFormatId}
                 onFieldChange={(fieldId, val) => {
@@ -927,7 +1096,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => onDownloadDocx('DG', scopedDgShipmentJson)}
+                    onClick={() => onDownloadDocx('DG', activeFilteredDgShipment)}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1080,7 +1249,7 @@ export function WorkspacePage({
                     if (val === 'PDF') {
                       onPrintPdf(targetDoc);
                     } else if (val === 'Word') {
-                      onDownloadDocx(targetDoc, targetDoc === 'DG' ? scopedDgShipmentJson : undefined);
+                      onDownloadDocx(targetDoc, targetDoc === 'DG' ? activeFilteredDgShipment : undefined);
                     }
                   }}
                   className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
