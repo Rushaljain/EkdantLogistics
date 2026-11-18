@@ -752,19 +752,40 @@ export function WarehouseInventoryHub({
         <div className="p-3 sm:p-4 bg-surface-secondary/30">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono tabular-nums">
             {/* Card 1: Available Stock */}
-            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
-              <div className="text-xs font-semibold text-content-secondary font-sans">
-                Available Stock
+            <div className="bg-surface border border-divider rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between pb-1.5 border-b border-divider/60">
+                <span className="text-xs font-semibold text-content-primary font-sans">
+                  Available Stock
+                </span>
+                <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-brand-primary-soft text-brand-primary border border-brand-primary/20">
+                  On-Floor
+                </span>
               </div>
-              <div className="mt-1.5 flex items-baseline space-x-2">
-                <span className="text-xl font-bold text-content-primary">{kpis.totalBalancePallets}</span>
-                <span className="text-xs text-content-muted font-sans font-normal">Pallets</span>
-                <span className="text-content-muted">•</span>
-                <span className="text-base font-bold text-indigo-700">{kpis.totalBalanceBatteries.toLocaleString()}</span>
-                <span className="text-xs text-content-muted font-sans font-normal">Units</span>
-              </div>
-              <div className="mt-1 text-xs text-content-secondary font-sans">
-                Weight: <strong className="text-content-primary font-mono">{kpis.totalBalanceGrossKg.toLocaleString()} kg</strong>
+              <div className="grid grid-cols-3 gap-2 mt-2 pt-0.5 text-center">
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Pallets
+                  </span>
+                  <span className="text-lg font-bold text-content-primary leading-tight font-mono">
+                    {kpis.totalBalancePallets.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Units
+                  </span>
+                  <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400 leading-tight font-mono">
+                    {kpis.totalBalanceBatteries.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Weight
+                  </span>
+                  <span className="text-sm sm:text-base font-bold text-content-primary leading-tight font-mono truncate max-w-full">
+                    {kpis.totalBalanceGrossKg.toLocaleString()} <span className="text-[10px] font-normal text-content-muted">kg</span>
+                  </span>
+                </div>
               </div>
             </div>
 
