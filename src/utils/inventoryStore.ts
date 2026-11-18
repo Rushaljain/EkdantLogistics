@@ -556,6 +556,8 @@ export function confirmStuffingDispatch(
 
     const updated = recomputeCFSDerivedFields({
       ...entry,
+      updatedAt: new Date().toISOString(),
+      dispatchedAt: new Date().toISOString(),
       actualStuffedPallets: (entry.actualStuffedPallets || 0) + newlyStuffedPallets,
       actualStuffedBatteries: (entry.actualStuffedBatteries || 0) + newlyStuffedBatteries,
       containerNo: dispatchDetails.containerNo || entry.containerNo,
@@ -901,6 +903,8 @@ export function executeWorkspaceDispatch(
 
     const updated = recomputeCFSDerivedFields({
       ...entry,
+      updatedAt: new Date().toISOString(),
+      dispatchedAt: new Date().toISOString(),
       actualStuffedPallets: (entry.actualStuffedPallets || 0) + newlyStuffedPallets,
       actualStuffedBatteries: (entry.actualStuffedBatteries || 0) + newlyStuffedBatteries,
       containerNo: dispatchDetails.containerNo || entry.containerNo,
@@ -1656,19 +1660,65 @@ export function getDerivedInventoryMovements(entries: CFSLedgerEntry[]): Invento
       vehicleNo: e.vehicleNo || '-',
       remainingBalancePallets: e.balancePallets ?? 0,
       remainingBalanceBatteries: e.balanceBatteries ?? 0,
-      createdAt: e.createdAt || new Date().toISOString(),
+      createdAt: e.updatedAt || e.dispatchedAt || e.createdAt || new Date().toISOString(),
       remarks: e.remarks || (isFullyDispatched ? 'Dispatched' : isPartialDispatched ? 'Partial Dispatched' : 'In Stock')
     });
   });
 
   const persisted = getPersistedMovementLogs().filter((r) => !deletedIds.has(r.id));
-  const combined = [...derived, ...persisted];
+  
+  // Deduplicate: If an invoice is live in derived, avoid duplicate records from persisted
+  const derivedInvoiceSet = new Set(derived.map((d) => d.customInvoiceNo.trim().toUpperCase()));
+  const extraPersisted = persisted.filter(
+    (p) => !derivedInvoiceSet.has(p.customInvoiceNo.trim().toUpperCase())
+  );
+  const combined = [...derived, ...extraPersisted];
 
-  return combined.sort((a, b) => {
-    const tA = new Date(a.createdAt || a.receivedDate).getTime() || 0;
-    const tB = new Date(b.createdAt || b.receivedDate).getTime() || 0;
-    return tB - tA;
+  function parseLogTimestamp(record: InventoryMovementRecord): number {
+    if (record.createdAt) {
+      const t = new Date(record.createdAt).getTime();
+      if (!isNaN(t) && t > 100000) return t;
+    }
+    const dateStr = (record.dispatchedDate && record.dispatchedDate !== '-')
+      ? record.dispatchedDate
+      : (record.receivedDate || record.movementDate || '');
+    if (dateStr) {
+      const parts = dateStr.split(/[./-]/);
+      if (parts.length === 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        const year = parseInt(parts[2], 10);
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+          return new Date(year, month - 1, day).getTime();
+        }
+      }
+    }
+    return 0;
+  }
+
+  // Sort latest on top, oldest at the bottom
+  const sorted = combined.sort((a, b) => {
+    const tA = parseLogTimestamp(a);
+    const tB = parseLogTimestamp(b);
+    if (tB !== tA) return tB - tA;
+    // Dispatched transactions have precedence
+    if (a.status === 'DISPATCHED' && b.status !== 'DISPATCHED') return -1;
+    if (b.status === 'DISPATCHED' && a.status !== 'DISPATCHED') return 1;
+    return 0;
   });
+
+  // Secondary deduplication guard by invoice number and container number
+  const seenKeys = new Set<string>();
+  const deduplicated: InventoryMovementRecord[] = [];
+  for (const record of sorted) {
+    const key = `${record.customInvoiceNo.trim().toUpperCase()}__${(record.containerNo || '-').trim().toUpperCase()}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      deduplicated.push(record);
+    }
+  }
+
+  return deduplicated;
 }
 
 export function exportCFSMovementLogsXlsx(records: InventoryMovementRecord[]): void {

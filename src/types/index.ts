@@ -614,6 +614,8 @@ export interface PalletStockUnit {
 export interface CFSLedgerEntry {
   id: string;
   createdAt: string;
+  updatedAt?: string;
+  dispatchedAt?: string;
   month: string; // 'APR' | 'MAY' | 'JUNE' | 'JULY' | 'AUG' | 'SEP' | 'OCT' | 'NOV' | 'DEC' | 'JAN' | 'FEB' | 'MAR'
   customer: string;
   exporterShipper: string;
