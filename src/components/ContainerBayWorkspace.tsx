@@ -10,8 +10,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
-  GripVertical
+  GripVertical,
+  FileSpreadsheet,
+  Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import type {
   ExtractedShipmentJSON,
   ExtractedPallet,
@@ -537,6 +540,273 @@ export function ContainerBayWorkspace({
   const weightUtilPct = Math.min(Math.round((cargoGrossWeight / specs.maxPayloadKg) * 100), 100);
   const palletUtilPct = Math.min(Math.round((allocatedPalletsList.length / specs.maxPallets) * 100), 100);
   const isOverweight = cargoGrossWeight > specs.maxPayloadKg;
+
+  // Computed Container Plan based on MAY 26-27.xlsx master report structure
+  const containerPlanData = useMemo(() => {
+    const allAllocated = pallets.filter((p) => Boolean(palletAllocationMap[p.palletNumber]));
+    const totalPlanGross = allAllocated.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
+    const totalPlanPallets = allAllocated.length;
+    const totalInvoiceVal = shipmentJson.totalInvoiceValue || 0;
+    const currency = shipmentJson.currency || '$';
+
+    const containerGroups = containers.map((cont) => {
+      const contPallets = pallets.filter((p) => palletAllocationMap[p.palletNumber] === cont.id);
+
+      const lineMap = new Map<
+        string,
+        {
+          id: string;
+          brand: string;
+          piNo: string;
+          pkgListNo: string;
+          customer: string;
+          destination: string;
+          customInv: string;
+          contract: string;
+          palletsCount: number;
+          quantity: number;
+          grossWeightKg: number;
+          netWeightKg: number;
+          sbNo: string;
+          date: string;
+          containerNo: string;
+          sealNo: string;
+          rawValue: number;
+        }
+      >();
+
+      contPallets.forEach((p) => {
+        const invNum = (p.invoiceNumber || (shipmentJson.invoiceNumbers && shipmentJson.invoiceNumbers.length > 0 ? shipmentJson.invoiceNumbers[0] : '') || '').trim();
+        const brandStr = (p.brand || shipmentJson.brandName || '').trim();
+        const modelStr = (p.modelCode || '').trim();
+        const groupKey = `${invNum}__${brandStr}__${modelStr}`;
+
+        const existing = lineMap.get(groupKey);
+        if (existing) {
+          existing.palletsCount += 1;
+          existing.quantity += p.boxCount || 0;
+          existing.grossWeightKg += p.grossWeightKg || 0;
+          existing.netWeightKg += p.netWeightKg || 0;
+        } else {
+          lineMap.set(groupKey, {
+            id: groupKey,
+            brand: brandStr || modelStr || shipmentJson.productDescription?.split('\n')[0]?.slice(0, 30) || '-',
+            piNo: shipmentJson.shipperReference || shipmentJson.bookingNumber || '-',
+            pkgListNo: p.sourceFile || shipmentJson.forwarderReference || '-',
+            customer: shipmentJson.consigneeName || '-',
+            destination: shipmentJson.portOfDischarge || shipmentJson.finalDestination || '-',
+            customInv: invNum || '-',
+            contract: shipmentJson.incoterm || shipmentJson.freightTerms || 'FOB',
+            palletsCount: 1,
+            quantity: p.boxCount || 0,
+            grossWeightKg: p.grossWeightKg || 0,
+            netWeightKg: p.netWeightKg || 0,
+            sbNo: shipmentJson.shippingBillNumbers || '-',
+            date: (shipmentJson.invoiceDates && shipmentJson.invoiceDates.length > 0 ? shipmentJson.invoiceDates[0] : '') || new Date().toLocaleDateString('en-GB'),
+            containerNo: cont.containerNumber || cont.label,
+            sealNo: cont.sealNumber || '-',
+            rawValue: 0
+          });
+        }
+      });
+
+      const lineItems = Array.from(lineMap.values()).map((item) => {
+        const proportion = totalPlanGross > 0
+          ? item.grossWeightKg / totalPlanGross
+          : totalPlanPallets > 0
+          ? item.palletsCount / totalPlanPallets
+          : 0;
+        const rawValue = totalInvoiceVal * proportion;
+        return {
+          ...item,
+          rawValue,
+          valueFormatted: rawValue > 0
+            ? `${currency} ${rawValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : '-'
+        };
+      });
+
+      const subtotalPallets = lineItems.reduce((sum, item) => sum + item.palletsCount, 0);
+      const subtotalQty = lineItems.reduce((sum, item) => sum + item.quantity, 0);
+      const subtotalGrossWeight = lineItems.reduce((sum, item) => sum + item.grossWeightKg, 0);
+      const subtotalNetWeight = lineItems.reduce((sum, item) => sum + item.netWeightKg, 0);
+      const subtotalValue = lineItems.reduce((sum, item) => sum + item.rawValue, 0);
+      const vgmKg = subtotalGrossWeight + (Number(cont.tareWeightKg) || 0);
+
+      return {
+        container: cont,
+        lineItems,
+        subtotalPallets,
+        subtotalQty,
+        subtotalGrossWeight,
+        subtotalNetWeight,
+        subtotalValue,
+        subtotalValueFormatted: subtotalValue > 0
+          ? `${currency} ${subtotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : '-',
+        vgmKg
+      };
+    });
+
+    const grandTotalPallets = containerGroups.reduce((sum, g) => sum + g.subtotalPallets, 0);
+    const grandTotalQty = containerGroups.reduce((sum, g) => sum + g.subtotalQty, 0);
+    const grandTotalGrossWeight = containerGroups.reduce((sum, g) => sum + g.subtotalGrossWeight, 0);
+    const grandTotalNetWeight = containerGroups.reduce((sum, g) => sum + g.subtotalNetWeight, 0);
+    const grandTotalValue = containerGroups.reduce((sum, g) => sum + g.subtotalValue, 0);
+    const grandTotalValueFormatted = grandTotalValue > 0
+      ? `${currency} ${grandTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : '-';
+
+    const unallocatedPalletsCount = pallets.filter((p) => !palletAllocationMap[p.palletNumber]).length;
+
+    return {
+      containerGroups,
+      grandTotalPallets,
+      grandTotalQty,
+      grandTotalGrossWeight,
+      grandTotalNetWeight,
+      grandTotalValue,
+      grandTotalValueFormatted,
+      unallocatedPalletsCount
+    };
+  }, [pallets, palletAllocationMap, containers, shipmentJson]);
+
+  // Export Container Plan directly to .xlsx matching MAY 26-27 format
+  const handleExportContainerPlanXlsx = () => {
+    const headers = [
+      'Brand / Description',
+      'PI No',
+      'Pkg. List No.',
+      'Customer',
+      'Destn.',
+      'Custom Inv.',
+      'Contract',
+      'Value',
+      'Pallets',
+      'Qty',
+      'GR WT',
+      'NT WT',
+      'SB NO',
+      'DATE',
+      'CONTAINER',
+      'SEAL'
+    ];
+
+    const aoaData: (string | number | null)[][] = [headers];
+
+    containerPlanData.containerGroups.forEach((group) => {
+      if (group.lineItems.length === 0) {
+        aoaData.push([
+          `[${group.container.label}] No pallets allocated`,
+          '',
+          '',
+          shipmentJson.consigneeName || '',
+          shipmentJson.portOfDischarge || '',
+          '',
+          shipmentJson.incoterm || 'FOB',
+          '',
+          0,
+          0,
+          0,
+          0,
+          shipmentJson.shippingBillNumbers || '',
+          (shipmentJson.invoiceDates && shipmentJson.invoiceDates.length > 0 ? shipmentJson.invoiceDates[0] : '') || '',
+          group.container.containerNumber || group.container.label,
+          group.container.sealNumber || ''
+        ]);
+      } else {
+        group.lineItems.forEach((item) => {
+          aoaData.push([
+            item.brand,
+            item.piNo !== '-' ? item.piNo : '',
+            item.pkgListNo !== '-' ? item.pkgListNo : '',
+            item.customer !== '-' ? item.customer : '',
+            item.destination !== '-' ? item.destination : '',
+            item.customInv !== '-' ? item.customInv : '',
+            item.contract !== '-' ? item.contract : '',
+            item.valueFormatted !== '-' ? item.valueFormatted : '',
+            item.palletsCount,
+            item.quantity,
+            Math.round(item.grossWeightKg * 100) / 100,
+            Math.round(item.netWeightKg * 100) / 100,
+            item.sbNo !== '-' ? item.sbNo : '',
+            item.date !== '-' ? item.date : '',
+            item.containerNo,
+            item.sealNo !== '-' ? item.sealNo : ''
+          ]);
+        });
+      }
+
+      // Container subtotal row
+      aoaData.push([
+        `SUBTOTAL - ${group.container.label}`,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        group.subtotalValueFormatted !== '-' ? group.subtotalValueFormatted : '',
+        group.subtotalPallets,
+        group.subtotalQty,
+        Math.round(group.subtotalGrossWeight * 100) / 100,
+        Math.round(group.subtotalNetWeight * 100) / 100,
+        '',
+        '',
+        group.container.containerNumber || group.container.label,
+        group.container.sealNumber || ''
+      ]);
+
+      // Blank spacer row
+      aoaData.push([]);
+    });
+
+    // Grand total row
+    aoaData.push([
+      'GRAND TOTAL',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      containerPlanData.grandTotalValueFormatted !== '-' ? containerPlanData.grandTotalValueFormatted : '',
+      containerPlanData.grandTotalPallets,
+      containerPlanData.grandTotalQty,
+      Math.round(containerPlanData.grandTotalGrossWeight * 100) / 100,
+      Math.round(containerPlanData.grandTotalNetWeight * 100) / 100,
+      '',
+      '',
+      containers.map((c) => c.containerNumber || c.label).filter(Boolean).join(', '),
+      ''
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoaData);
+    ws['!cols'] = [
+      { wch: 22 }, // Brand / Description
+      { wch: 16 }, // PI No
+      { wch: 16 }, // Pkg List No
+      { wch: 28 }, // Customer
+      { wch: 18 }, // Destn
+      { wch: 18 }, // Custom Inv
+      { wch: 10 }, // Contract
+      { wch: 16 }, // Value
+      { wch: 10 }, // Pallets
+      { wch: 10 }, // Qty
+      { wch: 14 }, // GR WT
+      { wch: 14 }, // NT WT
+      { wch: 16 }, // SB NO
+      { wch: 14 }, // DATE
+      { wch: 20 }, // CONTAINER
+      { wch: 16 }  // SEAL
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Container Plan');
+    const bookingRef = (shipmentJson.bookingNumber || shipmentJson.shipperReference || 'Plan').replace(/[^a-zA-Z0-9-_]/g, '_');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Container_Plan_${bookingRef}_${todayStr}.xlsx`);
+  };
 
   // Open Pallet Edit
   const handleOpenEditPallet = (index: number) => {
@@ -1544,6 +1814,171 @@ export function ContainerBayWorkspace({
               <span>Gross: {cargoGrossWeight.toLocaleString()} kg</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          CONTAINER PLAN MASTER WYSIWYG TABLE (Modeled after MAY 26-27.xlsx)
+          ========================================================================= */}
+      <div className="bg-surface border border-divider rounded-2xl shadow-sm overflow-hidden mt-6">
+        {/* Header Bar */}
+        <div className="p-4 sm:p-5 border-b border-divider flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-secondary/30">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-xl bg-brand-primary-soft text-brand-primary">
+              <FileSpreadsheet className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm font-bold text-content-primary uppercase tracking-wider">
+                  Container Plan
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
+                  {containers.length} Container{containers.length > 1 ? 's' : ''}
+                </span>
+              </div>
+              <p className="text-xs text-content-secondary mt-0.5">
+                Stuffing and multi-container allocation plan modeled after operator master report (MAY 26-27)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={handleExportContainerPlanXlsx}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center space-x-2 shadow-xs transition-colors cursor-pointer"
+              title="Download Container Plan in Excel (.xlsx)"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Download Container Plan (.xlsx)</span>
+            </button>
+          </div>
+        </div>
+
+        {containerPlanData.unallocatedPalletsCount > 0 && (
+          <div className="px-5 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 flex items-center justify-between">
+            <span>
+              <strong>Note:</strong> {containerPlanData.unallocatedPalletsCount} pallet{containerPlanData.unallocatedPalletsCount > 1 ? 's' : ''} currently unallocated on the floor. Drag or assign them to containers above to include them in the container plan.
+            </span>
+          </div>
+        )}
+
+        {/* Scrollable WYSIWYG Excel Grid */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left border-collapse min-w-[1300px]">
+            <thead>
+              <tr className="bg-surface-secondary/70 text-content-secondary text-[11px] font-semibold border-b border-divider uppercase tracking-wider">
+                <th className="py-2.5 px-3">Brand / Description</th>
+                <th className="py-2.5 px-3">PI No</th>
+                <th className="py-2.5 px-3">Pkg. List No.</th>
+                <th className="py-2.5 px-3">Customer</th>
+                <th className="py-2.5 px-3">Destn.</th>
+                <th className="py-2.5 px-3">Custom Inv.</th>
+                <th className="py-2.5 px-3 text-center">Contract</th>
+                <th className="py-2.5 px-3 text-right">Value</th>
+                <th className="py-2.5 px-3 text-right">Pallets</th>
+                <th className="py-2.5 px-3 text-right">Qty</th>
+                <th className="py-2.5 px-3 text-right">GR WT (kg)</th>
+                <th className="py-2.5 px-3 text-right">NT WT (kg)</th>
+                <th className="py-2.5 px-3">SB NO</th>
+                <th className="py-2.5 px-3">DATE</th>
+                <th className="py-2.5 px-3">CONTAINER</th>
+                <th className="py-2.5 px-3">SEAL</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-divider/60">
+              {containerPlanData.containerGroups.map((group, gIdx) => {
+                const cont = group.container;
+                return (
+                  <React.Fragment key={cont.id || gIdx}>
+                    {/* Container Banner Row */}
+                    <tr className="bg-surface-secondary/40 font-semibold text-content-primary">
+                      <td colSpan={16} className="py-2.5 px-3 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="inline-block w-2 h-2 rounded-full bg-brand-primary" />
+                            <span className="font-bold">{cont.label}</span>
+                            <span className="text-content-secondary font-mono text-[10px]">
+                              [{cont.containerNumber || 'Container No Pending'} / Seal: {cont.sealNumber || 'Pending'}]
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-3 text-[10px] font-mono text-content-secondary">
+                            <span>Tare: {cont.tareWeightKg} kg</span>
+                            <span>•</span>
+                            <span>Payload: {group.subtotalGrossWeight.toLocaleString()} kg</span>
+                            <span>•</span>
+                            <span className="text-state-success font-semibold">VGM: {group.vgmKg.toLocaleString()} kg</span>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Line Items */}
+                    {group.lineItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={16} className="py-3 px-3 text-center text-content-muted italic bg-surface">
+                          No pallets allocated to {cont.label} yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      group.lineItems.map((item) => (
+                        <tr key={item.id} className="hover:bg-surface-secondary/30 transition-colors bg-surface">
+                          <td className="py-2 px-3 font-medium text-content-primary">{item.brand}</td>
+                          <td className="py-2 px-3 font-mono text-content-secondary">{item.piNo}</td>
+                          <td className="py-2 px-3 font-mono text-content-secondary">{item.pkgListNo}</td>
+                          <td className="py-2 px-3 text-content-primary">{item.customer}</td>
+                          <td className="py-2 px-3 text-content-secondary">{item.destination}</td>
+                          <td className="py-2 px-3 font-mono font-medium text-brand-primary">{item.customInv}</td>
+                          <td className="py-2 px-3 text-center font-mono text-[11px] text-content-secondary">{item.contract}</td>
+                          <td className="py-2 px-3 text-right font-mono text-content-primary">{item.valueFormatted}</td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold text-content-primary">{item.palletsCount}</td>
+                          <td className="py-2 px-3 text-right font-mono text-content-primary">{item.quantity.toLocaleString()}</td>
+                          <td className="py-2 px-3 text-right font-mono font-medium text-content-primary">{item.grossWeightKg.toLocaleString()}</td>
+                          <td className="py-2 px-3 text-right font-mono text-content-secondary">{item.netWeightKg.toLocaleString()}</td>
+                          <td className="py-2 px-3 font-mono text-content-secondary">{item.sbNo}</td>
+                          <td className="py-2 px-3 font-mono text-content-secondary">{item.date}</td>
+                          <td className="py-2 px-3 font-mono font-medium text-content-primary">{item.containerNo}</td>
+                          <td className="py-2 px-3 font-mono text-content-secondary">{item.sealNo}</td>
+                        </tr>
+                      ))
+                    )}
+
+                    {/* Subtotal Row */}
+                    <tr className="bg-surface-secondary/80 font-semibold border-b border-divider text-content-primary">
+                      <td colSpan={7} className="py-2 px-3 text-right text-[11px] uppercase tracking-wider text-content-secondary">
+                        Subtotal {cont.label}:
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono">{group.subtotalValueFormatted}</td>
+                      <td className="py-2 px-3 text-right font-mono text-brand-primary font-bold">{group.subtotalPallets}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">{group.subtotalQty.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">{group.subtotalGrossWeight.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">{group.subtotalNetWeight.toLocaleString()}</td>
+                      <td colSpan={2} className="py-2 px-3" />
+                      <td className="py-2 px-3 font-mono text-[11px] text-content-secondary">{cont.containerNumber || cont.label}</td>
+                      <td className="py-2 px-3 font-mono text-[11px] text-content-secondary">{cont.sealNumber || '-'}</td>
+                    </tr>
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+
+            {/* Grand Total Footer */}
+            <tfoot>
+              <tr className="bg-brand-primary-soft/40 border-t-2 border-divider font-bold text-content-primary text-xs">
+                <td colSpan={7} className="py-3 px-3 text-right uppercase tracking-wider text-content-primary">
+                  Grand Total ({containers.length} Container{containers.length > 1 ? 's' : ''}):
+                </td>
+                <td className="py-3 px-3 text-right font-mono text-brand-primary">{containerPlanData.grandTotalValueFormatted}</td>
+                <td className="py-3 px-3 text-right font-mono text-brand-primary text-sm font-black">{containerPlanData.grandTotalPallets}</td>
+                <td className="py-3 px-3 text-right font-mono text-sm font-black">{containerPlanData.grandTotalQty.toLocaleString()}</td>
+                <td className="py-3 px-3 text-right font-mono text-sm font-black">{containerPlanData.grandTotalGrossWeight.toLocaleString()}</td>
+                <td className="py-3 px-3 text-right font-mono text-sm font-black">{containerPlanData.grandTotalNetWeight.toLocaleString()}</td>
+                <td colSpan={4} className="py-3 px-3 text-content-secondary text-[11px] font-normal text-right">
+                  All containers combined
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
 
