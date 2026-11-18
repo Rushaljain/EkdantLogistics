@@ -435,30 +435,6 @@ export function WarehouseInventoryHub({
     });
   };
 
-  // Toggle All Pallets for an Invoice
-  const toggleSelectAllForInvoice = (entry: CFSLedgerEntry) => {
-    const available = (entry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
-    if (available.length === 0) return;
-
-    if (selectedDispatchCustomer && selectedDispatchCustomer !== entry.customer) {
-      showToast(`Selection locked to ${selectedDispatchCustomer}. Clear selection first.`);
-      return;
-    }
-
-    const allSelected = available.every((p) => selectedPalletIds.has(p.id));
-    setSelectedPalletIds((prev) => {
-      const next = new Set(prev);
-      if (allSelected) {
-        available.forEach((p) => next.delete(p.id));
-        if (next.size === 0) setSelectedDispatchCustomer('');
-      } else {
-        setSelectedDispatchCustomer(entry.customer);
-        available.forEach((p) => next.add(p.id));
-      }
-      return next;
-    });
-  };
-
   // Action: Load into 20' GP & Navigate to Workspace
   const handleLoadSelectedIntoWorkspace = () => {
     if (selectedPalletsStats.palletList.length === 0) {
@@ -1114,7 +1090,6 @@ export function WarehouseInventoryHub({
                 {activeStockInvoices.map((entry) => {
                   const isExpanded = expandedInventoryInvoiceIds.has(entry.id);
                   const availableUnits = (entry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
-                  const allSelected = availableUnits.length > 0 && availableUnits.every((p) => selectedPalletIds.has(p.id));
 
                   return (
                     <div
@@ -1150,7 +1125,7 @@ export function WarehouseInventoryHub({
                                 <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md bg-indigo-50/80 text-indigo-700 font-semibold border border-indigo-200/70">
                                   {entry.month}
                                 </span>
-                                <span className="text-xs font-semibold text-content-primary truncate max-w-[280px]" title={entry.customer}>
+                                <span className="text-xs font-semibold text-content-primary" title={entry.customer}>
                                   {entry.customer}
                                 </span>
                               </div>
@@ -1226,20 +1201,6 @@ export function WarehouseInventoryHub({
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                 <span>100% Received</span>
                               </span>
-                            )}
-
-                            {/* Select All */}
-                            {availableUnits.length > 0 && (
-                              <button
-                                onClick={() => toggleSelectAllForInvoice(entry)}
-                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
-                                  allSelected
-                                    ? 'bg-brand-primary text-white border-brand-primary'
-                                    : 'bg-surface hover:bg-surface-secondary text-content-secondary border-divider'
-                                }`}
-                              >
-                                {allSelected ? 'Deselect' : `Select (${availableUnits.length})`}
-                              </button>
                             )}
 
                             {/* Dispatch Primary Action Button */}
@@ -1338,9 +1299,8 @@ export function WarehouseInventoryHub({
                       {/* Expandable Pallets Grid */}
                       {isExpanded && (
                         <div className="p-3 sm:p-4 bg-surface border-t border-divider/60">
-                          <div className="text-xs font-semibold text-content-secondary mb-2 flex items-center justify-between">
-                            <span>Pallet Units ({entry.pallets?.length || 0} Total • {availableUnits.length} Ready in Warehouse):</span>
-                            <span className="text-content-muted font-normal">Click a pallet to select for container loading</span>
+                          <div className="text-xs font-semibold text-content-secondary mb-2">
+                            <span>Pallet Units ({entry.pallets?.length || 0} Total • {availableUnits.length} Ready in Warehouse)</span>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-6 gap-2.5 font-mono">
