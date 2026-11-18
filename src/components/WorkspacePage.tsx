@@ -384,16 +384,16 @@ export function WorkspacePage({
             <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
           </div>
 
-          {/* Quick Access to Warehouse Inventory & CFS Ledger */}
+          {/* Quick Access to Warehouse */}
           {onOpenInventory && (
             <button
               type="button"
               onClick={onOpenInventory}
               className="px-2.5 py-1.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 text-xs font-semibold border border-indigo-700/50 transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
-              title="Open CHA Warehouse Inventory & CFS Stock Ledger"
+              title="Open Warehouse"
             >
               <Boxes className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden md:inline">Warehouse Ledger</span>
+              <span className="hidden md:inline">Warehouse</span>
             </button>
           )}
 
@@ -445,7 +445,7 @@ export function WorkspacePage({
             onClick={onHardReset}
             disabled={isPurging}
             className="p-1.5 rounded-lg bg-surface hover:bg-state-error-bg text-content-secondary hover:text-state-error border border-divider transition-colors cursor-pointer"
-            title="Hard Reset Workspace Storage"
+            title="Hard Reset Dispatch Tool Storage"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isPurging ? 'animate-spin' : ''}`} />
           </button>

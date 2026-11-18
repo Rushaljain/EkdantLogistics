@@ -232,7 +232,7 @@ export function FormatAdderPage({
                   <th className="px-4 py-3">Format Name</th>
                   <th className="px-4 py-3 w-32">Document Type</th>
                   <th className="px-4 py-3 w-32 text-right">Fields Count</th>
-                  <th className="px-4 py-3 w-36 text-center">Status in Workspace</th>
+                  <th className="px-4 py-3 w-36 text-center">Status in Dispatch Tool</th>
                   <th className="px-4 py-3 w-44 text-right">Actions</th>
                 </tr>
               </thead>

@@ -197,7 +197,7 @@ export function App(): React.JSX.Element {
     setMode(session.mode || 'SINGLE_INVOICE');
     setHasParsed(true);
     setActivePage('workspace');
-    setSaveToastMessage(`Restored "${session.title || 'Work Session'}" into Workspace!`);
+    setSaveToastMessage(`Restored "${session.title || 'Work Session'}" into Dispatch Tool!`);
     setTimeout(() => {
       setSaveToastMessage(null);
     }, 3000);
@@ -252,7 +252,7 @@ export function App(): React.JSX.Element {
     }
     setHasParsed(true);
     setActivePage('workspace');
-    setSaveToastMessage(`Loaded ${shipment.pallets?.length || 0} pallets from Warehouse into Workspace!`);
+    setSaveToastMessage(`Loaded ${shipment.pallets?.length || 0} pallets from Warehouse into Dispatch Tool!`);
     setTimeout(() => {
       setSaveToastMessage(null);
     }, 3000);

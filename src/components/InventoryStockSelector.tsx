@@ -470,7 +470,7 @@ export function InventoryStockSelector({
               onClick={handleLoadSelected}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 cursor-pointer shadow-md transition-all"
             >
-              <span>Load Selected Inventory into Workspace ({selectionSummary.palletCount} Pallets)</span>
+              <span>Load Selected Inventory into Dispatch Tool ({selectionSummary.palletCount} Pallets)</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

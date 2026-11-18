@@ -465,7 +465,7 @@ export function WarehouseInventoryHub({
     );
 
     onLoadShipmentIntoWorkspace(truthJson);
-    showToast(`Loaded ${selectedPalletsStats.count} pallets into Workspace.`);
+    showToast(`Loaded ${selectedPalletsStats.count} pallets into Dispatch Tool.`);
     onNavigateToWorkspace();
   };
 
@@ -1363,7 +1363,7 @@ export function WarehouseInventoryHub({
                     onClick={handleLoadSelectedIntoWorkspace}
                     className="px-3.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-brand-primary border border-brand-primary font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs"
                   >
-                    <span>Load into 20' GP Workspace</span>
+                    <span>Load into Dispatch Tool</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
 

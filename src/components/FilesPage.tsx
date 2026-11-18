@@ -369,7 +369,7 @@ export function FilesPage({
                               <button
                                 onClick={() => onOpenInWorkspace(originalIndex)}
                                 className="px-2.5 py-1 rounded bg-brand-primary-soft hover:bg-brand-primary-soft/80 text-brand-primary text-[11px] font-sans font-medium border border-brand-primary/20 transition-colors flex items-center space-x-1"
-                                title="Inspect in 3-panel workspace"
+                                title="Open in Dispatch Tool"
                               >
                                 <span>Open</span>
                                 <ExternalLink className="w-3 h-3" />
