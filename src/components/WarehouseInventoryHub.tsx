@@ -1119,125 +1119,167 @@ export function WarehouseInventoryHub({
                   return (
                     <div
                       key={entry.id}
-                      className="bg-surface border border-divider rounded-xl overflow-hidden shadow-xs transition-all"
+                      className="bg-surface border border-divider/80 rounded-xl overflow-hidden shadow-xs hover:border-divider transition-all"
                     >
-                      {/* Invoice Summary Header */}
-                      <div className="p-3 sm:p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-surface-secondary/40 border-b border-divider/60">
-                        <div className="flex items-center space-x-3">
-                          <button
-                            onClick={() => {
-                              setExpandedInventoryInvoiceIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(entry.id)) next.delete(entry.id);
-                                else next.add(entry.id);
-                                return next;
-                              });
-                            }}
-                            className="p-1 rounded text-content-muted hover:text-content-primary hover:bg-surface transition-colors cursor-pointer"
-                          >
-                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                          </button>
+                      {/* Modern Enterprise SaaS Data-Row */}
+                      <div className="p-4 bg-surface hover:bg-slate-50/50 transition-colors border-b border-divider/60">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                          
+                          {/* Left: Expand, Invoice ID, Customer, Port & Carting Date */}
+                          <div className="flex items-start space-x-3.5 min-w-0 flex-1">
+                            <button
+                              onClick={() => {
+                                setExpandedInventoryInvoiceIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(entry.id)) next.delete(entry.id);
+                                  else next.add(entry.id);
+                                  return next;
+                                });
+                              }}
+                              className="mt-0.5 p-1 rounded-md text-content-muted hover:text-content-primary hover:bg-surface-secondary border border-divider/60 transition-colors cursor-pointer shrink-0"
+                              title={isExpanded ? 'Collapse Pallets' : 'Expand Pallets'}
+                            >
+                              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                            </button>
 
-                          <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="font-mono text-xs font-bold text-brand-primary">
-                                {entry.customInvoiceNo}
-                              </span>
-                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
-                                {entry.month}
-                              </span>
-                              <span className="text-xs font-medium text-content-primary">
-                                {entry.customer}
-                              </span>
-                            </div>
-                            <div className="mt-1 flex items-center space-x-2 text-xs font-mono text-content-secondary">
-                              <span>POD: <strong className="text-content-primary">{entry.pod || '-'}</strong></span>
-                              <span>•</span>
-                              <span>Invoiced: <strong className="text-content-primary">{entry.invoicedPallets} Plt</strong></span>
-                              <span>•</span>
-                              <span>Gross Wt: <strong className="text-content-primary">{entry.invoicedGrossWeightKg} kg</strong></span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-mono text-sm font-bold text-brand-primary tracking-tight">
+                                  #{entry.customInvoiceNo}
+                                </span>
+                                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md bg-indigo-50/80 text-indigo-700 font-semibold border border-indigo-200/70">
+                                  {entry.month}
+                                </span>
+                                <span className="text-xs font-semibold text-content-primary truncate max-w-[280px]" title={entry.customer}>
+                                  {entry.customer}
+                                </span>
+                              </div>
+
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-secondary">
+                                <span className="flex items-center space-x-1">
+                                  <span className="text-content-muted">POD:</span>
+                                  <strong className="text-content-primary font-medium">{entry.pod || '—'}</strong>
+                                </span>
+                                <span className="text-divider">•</span>
+                                <span className="flex items-center space-x-1">
+                                  <span className="text-content-muted">Gross Wt:</span>
+                                  <strong className="text-content-primary font-medium">{(entry.invoicedGrossWeightKg || 0).toLocaleString()} kg</strong>
+                                </span>
+                                {entry.cartingInDate && (
+                                  <>
+                                    <span className="text-divider">•</span>
+                                    <span className="flex items-center space-x-1">
+                                      <span className="text-content-muted">Carting:</span>
+                                      <span className="font-mono text-content-primary">{entry.cartingInDate}</span>
+                                    </span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Status & Gate-In Controls */}
-                        <div className="flex flex-wrap items-center gap-2.5 text-xs">
-                          {/* Live Balance */}
-                          <div className="px-2.5 py-1 rounded-lg bg-surface border border-divider text-xs font-mono">
-                            <span className="text-content-secondary">Floor Balance: </span>
-                            <strong className="text-emerald-700 font-bold">{entry.balancePallets} Plt</strong>
-                            <span className="text-content-muted"> / </span>
-                            <strong className="text-indigo-700 font-bold">{entry.balanceBatteries} Units</strong>
+                          {/* Center: Inventory Progress & Live Balance Metrics */}
+                          <div className="flex flex-wrap items-center gap-3 shrink-0 py-1 px-3.5 rounded-lg bg-surface-secondary/70 border border-divider/60">
+                            {/* Live Floor Balance */}
+                            <div className="flex flex-col text-left">
+                              <span className="text-[10px] font-medium uppercase tracking-wider text-content-muted">Floor Balance</span>
+                              <div className="flex items-baseline space-x-1.5 font-mono">
+                                <span className="text-sm font-bold text-emerald-700">{entry.balancePallets} Plt</span>
+                                <span className="text-content-muted text-xs">/</span>
+                                <span className="text-xs font-bold text-indigo-700">{entry.balanceBatteries} u</span>
+                              </div>
+                            </div>
+
+                            <div className="h-7 w-px bg-divider/80 mx-1 hidden sm:block" />
+
+                            {/* Invoiced vs Received Ratio */}
+                            <div className="flex flex-col text-left">
+                              <span className="text-[10px] font-medium uppercase tracking-wider text-content-muted">Invoiced</span>
+                              <div className="flex items-baseline space-x-1 text-xs font-mono text-content-secondary">
+                                <span>{entry.invoicedPallets} Plt</span>
+                                <span>({entry.invoicedBatteries} u)</span>
+                              </div>
+                            </div>
+
+                            {/* Shortfall Tag if any */}
+                            {(entry.shortfallPallets > 0 || entry.shortfallBatteries > 0) && (
+                              <div className="px-2 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold flex items-center space-x-1">
+                                <span>-{entry.shortfallBatteries} u Short</span>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Gate-in status badge */}
-                          {entry.actualReceivedPallets < entry.invoicedPallets ? (
-                            <button
-                              onClick={() => handleConfirmFullGateIn(entry.id)}
-                              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
-                              title="Click to confirm full gate-in receipt"
-                            >
-                              <span>Pending Gate-In ({entry.actualReceivedPallets}/{entry.invoicedPallets})</span>
-                              <span className="underline ml-1 font-bold">Confirm</span>
-                            </button>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold flex items-center space-x-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>100% Received</span>
-                            </span>
-                          )}
+                          {/* Right: Actions and Status */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {/* Gate-in status badge */}
+                            {entry.actualReceivedPallets < entry.invoicedPallets ? (
+                              <button
+                                onClick={() => handleConfirmFullGateIn(entry.id)}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer"
+                                title="Click to confirm 100% gate-in receipt"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                <span>Pending ({entry.actualReceivedPallets}/{entry.invoicedPallets})</span>
+                              </button>
+                            ) : (
+                              <span className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-medium flex items-center space-x-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>100% Received</span>
+                              </span>
+                            )}
 
-                          {/* Select All for Invoice */}
-                          {availableUnits.length > 0 && (
-                            <button
-                              onClick={() => toggleSelectAllForInvoice(entry)}
-                              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                                allSelected
-                                  ? 'bg-brand-primary text-white border-brand-primary'
-                                  : 'bg-surface hover:bg-surface-secondary text-content-primary border-divider'
-                              }`}
-                            >
-                              {allSelected ? 'Deselect Invoice' : `Select All (${availableUnits.length} Plt)`}
-                            </button>
-                          )}
+                            {/* Select All */}
+                            {availableUnits.length > 0 && (
+                              <button
+                                onClick={() => toggleSelectAllForInvoice(entry)}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                                  allSelected
+                                    ? 'bg-brand-primary text-white border-brand-primary'
+                                    : 'bg-surface hover:bg-surface-secondary text-content-secondary border-divider'
+                                }`}
+                              >
+                                {allSelected ? 'Deselect' : `Select (${availableUnits.length})`}
+                              </button>
+                            )}
 
-                          {/* Dispatch (Stock-Out) Action Button */}
-                          {entry.balancePallets > 0 ? (
+                            {/* Dispatch Primary Action Button */}
+                            {entry.balancePallets > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDispatchForInvoice(entry)}
+                                className="px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-medium text-xs flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+                                title={`Dispatch ${entry.balancePallets} pallets for invoice ${entry.customInvoiceNo} (Stock-Out)`}
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                                <span>Dispatch ({entry.balancePallets})</span>
+                              </button>
+                            ) : (
+                              <span className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 text-xs font-medium flex items-center space-x-1">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Dispatched</span>
+                              </span>
+                            )}
+
+                            {/* Delete Invoice */}
                             <button
                               type="button"
-                              onClick={() => handleOpenDispatchForInvoice(entry)}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
-                              title={`Dispatch ${entry.balancePallets} pallets for invoice ${entry.customInvoiceNo} (Stock-Out)`}
+                              onClick={() => promptDeleteInvoice(entry)}
+                              className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                              title={`Delete invoice ${entry.customInvoiceNo}`}
                             >
-                              <Truck className="w-3.5 h-3.5" />
-                              <span>Dispatch ({entry.balancePallets} Plt)</span>
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 text-xs font-medium flex items-center space-x-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Dispatched ({entry.actualStuffedPallets || 0} Plt)</span>
-                            </span>
-                          )}
-
-                          {/* Delete Invoice */}
-                          <button
-                            type="button"
-                            onClick={() => promptDeleteInvoice(entry)}
-                            className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
-                            title={`Delete invoice ${entry.customInvoiceNo} and all its pallets`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Gate-In Edit Strip */}
-                      <div className="px-4 py-2 bg-slate-50 border-b border-divider text-xs flex flex-wrap items-center gap-4 text-content-secondary">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="font-medium">Carting Date:</span>
+                      {/* Docked Inline Form: Gate-In Logistics Details */}
+                      <div className="px-4 py-2 bg-slate-50/70 border-b border-divider/60 text-xs flex flex-wrap items-center gap-x-6 gap-y-2 text-content-secondary">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-content-muted font-medium">Carting Date:</span>
                           <InlineCell
                             value={entry.cartingInDate}
-                            className="w-24 bg-surface"
+                            className="w-28 bg-surface border border-divider/80 rounded px-1.5"
                             onChange={(val) => {
                               addOrUpdateCFSEntry({ ...entry, cartingInDate: val });
                               reloadEntries();
@@ -1245,11 +1287,11 @@ export function WarehouseInventoryHub({
                           />
                         </div>
 
-                        <div className="flex items-center space-x-1.5">
-                          <span className="font-medium">Vehicle No:</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-content-muted font-medium">Vehicle No:</span>
                           <InlineCell
                             value={entry.vehicleNo}
-                            className="w-28 bg-surface"
+                            className="w-28 bg-surface border border-divider/80 rounded px-1.5"
                             onChange={(val) => {
                               addOrUpdateCFSEntry({ ...entry, vehicleNo: val });
                               reloadEntries();
@@ -1257,12 +1299,12 @@ export function WarehouseInventoryHub({
                           />
                         </div>
 
-                        <div className="flex items-center space-x-1.5">
-                          <span className="font-medium">Received Pallets:</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-content-muted font-medium">Received Pallets:</span>
                           <InlineCell
                             value={entry.actualReceivedPallets}
                             type="number"
-                            className="w-14 bg-surface text-right"
+                            className="w-14 bg-surface border border-divider/80 rounded text-right px-1.5"
                             onChange={(val) => {
                               const num = parseInt(val, 10) || 0;
                               addOrUpdateCFSEntry({ ...entry, actualReceivedPallets: num });
@@ -1271,12 +1313,12 @@ export function WarehouseInventoryHub({
                           />
                         </div>
 
-                        <div className="flex items-center space-x-1.5">
-                          <span className="font-medium">Received Units:</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-content-muted font-medium">Received Units:</span>
                           <InlineCell
                             value={entry.actualReceivedBatteries}
                             type="number"
-                            className="w-16 bg-surface text-right"
+                            className="w-16 bg-surface border border-divider/80 rounded text-right px-1.5"
                             onChange={(val) => {
                               const num = parseInt(val, 10) || 0;
                               addOrUpdateCFSEntry({ ...entry, actualReceivedBatteries: num });
@@ -1286,8 +1328,9 @@ export function WarehouseInventoryHub({
                         </div>
 
                         {(entry.shortfallPallets > 0 || entry.shortfallBatteries > 0) && (
-                          <div className="text-rose-700 font-bold ml-auto">
-                            Shortfall: {entry.shortfallPallets} Plt / {entry.shortfallBatteries} Units
+                          <div className="text-rose-600 font-semibold ml-auto flex items-center space-x-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                            <span>Shortfall: {entry.shortfallPallets} Plt / {entry.shortfallBatteries} Units</span>
                           </div>
                         )}
                       </div>
