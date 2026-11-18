@@ -259,21 +259,21 @@ export function InventoryStockSelector({
             />
           </div>
 
-          {/* Status Filter Pills */}
-          <div className="flex items-center space-x-1 bg-surface-secondary p-0.5 rounded-lg border border-divider">
-            {(['ALL', 'READY', 'PENDING'] as const).map((st) => (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-                  statusFilter === st
-                    ? 'bg-surface text-brand-primary font-bold shadow-2xs'
-                    : 'text-content-secondary hover:text-content-primary'
-                }`}
-              >
-                {st === 'ALL' ? 'All' : st === 'READY' ? 'Ready in Warehouse' : 'Pending Gate-In'}
-              </button>
-            ))}
+          {/* Status Filter Dropdown */}
+          <div className="flex items-center space-x-1.5">
+            <label htmlFor="selector-status" className="text-content-secondary font-medium shrink-0">
+              Status:
+            </label>
+            <select
+              id="selector-status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
+            >
+              <option value="ALL">All</option>
+              <option value="READY">Ready in Warehouse</option>
+              <option value="PENDING">Pending Gate-In</option>
+            </select>
           </div>
         </div>
       </div>

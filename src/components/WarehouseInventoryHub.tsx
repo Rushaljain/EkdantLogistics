@@ -1015,22 +1015,22 @@ export function WarehouseInventoryHub({
               )}
             </div>
 
-            {/* Status Filter Pills for Logs (Placed right next to search where marked) */}
+            {/* Status Filter Dropdown for Logs */}
             {activeSection === 'logs' && (
-              <div className="flex items-center space-x-1 font-mono">
-                {(['ALL', 'IN_STOCK', 'DISPATCHED'] as const).map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setLogStatusFilter(st)}
-                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer font-sans text-xs ${
-                      logStatusFilter === st
-                        ? 'bg-brand-primary text-white font-semibold shadow-xs'
-                        : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
-                    }`}
-                  >
-                    {st === 'ALL' ? 'All Invoices' : st === 'IN_STOCK' ? 'In Stock' : 'Dispatched'}
-                  </button>
-                ))}
+              <div className="flex items-center space-x-1.5 text-xs">
+                <label htmlFor="log-status-select" className="text-content-secondary font-medium shrink-0">
+                  Status:
+                </label>
+                <select
+                  id="log-status-select"
+                  value={logStatusFilter}
+                  onChange={(e) => setLogStatusFilter(e.target.value as any)}
+                  className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
+                >
+                  <option value="ALL">All Invoices</option>
+                  <option value="IN_STOCK">In Stock</option>
+                  <option value="DISPATCHED">Dispatched</option>
+                </select>
               </div>
             )}
           </div>
@@ -2285,42 +2285,21 @@ export function WarehouseInventoryHub({
               </button>
             </div>
 
-            {/* Filter tabs */}
-            <div className="px-4 py-2.5 bg-surface border-b border-divider flex items-center space-x-2">
-              <span className="text-[11px] font-semibold text-content-secondary uppercase tracking-wider mr-1">Filter:</span>
-              <button
-                type="button"
-                onClick={() => setLowStockModalFilter('ALL')}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                  lowStockModalFilter === 'ALL'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-surface-secondary text-content-secondary hover:text-content-primary'
-                }`}
+            {/* Filter Dropdown */}
+            <div className="px-4 py-2.5 bg-surface border-b border-divider flex items-center space-x-2 text-xs">
+              <label htmlFor="low-nil-filter-select" className="text-content-secondary font-medium shrink-0">
+                Filter:
+              </label>
+              <select
+                id="low-nil-filter-select"
+                value={lowStockModalFilter}
+                onChange={(e) => setLowStockModalFilter(e.target.value as any)}
+                className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
               >
-                All ({kpis.lowStockCount + kpis.nilStockCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setLowStockModalFilter('NIL')}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                  lowStockModalFilter === 'NIL'
-                    ? 'bg-rose-600 text-white'
-                    : 'bg-surface-secondary text-content-secondary hover:text-content-primary'
-                }`}
-              >
-                Nil Stock ({kpis.nilStockCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setLowStockModalFilter('LOW')}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                  lowStockModalFilter === 'LOW'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-surface-secondary text-content-secondary hover:text-content-primary'
-                }`}
-              >
-                Low Stock ({kpis.lowStockCount})
-              </button>
+                <option value="ALL">All ({kpis.lowStockCount + kpis.nilStockCount})</option>
+                <option value="NIL">Nil Stock ({kpis.nilStockCount})</option>
+                <option value="LOW">Low Stock ({kpis.lowStockCount})</option>
+              </select>
             </div>
 
             <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
