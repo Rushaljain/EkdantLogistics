@@ -1,7 +1,7 @@
 // Ekdant Logistics - Inventory Stock Selector (Sprint 6)
 // Replaces raw file dropzone in Workspace with interactive customer/invoice search from active warehouse inventory
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Boxes,
   Search,
@@ -11,7 +11,7 @@ import {
   Plus
 } from 'lucide-react';
 import type { CFSLedgerEntry, ExtractedShipmentJSON } from '../types/index.ts';
-import { getCFSLedgerEntries, buildShipmentFromInventoryInvoices } from '../utils/inventoryStore.ts';
+import { getCFSLedgerEntries, buildShipmentFromInventoryInvoices, hydrateInventoryFromSupabase } from '../utils/inventoryStore.ts';
 
 interface InventoryStockSelectorProps {
   onSelectShipment: (shipment: ExtractedShipmentJSON) => void;
@@ -26,7 +26,13 @@ export function InventoryStockSelector({
   onCancel,
   isModal = false
 }: InventoryStockSelectorProps): React.JSX.Element {
-  const [entries] = useState<CFSLedgerEntry[]>(() => getCFSLedgerEntries());
+  const [entries, setEntries] = useState<CFSLedgerEntry[]>(() => getCFSLedgerEntries());
+
+  useEffect(() => {
+    hydrateInventoryFromSupabase().then(() => {
+      setEntries(getCFSLedgerEntries());
+    });
+  }, []);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');

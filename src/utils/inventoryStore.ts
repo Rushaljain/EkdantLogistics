@@ -14,9 +14,126 @@ import type {
 } from '../types/index.ts';
 import { createEmptyShipmentJSON } from '../types/index.ts';
 import { autoAllocate20GPContainers } from './manifestKeywordReference.ts';
+import { supabase, isSupabaseConfigured } from './supabaseClient.ts';
 
 export const CFS_LEDGER_STORAGE_KEY = 'ekdant_cha_cfs_ledger_v1';
-export const CFS_MOVEMENT_LOGS_STORAGE_KEY = 'ekdant_cha_movement_logs_v1';
+export const CFS_MOVEMENT_LOGS_STORAGE_KEY = 'ekdant_cha_cfs_movement_logs_v1';
+export const LEGACY_CFS_MOVEMENT_LOGS_KEY = 'ekdant_cha_movement_logs_v1';
+
+// =========================================================================
+// Sprint 7: Supabase Cloud Persistence & Cache Synchronization Engine
+// =========================================================================
+
+export type CloudSyncStatus = 'synced' | 'syncing' | 'local' | 'error';
+
+let currentCloudSyncStatus: CloudSyncStatus = isSupabaseConfigured() ? 'synced' : 'local';
+const syncListeners = new Set<(status: CloudSyncStatus) => void>();
+
+export function getCloudSyncStatus(): CloudSyncStatus {
+  return currentCloudSyncStatus;
+}
+
+export function subscribeToSyncStatus(listener: (status: CloudSyncStatus) => void): () => void {
+  syncListeners.add(listener);
+  listener(currentCloudSyncStatus);
+  return () => {
+    syncListeners.delete(listener);
+  };
+}
+
+function updateSyncStatus(status: CloudSyncStatus): void {
+  currentCloudSyncStatus = status;
+  syncListeners.forEach((l) => {
+    try {
+      l(status);
+    } catch (e) {
+      console.warn('[SyncStatus] Listener callback failed:', e);
+    }
+  });
+}
+
+// Cloud write-through mutation helpers
+export async function syncEntryToCloud(entry: CFSLedgerEntry): Promise<void> {
+  if (!supabase || !isSupabaseConfigured()) return;
+  try {
+    updateSyncStatus('syncing');
+    const { error } = await supabase.from('cfs_inventory_ledger').upsert({
+      id: entry.id,
+      custom_invoice_no: entry.customInvoiceNo || '',
+      consignee_name: entry.customer || '',
+      status: entry.remarks || 'IN_WAREHOUSE',
+      payload: entry,
+      updated_at: new Date().toISOString()
+    });
+    if (error) {
+      console.warn('[Supabase] Failed to upsert ledger entry:', error.message);
+      updateSyncStatus('error');
+    } else {
+      updateSyncStatus('synced');
+    }
+  } catch (err) {
+    console.warn('[Supabase] Error syncing ledger entry:', err);
+    updateSyncStatus('error');
+  }
+}
+
+export async function deleteEntryFromCloud(id: string): Promise<void> {
+  if (!supabase || !isSupabaseConfigured()) return;
+  try {
+    updateSyncStatus('syncing');
+    const { error } = await supabase.from('cfs_inventory_ledger').delete().eq('id', id);
+    if (error) {
+      console.warn('[Supabase] Failed to delete ledger entry:', error.message);
+      updateSyncStatus('error');
+    } else {
+      updateSyncStatus('synced');
+    }
+  } catch (err) {
+    console.warn('[Supabase] Error deleting ledger entry:', err);
+    updateSyncStatus('error');
+  }
+}
+
+export async function syncMovementLogToCloud(log: InventoryMovementRecord): Promise<void> {
+  if (!supabase || !isSupabaseConfigured()) return;
+  try {
+    updateSyncStatus('syncing');
+    const { error } = await supabase.from('cfs_movement_logs').upsert({
+      id: log.id,
+      ledger_id: log.sourceLedgerId || null,
+      direction: log.direction || 'STOCK_IN',
+      customer_name: log.customer || '',
+      payload: log,
+      created_at: log.createdAt || new Date().toISOString()
+    });
+    if (error) {
+      console.warn('[Supabase] Failed to upsert movement log:', error.message);
+      updateSyncStatus('error');
+    } else {
+      updateSyncStatus('synced');
+    }
+  } catch (err) {
+    console.warn('[Supabase] Error syncing movement log:', err);
+    updateSyncStatus('error');
+  }
+}
+
+export async function deleteMovementLogFromCloud(logId: string): Promise<void> {
+  if (!supabase || !isSupabaseConfigured()) return;
+  try {
+    updateSyncStatus('syncing');
+    const { error } = await supabase.from('cfs_movement_logs').delete().eq('id', logId);
+    if (error) {
+      console.warn('[Supabase] Failed to delete movement log:', error.message);
+      updateSyncStatus('error');
+    } else {
+      updateSyncStatus('synced');
+    }
+  } catch (err) {
+    console.warn('[Supabase] Error deleting movement log:', err);
+    updateSyncStatus('error');
+  }
+}
 
 // Month names list (Indian financial year cycle APR to MAR)
 export const CFS_MONTHS = [
@@ -191,6 +308,7 @@ export function addOrUpdateCFSEntry(entry: CFSLedgerEntry): CFSLedgerEntry {
     updatedList = [recomputed, ...existing];
   }
   saveCFSLedgerEntries(updatedList);
+  syncEntryToCloud(recomputed);
   return recomputed;
 }
 
@@ -201,6 +319,7 @@ export function deleteCFSEntry(id: string): void {
   const existing = getCFSLedgerEntries();
   const filtered = existing.filter((e) => e.id !== id);
   saveCFSLedgerEntries(filtered);
+  deleteEntryFromCloud(id);
 }
 
 /**
@@ -211,6 +330,7 @@ export function deleteCFSEntries(ids: string[]): void {
   const existing = getCFSLedgerEntries();
   const filtered = existing.filter((e) => !idSet.has(e.id));
   saveCFSLedgerEntries(filtered);
+  ids.forEach((id) => deleteEntryFromCloud(id));
 }
 
 /**
@@ -241,6 +361,7 @@ export function deletePalletFromCFSEntry(entryId: string, palletId: string): CFS
   const recomputed = recomputeCFSDerivedFields(updatedEntry);
   existing[entryIndex] = recomputed;
   saveCFSLedgerEntries(existing);
+  syncEntryToCloud(recomputed);
   return recomputed;
 }
 
@@ -283,6 +404,7 @@ export function deletePalletsFromCFS(palletIds: string[]): void {
   });
 
   saveCFSLedgerEntries(updatedList);
+  updatedList.forEach((e) => syncEntryToCloud(e));
 }
 
 /**
@@ -575,6 +697,7 @@ export function confirmStuffingDispatch(
   });
 
   saveCFSLedgerEntries(updatedEntries);
+  affectedEntries.forEach((e) => syncEntryToCloud(e));
   return { updatedEntries: affectedEntries, stuffedCount: totalStuffedCount };
 }
 
@@ -615,6 +738,13 @@ export function syncStage2FieldsToLedger(shipment: ExtractedShipmentJSON): void 
 
   if (hasChanged) {
     saveCFSLedgerEntries(updatedEntries);
+    updatedEntries.forEach((entry) => {
+      const matchesInvoice = invoiceSet.has(entry.customInvoiceNo.trim().toUpperCase());
+      const matchesContainer = Boolean(containerNo && entry.containerNo && entry.containerNo.trim().toUpperCase() === containerNo.toUpperCase());
+      if (matchesInvoice || matchesContainer) {
+        syncEntryToCloud(entry);
+      }
+    });
   }
 }
 
@@ -952,6 +1082,7 @@ export function executeWorkspaceDispatch(
   });
 
   saveCFSLedgerEntries(updatedEntries);
+  affectedEntries.forEach((e) => syncEntryToCloud(e));
   return { updatedEntries: affectedEntries, stuffedCount: totalStuffedCount };
 }
 
@@ -1541,17 +1672,21 @@ export async function importCFSExcel(file: File): Promise<{ importedCount: numbe
 export function getPersistedMovementLogs(): InventoryMovementRecord[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(CFS_MOVEMENT_LOGS_STORAGE_KEY);
+    const raw = localStorage.getItem(CFS_MOVEMENT_LOGS_STORAGE_KEY) || localStorage.getItem(LEGACY_CFS_MOVEMENT_LOGS_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
+export const getCFSMovementLogs = getPersistedMovementLogs;
+
 export function savePersistedMovementLogs(records: InventoryMovementRecord[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(CFS_MOVEMENT_LOGS_STORAGE_KEY, JSON.stringify(records));
+    const json = JSON.stringify(records);
+    localStorage.setItem(CFS_MOVEMENT_LOGS_STORAGE_KEY, json);
+    localStorage.setItem(LEGACY_CFS_MOVEMENT_LOGS_KEY, json);
   } catch (err) {
     console.error('Failed to save movement logs to localStorage:', err);
   }
@@ -1565,6 +1700,7 @@ export function recordMovementLog(record: Omit<InventoryMovementRecord, 'id' | '
   };
   const existing = getPersistedMovementLogs();
   savePersistedMovementLogs([newRecord, ...existing]);
+  syncMovementLogToCloud(newRecord);
   return newRecord;
 }
 
@@ -1594,6 +1730,7 @@ export function deleteMovementLog(logId: string): void {
   const persisted = getPersistedMovementLogs();
   const filteredPersisted = persisted.filter((l) => l.id !== logId);
   savePersistedMovementLogs(filteredPersisted);
+  deleteMovementLogFromCloud(logId);
 
   // 2. Add to deleted log IDs set
   const deleted = getDeletedMovementLogIds();
@@ -1768,4 +1905,158 @@ export function exportCFSMovementLogsXlsx(records: InventoryMovementRecord[]): v
   const today = formatToDDMMYYYY(new Date()).replace(/\./g, '-');
   XLSX.writeFile(wb, `CFS_Inventory_Logs_${today}.xlsx`);
 }
+
+// =========================================================================
+// Sprint 7: Stale-While-Revalidate Cloud Hydration & Backup / Restore Engine
+// =========================================================================
+
+export async function hydrateInventoryFromSupabase(): Promise<{
+  entries: CFSLedgerEntry[];
+  logs: InventoryMovementRecord[];
+}> {
+  if (!supabase || !isSupabaseConfigured()) {
+    updateSyncStatus('local');
+    return {
+      entries: getCFSLedgerEntries(),
+      logs: getPersistedMovementLogs()
+    };
+  }
+
+  try {
+    updateSyncStatus('syncing');
+
+    // 1. Fetch cloud ledger entries & movement logs concurrently
+    const [ledgerRes, logsRes] = await Promise.all([
+      supabase.from('cfs_inventory_ledger').select('*'),
+      supabase.from('cfs_movement_logs').select('*')
+    ]);
+
+    if (ledgerRes.error || logsRes.error) {
+      console.warn('[Supabase] Hydration fetch error:', ledgerRes.error || logsRes.error);
+      updateSyncStatus('error');
+      return {
+        entries: getCFSLedgerEntries(),
+        logs: getPersistedMovementLogs()
+      };
+    }
+
+    const localEntries = getCFSLedgerEntries();
+    const localMap = new Map<string, CFSLedgerEntry>();
+    localEntries.forEach((e) => localMap.set(e.id, e));
+
+    // Merge cloud entries: if present in cloud, merge with payload
+    if (Array.isArray(ledgerRes.data)) {
+      ledgerRes.data.forEach((row: any) => {
+        if (!row.id || !row.payload) return;
+        const cloudEntry = row.payload as CFSLedgerEntry;
+        const local = localMap.get(row.id);
+        if (!local) {
+          localMap.set(row.id, recomputeCFSDerivedFields(cloudEntry));
+        } else {
+          const cloudTime = new Date(row.updated_at || cloudEntry.createdAt || 0).getTime();
+          const localTime = new Date(local.createdAt || 0).getTime();
+          if (cloudTime >= localTime) {
+            localMap.set(row.id, recomputeCFSDerivedFields({ ...local, ...cloudEntry }));
+          }
+        }
+      });
+    }
+
+    const mergedEntries = Array.from(localMap.values());
+    saveCFSLedgerEntries(mergedEntries);
+
+    // Merge movement logs
+    const localLogs = getPersistedMovementLogs();
+    const logMap = new Map<string, InventoryMovementRecord>();
+    localLogs.forEach((l) => logMap.set(l.id, l));
+
+    if (Array.isArray(logsRes.data)) {
+      logsRes.data.forEach((row: any) => {
+        if (!row.id || !row.payload) return;
+        const cloudLog = row.payload as InventoryMovementRecord;
+        if (!logMap.has(row.id)) {
+          logMap.set(row.id, cloudLog);
+        }
+      });
+    }
+
+    const mergedLogs = Array.from(logMap.values());
+    savePersistedMovementLogs(mergedLogs);
+
+    updateSyncStatus('synced');
+    return {
+      entries: mergedEntries,
+      logs: mergedLogs
+    };
+  } catch (err) {
+    console.warn('[Supabase] Hydration caught error:', err);
+    updateSyncStatus('error');
+    return {
+      entries: getCFSLedgerEntries(),
+      logs: getPersistedMovementLogs()
+    };
+  }
+}
+
+export function exportInventoryBackupJson(): void {
+  if (typeof window === 'undefined') return;
+  const data = {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    ledgerEntries: getCFSLedgerEntries(),
+    movementLogs: getPersistedMovementLogs(),
+    deletedLogIds: getDeletedMovementLogIds()
+  };
+  const jsonStr = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ekdant_warehouse_backup_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function importInventoryBackupJson(jsonString: string): Promise<{
+  success: boolean;
+  entriesCount?: number;
+  logsCount?: number;
+  error?: string;
+}> {
+  try {
+    const data = JSON.parse(jsonString);
+    if (!data || (!Array.isArray(data.ledgerEntries) && !Array.isArray(data.movementLogs))) {
+      return { success: false, error: 'Invalid backup format. Expected ledgerEntries or movementLogs.' };
+    }
+
+    let entriesCount = 0;
+    if (Array.isArray(data.ledgerEntries)) {
+      const validEntries: CFSLedgerEntry[] = data.ledgerEntries.map((e: any) => recomputeCFSDerivedFields(e));
+      saveCFSLedgerEntries(validEntries);
+      entriesCount = validEntries.length;
+      validEntries.forEach((entry) => syncEntryToCloud(entry));
+    }
+
+    let logsCount = 0;
+    if (Array.isArray(data.movementLogs)) {
+      savePersistedMovementLogs(data.movementLogs);
+      logsCount = data.movementLogs.length;
+      data.movementLogs.forEach((log: any) => syncMovementLogToCloud(log));
+    }
+
+    if (Array.isArray(data.deletedLogIds)) {
+      saveDeletedMovementLogIds(data.deletedLogIds);
+    }
+
+    return { success: true, entriesCount, logsCount };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to parse JSON backup' };
+  }
+}
+
+// Alias for closed-loop workspace dispatch deduction
+export const deductInventoryOnDispatch = executeWorkspaceDispatch;
+
 

@@ -34,5 +34,9 @@ dist-ssr
 
 Inputs/
 Files/
+AG Test/
+Test Assets/
+*.zip
+*.bak
 
 CODEBASE_SNAPSHOT.md

@@ -110,6 +110,9 @@ export async function purgeAllWorkspaceStorage(): Promise<void> {
       const preservedKey = window.localStorage.getItem('ekdant_custom_gemini_key');
       const preservedSavedSessions = window.localStorage.getItem(STORAGE_SAVED_SESSIONS_KEY);
       const preservedLedger = window.localStorage.getItem('ekdant_cha_cfs_ledger_v1');
+      const preservedCfsMovementLogs = window.localStorage.getItem('ekdant_cha_cfs_movement_logs_v1');
+      const preservedMovementLogs = window.localStorage.getItem('ekdant_cha_movement_logs_v1');
+      const preservedDeletedLogs = window.localStorage.getItem('ekdant_cfs_deleted_logs_v1');
 
       window.localStorage.clear();
 
@@ -124,6 +127,15 @@ export async function purgeAllWorkspaceStorage(): Promise<void> {
       }
       if (preservedLedger) {
         window.localStorage.setItem('ekdant_cha_cfs_ledger_v1', preservedLedger);
+      }
+      if (preservedCfsMovementLogs) {
+        window.localStorage.setItem('ekdant_cha_cfs_movement_logs_v1', preservedCfsMovementLogs);
+      }
+      if (preservedMovementLogs) {
+        window.localStorage.setItem('ekdant_cha_movement_logs_v1', preservedMovementLogs);
+      }
+      if (preservedDeletedLogs) {
+        window.localStorage.setItem('ekdant_cfs_deleted_logs_v1', preservedDeletedLogs);
       }
     } catch (e) {
       console.warn('[StorageReset] localStorage clear failed:', e);

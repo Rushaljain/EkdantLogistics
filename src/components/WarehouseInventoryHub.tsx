@@ -1,11 +1,12 @@
 // Ekdant Logistics - Warehouse Inventory
 // Clean, simplified operator UI: 3 KPI Cards + Section Dropdown (Inventory, Monthly Live Reports, Inventory Logs)
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Boxes,
   FileSpreadsheet,
   Download,
+  Upload,
   CheckCircle2,
   ArrowRight,
   Search,
@@ -18,7 +19,8 @@ import {
   Loader2,
   Trash2,
   AlertTriangle,
-  Truck
+  Truck,
+  RefreshCw
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -43,7 +45,13 @@ import {
   getDerivedInventoryMovements,
   exportCFSMovementLogsXlsx,
   ingestShipmentToLedger,
-  deleteMovementLog
+  deleteMovementLog,
+  hydrateInventoryFromSupabase,
+  getCloudSyncStatus,
+  subscribeToSyncStatus,
+  exportInventoryBackupJson,
+  importInventoryBackupJson,
+  type CloudSyncStatus
 } from '../utils/inventoryStore.ts';
 import { parseDocumentsToJSON } from '../utils/documentParser.ts';
 
@@ -140,6 +148,50 @@ export function WarehouseInventoryHub({
   activeShipmentJson: _activeShipmentJson
 }: WarehouseInventoryHubProps): React.JSX.Element {
   const [entries, setEntries] = useState<CFSLedgerEntry[]>(() => getCFSLedgerEntries());
+
+  // Cloud Sync & Backup State
+  const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>(() => getCloudSyncStatus());
+  const [backupRestoreToast, setBackupRestoreToast] = useState<string | null>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSyncStatus((status) => {
+      setSyncStatus(status);
+    });
+
+    // Stale-While-Revalidate Cloud Hydration on mount
+    hydrateInventoryFromSupabase().then(() => {
+      setEntries(getCFSLedgerEntries());
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleExportBackup = () => {
+    exportInventoryBackupJson();
+    setBackupRestoreToast('Warehouse backup (.json) exported successfully!');
+    setTimeout(() => setBackupRestoreToast(null), 4000);
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res = await importInventoryBackupJson(text);
+      if (res.success) {
+        setEntries(getCFSLedgerEntries());
+        setBackupRestoreToast(`Restored ${res.entriesCount} ledger entries & ${res.logsCount} logs!`);
+      } else {
+        alert(res.error || 'Failed to restore backup.');
+      }
+    } catch {
+      alert('Could not read backup file.');
+    } finally {
+      if (backupInputRef.current) backupInputRef.current.value = '';
+      setTimeout(() => setBackupRestoreToast(null), 4000);
+    }
+  };
 
   // Section Selector: 'inventory' | 'reports' | 'logs'
   const [activeSection, setActiveSection] = useState<'inventory' | 'reports' | 'logs'>('inventory');
@@ -708,6 +760,16 @@ export function WarehouseInventoryHub({
 
       {/* TOP HEADER */}
       <header className="bg-surface border-b border-divider shrink-0 z-20 shadow-xs">
+        {/* Backup / Restore Toast Banner */}
+        {backupRestoreToast && (
+          <div className="bg-blue-600 text-white px-4 py-1.5 text-xs flex items-center justify-between shadow-xs animate-fade-in">
+            <span className="font-medium">{backupRestoreToast}</span>
+            <button onClick={() => setBackupRestoreToast(null)} className="text-white hover:opacity-80 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Real-time Upload Banner */}
         {uploadBannerState !== 'idle' && (
           <div className="bg-emerald-600 text-white px-4 py-2 text-xs flex items-center justify-between animate-fade-in shadow-inner">
@@ -730,12 +792,60 @@ export function WarehouseInventoryHub({
               Warehouse
             </h1>
             <span className="text-divider">•</span>
-            <span className="text-xs text-content-secondary font-medium">
+            <span className="text-xs text-content-secondary font-medium hidden md:inline">
               {activeStockInvoices.length} active invoices • {availablePalletUnits.length} available pallets on floor
             </span>
+
+            {/* Live Cloud Sync / Local Cache Indicator */}
+            {syncStatus === 'synced' ? (
+              <span className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Cloud Synced</span>
+              </span>
+            ) : syncStatus === 'syncing' ? (
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                <span>Syncing...</span>
+              </span>
+            ) : syncStatus === 'error' ? (
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="Cloud unreachable - reading & writing to instant local cache">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <span>Local Cache</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200" title="Running in instant offline local cache">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                <span>Local Cache</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Offline Backup & Restore Controls */}
+            <input
+              ref={backupInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImportBackup}
+              className="hidden"
+            />
+            <button
+              onClick={handleExportBackup}
+              className="px-2.5 py-1.5 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary hover:text-content-primary text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer"
+              title="Download full warehouse JSON backup"
+            >
+              <Download className="w-3 h-3" />
+              <span className="hidden sm:inline">Backup</span>
+            </button>
+            <button
+              onClick={() => backupInputRef.current?.click()}
+              className="px-2.5 py-1.5 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary hover:text-content-primary text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer"
+              title="Restore warehouse from JSON backup"
+            >
+              <Upload className="w-3 h-3" />
+              <span className="hidden sm:inline">Restore</span>
+            </button>
+
             {/* Prominent Upload Invoice to Inventory (Stock-In) Button */}
             <button
               onClick={() => invoiceInputRef.current?.click()}
