@@ -55,8 +55,8 @@ import { WarehouseInventoryHub } from './components/WarehouseInventoryHub.tsx';
 import { getCFSLedgerEntries, syncStage2FieldsToLedger } from './utils/inventoryStore.ts';
 
 export function App(): React.JSX.Element {
-  // Navigation & Shell State
-  const [activePage, setActivePage] = useState<PageId>('workspace');
+  // Navigation & Shell State - Default to Warehouse as primary page
+  const [activePage, setActivePage] = useState<PageId>('inventory');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [_mode, setMode] = useState<UploadMode | ''>('SINGLE_INVOICE');
 

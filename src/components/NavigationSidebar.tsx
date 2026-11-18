@@ -37,18 +37,18 @@ export function NavigationSidebar({
 }: NavigationSidebarProps): React.JSX.Element {
   const navItems = [
     {
-      id: 'workspace' as PageId,
-      label: 'Dispatch Tool',
-      icon: Layers,
-      description: 'Operational 3-panel processor',
-      badge: null
-    },
-    {
       id: 'inventory' as PageId,
       label: 'Warehouse',
       icon: Warehouse,
       description: 'CFS Carting & Stock Report',
       badge: inventoryCount && inventoryCount > 0 ? String(inventoryCount) : null
+    },
+    {
+      id: 'workspace' as PageId,
+      label: 'Dispatch Tool',
+      icon: Layers,
+      description: 'Operational 3-panel processor',
+      badge: null
     }
   ];
 
