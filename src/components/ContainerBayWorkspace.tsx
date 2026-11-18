@@ -157,6 +157,38 @@ export function ContainerBayWorkspace({
     return map;
   });
 
+  // Explicit slot order per container: containerId -> array of (palletNumber | null) of size specs.maxPallets
+  const [containerSlotMap, setContainerSlotMap] = useState<Record<string, (string | null)[]>>(() => {
+    const initialSlotState: Record<string, (string | null)[]> = {};
+    initialContainers.forEach((cont) => {
+      const slots: (string | null)[] = Array(22).fill(null);
+      let slotIdx = 0;
+      if (cont.palletIndices && cont.palletIndices.length > 0) {
+        cont.palletIndices.forEach((pIdx) => {
+          const p = initialPallets[pIdx];
+          if (p && slotIdx < 22) {
+            slots[slotIdx++] = p.palletNumber;
+          }
+        });
+      }
+      initialSlotState[cont.id] = slots;
+    });
+
+    // Allocate any mapped pallets into their container's slots
+    initialPallets.forEach((p) => {
+      // Find where p is allocated
+      initialContainers.forEach((cont) => {
+        const slots = initialSlotState[cont.id] || Array(22).fill(null);
+        if (!slots.includes(p.palletNumber)) {
+          // If palletAllocationMap will have it here
+          // We'll let the synchronization helper reconcile
+        }
+      });
+    });
+
+    return initialSlotState;
+  });
+
   const [, setHasSynced] = useState<boolean>(false);
   const [showAddMenu, setShowAddMenu] = useState<boolean>(false);
 
@@ -212,11 +244,74 @@ export function ContainerBayWorkspace({
       }
       return next;
     });
+
+    // Also update containerSlotMap
+    setContainerSlotMap((prevSlots) => {
+      const nextSlots = { ...prevSlots };
+      // Remove pallet from all container slots first
+      Object.keys(nextSlots).forEach((cId) => {
+        nextSlots[cId] = (nextSlots[cId] || []).map((p) => (p === palletNumber ? null : p));
+      });
+
+      if (targetContainerId) {
+        const slots = [...(nextSlots[targetContainerId] || Array(22).fill(null))];
+        const emptyIdx = slots.indexOf(null);
+        if (emptyIdx !== -1) {
+          slots[emptyIdx] = palletNumber;
+          nextSlots[targetContainerId] = slots;
+        }
+      }
+      return nextSlots;
+    });
+  };
+
+  // Place or swap a pallet directly onto a specific slot in the active container
+  const handleDropOnSlot = (targetSlotIdx: number, pNum: string) => {
+    if (!pNum) return;
+    const targetContId = activeContainer.id;
+
+    setPalletAllocationMap((prev) => ({
+      ...prev,
+      [pNum]: targetContId
+    }));
+
+    setContainerSlotMap((prev) => {
+      const next = { ...prev };
+      // Clean pNum from all containers
+      Object.keys(next).forEach((cId) => {
+        next[cId] = (next[cId] || []).map((p) => (p === pNum ? null : p));
+      });
+
+      const activeSlots = [...(next[targetContId] || Array(22).fill(null))];
+      while (activeSlots.length < 22) activeSlots.push(null);
+
+      // What was in this slot?
+      const existingPalletInSlot = activeSlots[targetSlotIdx];
+
+      if (existingPalletInSlot && existingPalletInSlot !== pNum) {
+        // Find if pNum had an old slot in active container to swap, otherwise find first empty slot for existingPallet
+        const oldSlotIdx = activeSlots.indexOf(pNum);
+        if (oldSlotIdx !== -1) {
+          activeSlots[oldSlotIdx] = existingPalletInSlot;
+        } else {
+          const firstEmpty = activeSlots.findIndex((item, i) => item === null && i !== targetSlotIdx);
+          if (firstEmpty !== -1) {
+            activeSlots[firstEmpty] = existingPalletInSlot;
+          }
+        }
+      }
+
+      activeSlots[targetSlotIdx] = pNum;
+      next[targetContId] = activeSlots;
+      return next;
+    });
   };
 
   // Drag and drop states
   const [draggedPalletNumber, setDraggedPalletNumber] = useState<string | null>(null);
   const [dragOverContainerId, setDragOverContainerId] = useState<string | null>(null);
+  const [dragOverSlotIdx, setDragOverSlotIdx] = useState<number | null>(null);
+  const [isDragOverPalletList, setIsDragOverPalletList] = useState<boolean>(false);
   const containerTabsRef = useRef<HTMLDivElement | null>(null);
   const autoScrollTimerRef = useRef<number | null>(null);
 
@@ -383,6 +478,41 @@ export function ContainerBayWorkspace({
   const allocatedPalletsList = useMemo(() => {
     return pallets.filter((p) => palletAllocationMap[p.palletNumber] === activeContainer.id);
   }, [pallets, palletAllocationMap, activeContainer.id]);
+
+  // Derived array of exactly specs.maxPallets items for active container slots (preserving custom order)
+  const activeContainerSlots = useMemo(() => {
+    const max = specs.maxPallets;
+    const storedSlots = containerSlotMap[activeContainer.id] || [];
+    const result: (ExtractedPallet | null)[] = Array(max).fill(null);
+    const allocatedMap = new Map(allocatedPalletsList.map((p) => [p.palletNumber, p]));
+    const placedPallets = new Set<string>();
+
+    // 1. Fill slots based on stored slots if pallet is still allocated to this container
+    for (let i = 0; i < max; i++) {
+      const pNum = storedSlots[i];
+      if (pNum && allocatedMap.has(pNum)) {
+        result[i] = allocatedMap.get(pNum)!;
+        placedPallets.add(pNum);
+      }
+    }
+
+    // 2. Any allocated pallet that hasn't been placed in a slot gets the next available empty slot
+    let nextEmpty = 0;
+    allocatedPalletsList.forEach((p) => {
+      if (!placedPallets.has(p.palletNumber)) {
+        while (nextEmpty < max && result[nextEmpty] !== null) {
+          nextEmpty++;
+        }
+        if (nextEmpty < max) {
+          result[nextEmpty] = p;
+          placedPallets.add(p.palletNumber);
+          nextEmpty++;
+        }
+      }
+    });
+
+    return result;
+  }, [specs.maxPallets, containerSlotMap, activeContainer.id, allocatedPalletsList]);
 
   const allAllocatedPallets = useMemo(() => {
     return pallets.filter((p) => Boolean(palletAllocationMap[p.palletNumber]));
@@ -653,7 +783,31 @@ export function ContainerBayWorkspace({
         {/* =========================================================================
             LEFT COLUMN: Pallets & Cargo Inventory (5 Cols)
             ========================================================================= */}
-        <div className="lg:col-span-5 bg-surface border border-divider rounded-2xl p-4 space-y-3.5 shadow-sm">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (!isDragOverPalletList) setIsDragOverPalletList(true);
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setIsDragOverPalletList(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragOverPalletList(false);
+            const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
+            if (pNum) {
+              movePalletToContainer(pNum, null);
+            }
+            setDraggedPalletNumber(null);
+          }}
+          className={`lg:col-span-5 bg-surface border rounded-2xl p-4 space-y-3.5 shadow-sm transition-all ${
+            isDragOverPalletList
+              ? 'border-brand-primary ring-2 ring-brand-primary/30 bg-brand-primary-soft/20'
+              : 'border-divider'
+          }`}
+        >
           <div className="flex items-center justify-between pb-3 border-b border-divider">
             <div>
               <h3 className="text-xs font-bold text-content-primary uppercase tracking-wider">
@@ -1060,6 +1214,7 @@ export function ContainerBayWorkspace({
                 }
                 setDraggedPalletNumber(null);
                 setDragOverContainerId(null);
+                setDragOverSlotIdx(null);
               }}
               className="p-4 bg-surface-secondary border border-divider rounded-xl transition-colors hover:border-brand-primary/40"
             >
@@ -1069,21 +1224,59 @@ export function ContainerBayWorkspace({
                 <span>&larr; NOSE / FRONT</span>
               </div>
 
-              {/* 2 Rows representing container interior */}
+              {/* 2 Rows representing container interior with Drag & Drop Slot Reordering */}
               <div className="space-y-1.5">
+                {/* Top Row: Slots 0 to 10 (Slots 1 to 11) */}
                 <div className="grid grid-cols-11 sm:grid-cols-12 gap-1.5">
                   {Array.from({ length: Math.ceil(specs.maxPallets / 2) }).map((_, slotIdx) => {
-                    const pallet = allocatedPalletsList[slotIdx];
+                    const pallet = activeContainerSlots[slotIdx];
+                    const isDragTarget = dragOverSlotIdx === slotIdx;
                     return (
                       <div
                         key={`top-${slotIdx}`}
-                        onClick={() => pallet && togglePalletAllocation(pallet.palletNumber)}
-                        className={`h-12 rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all cursor-pointer ${
-                          pallet
-                            ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary'
+                        draggable={Boolean(pallet)}
+                        onDragStart={(e) => {
+                          if (!pallet) return;
+                          setDraggedPalletNumber(pallet.palletNumber);
+                          e.dataTransfer.setData('text/plain', pallet.palletNumber);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={() => {
+                          setDraggedPalletNumber(null);
+                          setDragOverSlotIdx(null);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.dataTransfer.dropEffect = 'move';
+                          if (dragOverSlotIdx !== slotIdx) {
+                            setDragOverSlotIdx(slotIdx);
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                          if (dragOverSlotIdx === slotIdx) {
+                            setDragOverSlotIdx(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
+                          if (pNum) {
+                            handleDropOnSlot(slotIdx, pNum);
+                          }
+                          setDragOverSlotIdx(null);
+                          setDraggedPalletNumber(null);
+                        }}
+                        className={`group relative h-12 rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all select-none ${
+                          isDragTarget
+                            ? 'ring-2 ring-brand-primary border-brand-primary bg-brand-primary-soft scale-102 shadow-md'
+                            : pallet
+                            ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary cursor-grab active:cursor-grabbing'
                             : 'bg-surface border-dashed border-divider text-content-muted hover:border-brand-primary/40'
                         }`}
-                        title={pallet ? `Click to unallocate ${pallet.palletNumber}` : `Empty Slot ${slotIdx + 1}`}
+                        title={pallet ? `Pallet ${pallet.palletNumber} (Slot ${slotIdx + 1}) - Drag to reorder, move or unallocate` : `Empty Slot ${slotIdx + 1} - Drag pallet here`}
                       >
                         {pallet ? (
                           <>
@@ -1093,6 +1286,18 @@ export function ContainerBayWorkspace({
                             <span className="text-[8px] font-mono text-content-secondary">
                               {pallet.grossWeightKg}k
                             </span>
+                            {/* Explicit Unallocate Action on hover */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                movePalletToContainer(pallet.palletNumber, null);
+                              }}
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-surface border border-divider text-content-muted hover:text-state-error hover:border-state-error/40 items-center justify-center shadow-xs transition-opacity hidden group-hover:flex"
+                              title={`Unallocate ${pallet.palletNumber}`}
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
                           </>
                         ) : (
                           <span className="text-[8px] font-mono text-content-muted">Slot {slotIdx + 1}</span>
@@ -1102,20 +1307,58 @@ export function ContainerBayWorkspace({
                   })}
                 </div>
 
+                {/* Bottom Row: Slots 11 to 21 (Slots 12 to 22) */}
                 <div className="grid grid-cols-11 sm:grid-cols-12 gap-1.5">
                   {Array.from({ length: Math.floor(specs.maxPallets / 2) }).map((_, slotIdx) => {
                     const actualIdx = Math.ceil(specs.maxPallets / 2) + slotIdx;
-                    const pallet = allocatedPalletsList[actualIdx];
+                    const pallet = activeContainerSlots[actualIdx];
+                    const isDragTarget = dragOverSlotIdx === actualIdx;
                     return (
                       <div
                         key={`bot-${slotIdx}`}
-                        onClick={() => pallet && togglePalletAllocation(pallet.palletNumber)}
-                        className={`h-12 rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all cursor-pointer ${
-                          pallet
-                            ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary'
+                        draggable={Boolean(pallet)}
+                        onDragStart={(e) => {
+                          if (!pallet) return;
+                          setDraggedPalletNumber(pallet.palletNumber);
+                          e.dataTransfer.setData('text/plain', pallet.palletNumber);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={() => {
+                          setDraggedPalletNumber(null);
+                          setDragOverSlotIdx(null);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.dataTransfer.dropEffect = 'move';
+                          if (dragOverSlotIdx !== actualIdx) {
+                            setDragOverSlotIdx(actualIdx);
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                          if (dragOverSlotIdx === actualIdx) {
+                            setDragOverSlotIdx(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
+                          if (pNum) {
+                            handleDropOnSlot(actualIdx, pNum);
+                          }
+                          setDragOverSlotIdx(null);
+                          setDraggedPalletNumber(null);
+                        }}
+                        className={`group relative h-12 rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all select-none ${
+                          isDragTarget
+                            ? 'ring-2 ring-brand-primary border-brand-primary bg-brand-primary-soft scale-102 shadow-md'
+                            : pallet
+                            ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary cursor-grab active:cursor-grabbing'
                             : 'bg-surface border-dashed border-divider text-content-muted hover:border-brand-primary/40'
                         }`}
-                        title={pallet ? `Click to unallocate ${pallet.palletNumber}` : `Empty Slot ${actualIdx + 1}`}
+                        title={pallet ? `Pallet ${pallet.palletNumber} (Slot ${actualIdx + 1}) - Drag to reorder, move or unallocate` : `Empty Slot ${actualIdx + 1} - Drag pallet here`}
                       >
                         {pallet ? (
                           <>
@@ -1125,6 +1368,18 @@ export function ContainerBayWorkspace({
                             <span className="text-[8px] font-mono text-content-secondary">
                               {pallet.grossWeightKg}k
                             </span>
+                            {/* Explicit Unallocate Action on hover */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                movePalletToContainer(pallet.palletNumber, null);
+                              }}
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-surface border border-divider text-content-muted hover:text-state-error hover:border-state-error/40 items-center justify-center shadow-xs transition-opacity hidden group-hover:flex"
+                              title={`Unallocate ${pallet.palletNumber}`}
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
                           </>
                         ) : (
                           <span className="text-[8px] font-mono text-content-muted">Slot {actualIdx + 1}</span>
