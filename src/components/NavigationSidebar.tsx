@@ -1,8 +1,6 @@
 import React from 'react';
 import {
   Layers,
-  Files,
-  SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
   Boxes,
@@ -30,8 +28,8 @@ interface NavigationSidebarProps {
 export function NavigationSidebar({
   activePage,
   onSelectPage,
-  filesCount,
-  formatsCount,
+  filesCount: _filesCount,
+  formatsCount: _formatsCount,
   inventoryCount,
   isCollapsed,
   onToggleCollapse,
@@ -51,20 +49,6 @@ export function NavigationSidebar({
       icon: Warehouse,
       description: 'CFS Carting & Stock Report',
       badge: inventoryCount && inventoryCount > 0 ? String(inventoryCount) : null
-    },
-    {
-      id: 'files' as PageId,
-      label: 'Files',
-      icon: Files,
-      description: 'Uploaded document repository',
-      badge: filesCount > 0 ? String(filesCount) : null
-    },
-    {
-      id: 'formats' as PageId,
-      label: 'Format Adder',
-      icon: SlidersHorizontal,
-      description: 'Carrier manifest schemas',
-      badge: formatsCount > 0 ? String(formatsCount) : null
     }
   ];
 
