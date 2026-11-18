@@ -16,7 +16,9 @@ import {
   Printer,
   History,
   Plus,
-  Loader2
+  Loader2,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -28,6 +30,9 @@ import {
   type CFSMonth,
   getCFSLedgerEntries,
   addOrUpdateCFSEntry,
+  deleteCFSEntry,
+  deletePalletFromCFSEntry,
+  deletePalletsFromCFS,
   confirmFullGateIn,
   updatePalletReceivedQuantity,
   confirmStuffingDispatch,
@@ -472,6 +477,78 @@ export function WarehouseInventoryHub({
     }
   };
 
+  // Deletion Confirmation Modal State & Handlers
+  const [itemToDelete, setItemToDelete] = useState<{
+    type: 'invoice' | 'pallet' | 'selected_pallets';
+    id?: string;
+    palletId?: string;
+    title: string;
+    description: string;
+  } | null>(null);
+
+  const promptDeleteInvoice = (entry: CFSLedgerEntry) => {
+    setItemToDelete({
+      type: 'invoice',
+      id: entry.id,
+      title: `Delete Invoice ${entry.customInvoiceNo}?`,
+      description: `This will permanently remove invoice ${entry.customInvoiceNo} and its ${entry.pallets?.length || entry.invoicedPallets} pallets for ${entry.customer} from warehouse inventory.`
+    });
+  };
+
+  const promptDeletePallet = (entry: CFSLedgerEntry, pallet: PalletStockUnit) => {
+    setItemToDelete({
+      type: 'pallet',
+      id: entry.id,
+      palletId: pallet.id,
+      title: `Delete Pallet #${pallet.palletNumber}?`,
+      description: `This will remove pallet #${pallet.palletNumber} (${pallet.receivedBatteries || pallet.invoicedBatteries} units, ${pallet.grossWeightKg} kg) from invoice ${entry.customInvoiceNo}.`
+    });
+  };
+
+  const promptDeleteSelectedPallets = () => {
+    if (selectedPalletIds.size === 0) return;
+    setItemToDelete({
+      type: 'selected_pallets',
+      title: `Delete ${selectedPalletIds.size} Selected Pallets?`,
+      description: `This will permanently remove ${selectedPalletIds.size} selected pallets (${selectedPalletsStats.batteries} units, ${selectedPalletsStats.grossKg} kg) from active warehouse inventory.`
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!itemToDelete) return;
+    if (itemToDelete.type === 'invoice' && itemToDelete.id) {
+      const entryId = itemToDelete.id;
+      const deletedEntry = entries.find((e) => e.id === entryId);
+      deleteCFSEntry(entryId);
+      if (deletedEntry) {
+        setSelectedPalletIds((prev) => {
+          const next = new Set(prev);
+          (deletedEntry.pallets || []).forEach((p) => next.delete(p.id));
+          if (next.size === 0) setSelectedDispatchCustomer('');
+          return next;
+        });
+      }
+      showToast('Invoice deleted from inventory.');
+    } else if (itemToDelete.type === 'pallet' && itemToDelete.id && itemToDelete.palletId) {
+      deletePalletFromCFSEntry(itemToDelete.id, itemToDelete.palletId);
+      setSelectedPalletIds((prev) => {
+        const next = new Set(prev);
+        next.delete(itemToDelete.palletId!);
+        if (next.size === 0) setSelectedDispatchCustomer('');
+        return next;
+      });
+      showToast('Pallet deleted from inventory.');
+    } else if (itemToDelete.type === 'selected_pallets') {
+      const ids = Array.from(selectedPalletIds);
+      deletePalletsFromCFS(ids);
+      setSelectedPalletIds(new Set());
+      setSelectedDispatchCustomer('');
+      showToast(`Deleted ${ids.length} pallets from inventory.`);
+    }
+    setItemToDelete(null);
+    reloadEntries();
+  };
+
   // Action: Excel Import
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -906,6 +983,16 @@ export function WarehouseInventoryHub({
                               {allSelected ? 'Deselect Invoice' : `Select All (${availableUnits.length} Plt)`}
                             </button>
                           )}
+
+                          {/* Delete Invoice */}
+                          <button
+                            type="button"
+                            onClick={() => promptDeleteInvoice(entry)}
+                            className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                            title={`Delete invoice ${entry.customInvoiceNo} and all its pallets`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
@@ -1016,9 +1103,24 @@ export function WarehouseInventoryHub({
                                         PLT #{pallet.palletNumber}
                                       </span>
                                     </div>
-                                    <span className="text-[10px] px-1 py-0.2 rounded bg-surface-secondary border border-divider text-content-secondary truncate max-w-[70px]">
-                                      {pallet.model}
-                                    </span>
+                                    <div className="flex items-center space-x-1">
+                                      <span className="text-[10px] px-1 py-0.2 rounded bg-surface-secondary border border-divider text-content-secondary truncate max-w-[70px]">
+                                        {pallet.model}
+                                      </span>
+                                      {!isStuffed && (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            promptDeletePallet(entry, pallet);
+                                          }}
+                                          className="p-0.5 rounded text-content-muted hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                          title={`Delete Pallet #${pallet.palletNumber}`}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
 
                                   <div className="mt-1 flex items-center justify-between text-[11px]">
@@ -1073,6 +1175,16 @@ export function WarehouseInventoryHub({
                     className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-secondary border border-divider cursor-pointer"
                   >
                     Clear
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={promptDeleteSelectedPallets}
+                    className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold flex items-center space-x-1.5 cursor-pointer shadow-xs transition-colors"
+                    title="Delete selected pallets from inventory"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Selected ({selectedPalletsStats.count})</span>
                   </button>
 
                   <button
@@ -1918,6 +2030,49 @@ export function WarehouseInventoryHub({
                 className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
                 Confirm Dispatch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-surface border border-divider rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4 animate-scale-in">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-2 rounded-lg bg-rose-50 border border-rose-200">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <h3 className="text-sm font-bold text-content-primary">
+                {itemToDelete.title}
+              </h3>
+            </div>
+
+            <p className="text-xs text-content-secondary leading-relaxed">
+              {itemToDelete.description}
+            </p>
+
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start space-x-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <span>This action will permanently delete these items from warehouse inventory and cannot be undone.</span>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-divider">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirm Delete</span>
               </button>
             </div>
           </div>

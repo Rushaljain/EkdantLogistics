@@ -203,6 +203,88 @@ export function deleteCFSEntry(id: string): void {
 }
 
 /**
+ * Deletes multiple entries by IDs
+ */
+export function deleteCFSEntries(ids: string[]): void {
+  const idSet = new Set(ids);
+  const existing = getCFSLedgerEntries();
+  const filtered = existing.filter((e) => !idSet.has(e.id));
+  saveCFSLedgerEntries(filtered);
+}
+
+/**
+ * Deletes a specific pallet from an entry and updates the entry's counts
+ */
+export function deletePalletFromCFSEntry(entryId: string, palletId: string): CFSLedgerEntry | null {
+  const existing = getCFSLedgerEntries();
+  const entryIndex = existing.findIndex((e) => e.id === entryId);
+  if (entryIndex === -1) return null;
+
+  const entry = existing[entryIndex];
+  const targetPallet = (entry.pallets || []).find((p) => p.id === palletId);
+  const updatedPallets = (entry.pallets || []).filter((p) => p.id !== palletId);
+
+  const removedUnits = targetPallet?.receivedBatteries || targetPallet?.invoicedBatteries || 0;
+  const removedGrossKg = targetPallet?.grossWeightKg || 0;
+
+  const updatedEntry: CFSLedgerEntry = {
+    ...entry,
+    pallets: updatedPallets,
+    invoicedPallets: Math.max(0, (entry.invoicedPallets || 0) - 1),
+    actualReceivedPallets: Math.max(0, (entry.actualReceivedPallets || 0) - 1),
+    invoicedBatteries: Math.max(0, (entry.invoicedBatteries || 0) - removedUnits),
+    actualReceivedBatteries: Math.max(0, (entry.actualReceivedBatteries || 0) - removedUnits),
+    invoicedGrossWeightKg: Math.max(0, (entry.invoicedGrossWeightKg || 0) - removedGrossKg)
+  };
+
+  const recomputed = recomputeCFSDerivedFields(updatedEntry);
+  existing[entryIndex] = recomputed;
+  saveCFSLedgerEntries(existing);
+  return recomputed;
+}
+
+/**
+ * Deletes multiple pallets across entries
+ */
+export function deletePalletsFromCFS(palletIds: string[]): void {
+  const palletIdSet = new Set(palletIds);
+  const existing = getCFSLedgerEntries();
+
+  const updatedList = existing.map((entry) => {
+    const hasPalletsToRemove = (entry.pallets || []).some((p) => palletIdSet.has(p.id));
+    if (!hasPalletsToRemove) return entry;
+
+    let removedPalletsCount = 0;
+    let removedUnits = 0;
+    let removedGrossKg = 0;
+
+    const remainingPallets = (entry.pallets || []).filter((p) => {
+      if (palletIdSet.has(p.id)) {
+        removedPalletsCount++;
+        removedUnits += p.receivedBatteries || p.invoicedBatteries || 0;
+        removedGrossKg += p.grossWeightKg || 0;
+        return false;
+      }
+      return true;
+    });
+
+    const updatedEntry: CFSLedgerEntry = {
+      ...entry,
+      pallets: remainingPallets,
+      invoicedPallets: Math.max(0, (entry.invoicedPallets || 0) - removedPalletsCount),
+      actualReceivedPallets: Math.max(0, (entry.actualReceivedPallets || 0) - removedPalletsCount),
+      invoicedBatteries: Math.max(0, (entry.invoicedBatteries || 0) - removedUnits),
+      actualReceivedBatteries: Math.max(0, (entry.actualReceivedBatteries || 0) - removedUnits),
+      invoicedGrossWeightKg: Math.max(0, (entry.invoicedGrossWeightKg || 0) - removedGrossKg)
+    };
+
+    return recomputeCFSDerivedFields(updatedEntry);
+  });
+
+  saveCFSLedgerEntries(updatedList);
+}
+
+/**
  * Auto-populates CFS Ledger entries from an extracted shipment JSON (Zero Manual Entry).
  * Splits multi-invoice shipments into invoice-level ledger rows while preserving pallet units.
  */
