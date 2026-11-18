@@ -721,7 +721,7 @@ export function WarehouseInventoryHub({
         <div className="h-12 px-4 sm:px-6 flex items-center justify-between border-b border-divider/60">
           <div>
             <h1 className="text-sm font-bold text-content-primary tracking-tight">
-              Warehouse Inventory
+              Warehouse
             </h1>
           </div>
 
