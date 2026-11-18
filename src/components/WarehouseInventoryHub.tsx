@@ -799,10 +799,10 @@ export function WarehouseInventoryHub({
                 </div>
                 <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
                   <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
-                    Weight
+                    Weight (kg)
                   </span>
-                  <span className="text-xs sm:text-sm font-bold text-content-primary leading-tight font-mono whitespace-nowrap" title={`${kpis.totalBalanceGrossKg.toLocaleString()} kg`}>
-                    {kpis.totalBalanceGrossKg.toLocaleString()} <span className="text-[10px] font-normal text-content-muted">kg</span>
+                  <span className="text-sm sm:text-base font-bold text-content-primary leading-tight font-mono whitespace-nowrap" title={`${kpis.totalBalanceGrossKg.toLocaleString()} kg`}>
+                    {kpis.totalBalanceGrossKg.toLocaleString()}
                   </span>
                 </div>
               </div>
