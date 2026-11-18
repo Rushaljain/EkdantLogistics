@@ -1033,7 +1033,7 @@ export function ContainerBayWorkspace({
   }, [registerSyncHandler]);
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-5 pb-8">
+    <div className="w-full max-w-[1700px] mx-auto space-y-6 pb-36 px-1 sm:px-2">
       {/* Top Header */}
       <div className="p-4 bg-surface border border-divider rounded-2xl shadow-sm flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -1206,7 +1206,7 @@ export function ContainerBayWorkspace({
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                      <div className="flex items-center space-x-2 flex-wrap gap-1.5">
                         <GripVertical className="w-3.5 h-3.5 text-content-muted shrink-0 cursor-grab active:cursor-grabbing" />
                         <input
                           type="checkbox"
@@ -1219,7 +1219,7 @@ export function ContainerBayWorkspace({
                         </span>
                         {p.modelCode && (
                           <span
-                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-surface border-divider text-content-primary truncate max-w-[130px] shrink-0"
+                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-surface border-divider text-content-primary whitespace-nowrap shrink-0"
                             title={p.modelCode}
                           >
                             {p.modelCode}
@@ -1227,7 +1227,7 @@ export function ContainerBayWorkspace({
                         )}
                         {cardBrand && (
                           <span
-                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200/90 dark:border-slate-700 truncate max-w-[130px] shrink-0"
+                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200/90 dark:border-slate-700 whitespace-nowrap shrink-0"
                             title={`Brand: ${cardBrand}`}
                           >
                             {cardBrand}
@@ -1235,7 +1235,7 @@ export function ContainerBayWorkspace({
                         )}
                         {cardInvoice && (
                           <span
-                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/70 dark:border-indigo-800/60 truncate max-w-[130px] shrink-0"
+                            className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/70 dark:border-indigo-800/60 whitespace-nowrap shrink-0"
                             title={`Invoice: ${cardInvoice}`}
                           >
                             {cardInvoice.toUpperCase().startsWith('INV') ? cardInvoice : `INV: ${cardInvoice}`}
@@ -1495,168 +1495,170 @@ export function ContainerBayWorkspace({
               </div>
 
               {/* 2 Rows representing container interior with Drag & Drop Slot Reordering */}
-              <div className="space-y-1.5">
-                {/* Top Row: Slots 0 to 10 (Slots 1 to 11) */}
-                <div className="grid grid-cols-11 sm:grid-cols-12 gap-1.5">
-                  {Array.from({ length: Math.ceil(specs.maxPallets / 2) }).map((_, slotIdx) => {
-                    const pallet = activeContainerSlots[slotIdx];
-                    const isDragTarget = dragOverSlotIdx === slotIdx;
-                    return (
-                      <div
-                        key={`top-${slotIdx}`}
-                        draggable={Boolean(pallet)}
-                        onDragStart={(e) => {
-                          if (!pallet) return;
-                          setDraggedPalletNumber(pallet.palletNumber);
-                          e.dataTransfer.setData('text/plain', pallet.palletNumber);
-                          e.dataTransfer.effectAllowed = 'move';
-                        }}
-                        onDragEnd={() => {
-                          setDraggedPalletNumber(null);
-                          setDragOverSlotIdx(null);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.dataTransfer.dropEffect = 'move';
-                          if (dragOverSlotIdx !== slotIdx) {
-                            setDragOverSlotIdx(slotIdx);
-                          }
-                        }}
-                        onDragLeave={(e) => {
-                          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-                          if (dragOverSlotIdx === slotIdx) {
+              <div className="overflow-x-auto pb-1.5 custom-horizontal-scrollbar">
+                <div className="min-w-[660px] space-y-2">
+                  {/* Top Row: Slots 0 to 10 (Slots 1 to 11) */}
+                  <div className="grid grid-cols-11 gap-1.5">
+                    {Array.from({ length: Math.ceil(specs.maxPallets / 2) }).map((_, slotIdx) => {
+                      const pallet = activeContainerSlots[slotIdx];
+                      const isDragTarget = dragOverSlotIdx === slotIdx;
+                      return (
+                        <div
+                          key={`top-${slotIdx}`}
+                          draggable={Boolean(pallet)}
+                          onDragStart={(e) => {
+                            if (!pallet) return;
+                            setDraggedPalletNumber(pallet.palletNumber);
+                            e.dataTransfer.setData('text/plain', pallet.palletNumber);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => {
+                            setDraggedPalletNumber(null);
                             setDragOverSlotIdx(null);
-                          }
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
-                          if (pNum) {
-                            handleDropOnSlot(slotIdx, pNum);
-                          }
-                          setDragOverSlotIdx(null);
-                          setDraggedPalletNumber(null);
-                        }}
-                        className={`group relative h-12 rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all select-none ${
-                          isDragTarget
-                            ? 'ring-2 ring-brand-primary border-brand-primary bg-brand-primary-soft scale-102 shadow-md'
-                            : pallet
-                            ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary cursor-grab active:cursor-grabbing'
-                            : 'bg-surface border-dashed border-divider text-content-muted hover:border-brand-primary/40'
-                        }`}
-                        title={pallet ? `Pallet ${pallet.palletNumber} (Slot ${slotIdx + 1}) - Drag to reorder, move or unallocate` : `Empty Slot ${slotIdx + 1} - Drag pallet here`}
-                      >
-                        {pallet ? (
-                          <>
-                            <span className="text-[9px] font-mono font-bold truncate max-w-full">
-                              {pallet.palletNumber}
-                            </span>
-                            <span className="text-[8px] font-mono text-content-secondary">
-                              {pallet.grossWeightKg}k
-                            </span>
-                            {/* Explicit Unallocate Action on hover */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                movePalletToContainer(pallet.palletNumber, null);
-                              }}
-                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-surface border border-divider text-content-muted hover:text-state-error hover:border-state-error/40 items-center justify-center shadow-xs transition-opacity hidden group-hover:flex"
-                              title={`Unallocate ${pallet.palletNumber}`}
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-[8px] font-mono text-content-muted">Slot {slotIdx + 1}</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (dragOverSlotIdx !== slotIdx) {
+                              setDragOverSlotIdx(slotIdx);
+                            }
+                          }}
+                          onDragLeave={(e) => {
+                            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                            if (dragOverSlotIdx === slotIdx) {
+                              setDragOverSlotIdx(null);
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
+                            if (pNum) {
+                              handleDropOnSlot(slotIdx, pNum);
+                            }
+                            setDragOverSlotIdx(null);
+                            setDraggedPalletNumber(null);
+                          }}
+                          className={`group relative h-13 min-w-[54px] rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all select-none ${
+                            isDragTarget
+                              ? 'ring-2 ring-brand-primary border-brand-primary bg-brand-primary-soft scale-102 shadow-md'
+                              : pallet
+                              ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary cursor-grab active:cursor-grabbing'
+                              : 'bg-surface border-dashed border-divider text-content-muted hover:border-brand-primary/40'
+                          }`}
+                          title={pallet ? `Pallet ${pallet.palletNumber} (Slot ${slotIdx + 1}) - Drag to reorder, move or unallocate` : `Empty Slot ${slotIdx + 1} - Drag pallet here`}
+                        >
+                          {pallet ? (
+                            <>
+                              <span className="text-[9px] font-mono font-bold leading-tight truncate max-w-full px-0.5">
+                                {pallet.palletNumber}
+                              </span>
+                              <span className="text-[8px] font-mono text-content-secondary mt-0.5">
+                                {pallet.grossWeightKg.toLocaleString()}k
+                              </span>
+                              {/* Explicit Unallocate Action on hover */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  movePalletToContainer(pallet.palletNumber, null);
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-surface border border-divider text-content-muted hover:text-state-error hover:border-state-error/40 items-center justify-center shadow-xs transition-opacity hidden group-hover:flex"
+                                title={`Unallocate ${pallet.palletNumber}`}
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[8px] font-mono text-content-muted">Slot {slotIdx + 1}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
 
-                {/* Bottom Row: Slots 11 to 21 (Slots 12 to 22) */}
-                <div className="grid grid-cols-11 sm:grid-cols-12 gap-1.5">
-                  {Array.from({ length: Math.floor(specs.maxPallets / 2) }).map((_, slotIdx) => {
-                    const actualIdx = Math.ceil(specs.maxPallets / 2) + slotIdx;
-                    const pallet = activeContainerSlots[actualIdx];
-                    const isDragTarget = dragOverSlotIdx === actualIdx;
-                    return (
-                      <div
-                        key={`bot-${slotIdx}`}
-                        draggable={Boolean(pallet)}
-                        onDragStart={(e) => {
-                          if (!pallet) return;
-                          setDraggedPalletNumber(pallet.palletNumber);
-                          e.dataTransfer.setData('text/plain', pallet.palletNumber);
-                          e.dataTransfer.effectAllowed = 'move';
-                        }}
-                        onDragEnd={() => {
-                          setDraggedPalletNumber(null);
-                          setDragOverSlotIdx(null);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          e.dataTransfer.dropEffect = 'move';
-                          if (dragOverSlotIdx !== actualIdx) {
-                            setDragOverSlotIdx(actualIdx);
-                          }
-                        }}
-                        onDragLeave={(e) => {
-                          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-                          if (dragOverSlotIdx === actualIdx) {
+                  {/* Bottom Row: Slots 11 to 21 (Slots 12 to 22) */}
+                  <div className="grid grid-cols-11 gap-1.5">
+                    {Array.from({ length: Math.floor(specs.maxPallets / 2) }).map((_, slotIdx) => {
+                      const actualIdx = Math.ceil(specs.maxPallets / 2) + slotIdx;
+                      const pallet = activeContainerSlots[actualIdx];
+                      const isDragTarget = dragOverSlotIdx === actualIdx;
+                      return (
+                        <div
+                          key={`bot-${slotIdx}`}
+                          draggable={Boolean(pallet)}
+                          onDragStart={(e) => {
+                            if (!pallet) return;
+                            setDraggedPalletNumber(pallet.palletNumber);
+                            e.dataTransfer.setData('text/plain', pallet.palletNumber);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => {
+                            setDraggedPalletNumber(null);
                             setDragOverSlotIdx(null);
-                          }
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
-                          if (pNum) {
-                            handleDropOnSlot(actualIdx, pNum);
-                          }
-                          setDragOverSlotIdx(null);
-                          setDraggedPalletNumber(null);
-                        }}
-                        className={`group relative h-12 rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all select-none ${
-                          isDragTarget
-                            ? 'ring-2 ring-brand-primary border-brand-primary bg-brand-primary-soft scale-102 shadow-md'
-                            : pallet
-                            ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary cursor-grab active:cursor-grabbing'
-                            : 'bg-surface border-dashed border-divider text-content-muted hover:border-brand-primary/40'
-                        }`}
-                        title={pallet ? `Pallet ${pallet.palletNumber} (Slot ${actualIdx + 1}) - Drag to reorder, move or unallocate` : `Empty Slot ${actualIdx + 1} - Drag pallet here`}
-                      >
-                        {pallet ? (
-                          <>
-                            <span className="text-[9px] font-mono font-bold truncate max-w-full">
-                              {pallet.palletNumber}
-                            </span>
-                            <span className="text-[8px] font-mono text-content-secondary">
-                              {pallet.grossWeightKg}k
-                            </span>
-                            {/* Explicit Unallocate Action on hover */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                movePalletToContainer(pallet.palletNumber, null);
-                              }}
-                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-surface border border-divider text-content-muted hover:text-state-error hover:border-state-error/40 items-center justify-center shadow-xs transition-opacity hidden group-hover:flex"
-                              title={`Unallocate ${pallet.palletNumber}`}
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-[8px] font-mono text-content-muted">Slot {actualIdx + 1}</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.dataTransfer.dropEffect = 'move';
+                            if (dragOverSlotIdx !== actualIdx) {
+                              setDragOverSlotIdx(actualIdx);
+                            }
+                          }}
+                          onDragLeave={(e) => {
+                            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                            if (dragOverSlotIdx === actualIdx) {
+                              setDragOverSlotIdx(null);
+                            }
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const pNum = e.dataTransfer.getData('text/plain') || draggedPalletNumber;
+                            if (pNum) {
+                              handleDropOnSlot(actualIdx, pNum);
+                            }
+                            setDragOverSlotIdx(null);
+                            setDraggedPalletNumber(null);
+                          }}
+                          className={`group relative h-13 min-w-[54px] rounded-lg border flex flex-col items-center justify-center p-1 text-center transition-all select-none ${
+                            isDragTarget
+                              ? 'ring-2 ring-brand-primary border-brand-primary bg-brand-primary-soft scale-102 shadow-md'
+                              : pallet
+                              ? 'bg-brand-primary-soft border-brand-primary/50 text-brand-primary shadow-xs hover:border-brand-primary cursor-grab active:cursor-grabbing'
+                              : 'bg-surface border-dashed border-divider text-content-muted hover:border-brand-primary/40'
+                          }`}
+                          title={pallet ? `Pallet ${pallet.palletNumber} (Slot ${actualIdx + 1}) - Drag to reorder, move or unallocate` : `Empty Slot ${actualIdx + 1} - Drag pallet here`}
+                        >
+                          {pallet ? (
+                            <>
+                              <span className="text-[9px] font-mono font-bold leading-tight truncate max-w-full px-0.5">
+                                {pallet.palletNumber}
+                              </span>
+                              <span className="text-[8px] font-mono text-content-secondary mt-0.5">
+                                {pallet.grossWeightKg.toLocaleString()}k
+                              </span>
+                              {/* Explicit Unallocate Action on hover */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  movePalletToContainer(pallet.palletNumber, null);
+                                }}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-surface border border-divider text-content-muted hover:text-state-error hover:border-state-error/40 items-center justify-center shadow-xs transition-opacity hidden group-hover:flex"
+                                title={`Unallocate ${pallet.palletNumber}`}
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[8px] font-mono text-content-muted">Slot {actualIdx + 1}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -1864,26 +1866,26 @@ export function ContainerBayWorkspace({
         )}
 
         {/* Scrollable WYSIWYG Excel Grid */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left border-collapse min-w-[1300px]">
+        <div className="overflow-x-auto custom-horizontal-scrollbar">
+          <table className="w-full text-xs text-left border-collapse min-w-[1750px]">
             <thead>
               <tr className="bg-surface-secondary/70 text-content-secondary text-[11px] font-semibold border-b border-divider uppercase tracking-wider">
-                <th className="py-2.5 px-3">Brand / Description</th>
-                <th className="py-2.5 px-3">PI No</th>
-                <th className="py-2.5 px-3">Pkg. List No.</th>
-                <th className="py-2.5 px-3">Customer</th>
-                <th className="py-2.5 px-3">Destn.</th>
-                <th className="py-2.5 px-3">Custom Inv.</th>
-                <th className="py-2.5 px-3 text-center">Contract</th>
-                <th className="py-2.5 px-3 text-right">Value</th>
-                <th className="py-2.5 px-3 text-right">Pallets</th>
-                <th className="py-2.5 px-3 text-right">Qty</th>
-                <th className="py-2.5 px-3 text-right">GR WT (kg)</th>
-                <th className="py-2.5 px-3 text-right">NT WT (kg)</th>
-                <th className="py-2.5 px-3">SB NO</th>
-                <th className="py-2.5 px-3">DATE</th>
-                <th className="py-2.5 px-3">CONTAINER</th>
-                <th className="py-2.5 px-3">SEAL</th>
+                <th className="py-3 px-4 min-w-[220px] whitespace-nowrap">Brand / Description</th>
+                <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">PI No</th>
+                <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">Pkg. List No.</th>
+                <th className="py-3 px-4 min-w-[260px] whitespace-nowrap">Customer</th>
+                <th className="py-3 px-3.5 min-w-[180px] whitespace-nowrap">Destn.</th>
+                <th className="py-3 px-3.5 min-w-[140px] whitespace-nowrap">Custom Inv.</th>
+                <th className="py-3 px-3.5 min-w-[100px] whitespace-nowrap text-center">Contract</th>
+                <th className="py-3 px-3.5 min-w-[140px] whitespace-nowrap text-right">Value</th>
+                <th className="py-3 px-3.5 min-w-[90px] whitespace-nowrap text-right">Pallets</th>
+                <th className="py-3 px-3.5 min-w-[100px] whitespace-nowrap text-right">Qty</th>
+                <th className="py-3 px-3.5 min-w-[120px] whitespace-nowrap text-right">GR WT (kg)</th>
+                <th className="py-3 px-3.5 min-w-[120px] whitespace-nowrap text-right">NT WT (kg)</th>
+                <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">SB NO</th>
+                <th className="py-3 px-3.5 min-w-[120px] whitespace-nowrap">DATE</th>
+                <th className="py-3 px-4 min-w-[170px] whitespace-nowrap">CONTAINER</th>
+                <th className="py-3 px-3.5 min-w-[130px] whitespace-nowrap">SEAL</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-divider/60">
@@ -1893,16 +1895,16 @@ export function ContainerBayWorkspace({
                   <React.Fragment key={cont.id || gIdx}>
                     {/* Container Banner Row */}
                     <tr className="bg-surface-secondary/40 font-semibold text-content-primary">
-                      <td colSpan={16} className="py-2.5 px-3 text-[11px]">
+                      <td colSpan={16} className="py-3 px-4 text-xs whitespace-nowrap">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="inline-block w-2 h-2 rounded-full bg-brand-primary" />
-                            <span className="font-bold">{cont.label}</span>
-                            <span className="text-content-secondary font-mono text-[10px]">
+                          <div className="flex items-center space-x-2.5">
+                            <span className="inline-block w-2.5 h-2.5 rounded-full bg-brand-primary" />
+                            <span className="font-bold text-sm">{cont.label}</span>
+                            <span className="text-content-secondary font-mono text-xs">
                               [{cont.containerNumber || 'Container No Pending'} / Seal: {cont.sealNumber || 'Pending'}]
                             </span>
                           </div>
-                          <div className="flex items-center space-x-3 text-[10px] font-mono text-content-secondary">
+                          <div className="flex items-center space-x-4 text-xs font-mono text-content-secondary">
                             <span>Tare: {cont.tareWeightKg} kg</span>
                             <span>•</span>
                             <span>Payload: {group.subtotalGrossWeight.toLocaleString()} kg</span>
@@ -1916,46 +1918,46 @@ export function ContainerBayWorkspace({
                     {/* Line Items */}
                     {group.lineItems.length === 0 ? (
                       <tr>
-                        <td colSpan={16} className="py-3 px-3 text-center text-content-muted italic bg-surface">
+                        <td colSpan={16} className="py-4 px-4 text-center text-content-muted italic bg-surface whitespace-nowrap">
                           No pallets allocated to {cont.label} yet.
                         </td>
                       </tr>
                     ) : (
                       group.lineItems.map((item) => (
                         <tr key={item.id} className="hover:bg-surface-secondary/30 transition-colors bg-surface">
-                          <td className="py-2 px-3 font-medium text-content-primary">{item.brand}</td>
-                          <td className="py-2 px-3 font-mono text-content-secondary">{item.piNo}</td>
-                          <td className="py-2 px-3 font-mono text-content-secondary">{item.pkgListNo}</td>
-                          <td className="py-2 px-3 text-content-primary">{item.customer}</td>
-                          <td className="py-2 px-3 text-content-secondary">{item.destination}</td>
-                          <td className="py-2 px-3 font-mono font-medium text-brand-primary">{item.customInv}</td>
-                          <td className="py-2 px-3 text-center font-mono text-[11px] text-content-secondary">{item.contract}</td>
-                          <td className="py-2 px-3 text-right font-mono text-content-primary">{item.valueFormatted}</td>
-                          <td className="py-2 px-3 text-right font-mono font-semibold text-content-primary">{item.palletsCount}</td>
-                          <td className="py-2 px-3 text-right font-mono text-content-primary">{item.quantity.toLocaleString()}</td>
-                          <td className="py-2 px-3 text-right font-mono font-medium text-content-primary">{item.grossWeightKg.toLocaleString()}</td>
-                          <td className="py-2 px-3 text-right font-mono text-content-secondary">{item.netWeightKg.toLocaleString()}</td>
-                          <td className="py-2 px-3 font-mono text-content-secondary">{item.sbNo}</td>
-                          <td className="py-2 px-3 font-mono text-content-secondary">{item.date}</td>
-                          <td className="py-2 px-3 font-mono font-medium text-content-primary">{item.containerNo}</td>
-                          <td className="py-2 px-3 font-mono text-content-secondary">{item.sealNo}</td>
+                          <td className="py-2.5 px-4 font-medium text-content-primary whitespace-nowrap">{item.brand}</td>
+                          <td className="py-2.5 px-3.5 font-mono text-content-secondary whitespace-nowrap">{item.piNo}</td>
+                          <td className="py-2.5 px-3.5 font-mono text-content-secondary whitespace-nowrap">{item.pkgListNo}</td>
+                          <td className="py-2.5 px-4 text-content-primary whitespace-nowrap">{item.customer}</td>
+                          <td className="py-2.5 px-3.5 text-content-secondary whitespace-nowrap">{item.destination}</td>
+                          <td className="py-2.5 px-3.5 font-mono font-semibold text-brand-primary whitespace-nowrap">{item.customInv}</td>
+                          <td className="py-2.5 px-3.5 text-center font-mono text-[11px] text-content-secondary whitespace-nowrap">{item.contract}</td>
+                          <td className="py-2.5 px-3.5 text-right font-mono text-content-primary whitespace-nowrap">{item.valueFormatted}</td>
+                          <td className="py-2.5 px-3.5 text-right font-mono font-bold text-content-primary whitespace-nowrap">{item.palletsCount}</td>
+                          <td className="py-2.5 px-3.5 text-right font-mono text-content-primary whitespace-nowrap">{item.quantity.toLocaleString()}</td>
+                          <td className="py-2.5 px-3.5 text-right font-mono font-medium text-content-primary whitespace-nowrap">{item.grossWeightKg.toLocaleString()}</td>
+                          <td className="py-2.5 px-3.5 text-right font-mono text-content-secondary whitespace-nowrap">{item.netWeightKg.toLocaleString()}</td>
+                          <td className="py-2.5 px-3.5 font-mono text-content-secondary whitespace-nowrap">{item.sbNo}</td>
+                          <td className="py-2.5 px-3.5 font-mono text-content-secondary whitespace-nowrap">{item.date}</td>
+                          <td className="py-2.5 px-4 font-mono font-semibold text-content-primary whitespace-nowrap">{item.containerNo}</td>
+                          <td className="py-2.5 px-3.5 font-mono text-content-secondary whitespace-nowrap">{item.sealNo}</td>
                         </tr>
                       ))
                     )}
 
                     {/* Subtotal Row */}
                     <tr className="bg-surface-secondary/80 font-semibold border-b border-divider text-content-primary">
-                      <td colSpan={7} className="py-2 px-3 text-right text-[11px] uppercase tracking-wider text-content-secondary">
+                      <td colSpan={7} className="py-3 px-4 text-right text-xs uppercase tracking-wider text-content-secondary whitespace-nowrap">
                         Subtotal {cont.label}:
                       </td>
-                      <td className="py-2 px-3 text-right font-mono">{group.subtotalValueFormatted}</td>
-                      <td className="py-2 px-3 text-right font-mono text-brand-primary font-bold">{group.subtotalPallets}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">{group.subtotalQty.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">{group.subtotalGrossWeight.toLocaleString()}</td>
-                      <td className="py-2 px-3 text-right font-mono font-bold">{group.subtotalNetWeight.toLocaleString()}</td>
-                      <td colSpan={2} className="py-2 px-3" />
-                      <td className="py-2 px-3 font-mono text-[11px] text-content-secondary">{cont.containerNumber || cont.label}</td>
-                      <td className="py-2 px-3 font-mono text-[11px] text-content-secondary">{cont.sealNumber || '-'}</td>
+                      <td className="py-3 px-3.5 text-right font-mono whitespace-nowrap">{group.subtotalValueFormatted}</td>
+                      <td className="py-3 px-3.5 text-right font-mono text-brand-primary font-bold whitespace-nowrap">{group.subtotalPallets}</td>
+                      <td className="py-3 px-3.5 text-right font-mono font-bold whitespace-nowrap">{group.subtotalQty.toLocaleString()}</td>
+                      <td className="py-3 px-3.5 text-right font-mono font-bold whitespace-nowrap">{group.subtotalGrossWeight.toLocaleString()}</td>
+                      <td className="py-3 px-3.5 text-right font-mono font-bold whitespace-nowrap">{group.subtotalNetWeight.toLocaleString()}</td>
+                      <td colSpan={2} className="py-3 px-3.5 whitespace-nowrap" />
+                      <td className="py-3 px-4 font-mono text-xs text-content-secondary whitespace-nowrap">{cont.containerNumber || cont.label}</td>
+                      <td className="py-3 px-3.5 font-mono text-xs text-content-secondary whitespace-nowrap">{cont.sealNumber || '-'}</td>
                     </tr>
                   </React.Fragment>
                 );
@@ -1965,15 +1967,15 @@ export function ContainerBayWorkspace({
             {/* Grand Total Footer */}
             <tfoot>
               <tr className="bg-brand-primary-soft/40 border-t-2 border-divider font-bold text-content-primary text-xs">
-                <td colSpan={7} className="py-3 px-3 text-right uppercase tracking-wider text-content-primary">
+                <td colSpan={7} className="py-3.5 px-4 text-right uppercase tracking-wider text-content-primary whitespace-nowrap">
                   Grand Total ({containers.length} Container{containers.length > 1 ? 's' : ''}):
                 </td>
-                <td className="py-3 px-3 text-right font-mono text-brand-primary">{containerPlanData.grandTotalValueFormatted}</td>
-                <td className="py-3 px-3 text-right font-mono text-brand-primary text-sm font-black">{containerPlanData.grandTotalPallets}</td>
-                <td className="py-3 px-3 text-right font-mono text-sm font-black">{containerPlanData.grandTotalQty.toLocaleString()}</td>
-                <td className="py-3 px-3 text-right font-mono text-sm font-black">{containerPlanData.grandTotalGrossWeight.toLocaleString()}</td>
-                <td className="py-3 px-3 text-right font-mono text-sm font-black">{containerPlanData.grandTotalNetWeight.toLocaleString()}</td>
-                <td colSpan={4} className="py-3 px-3 text-content-secondary text-[11px] font-normal text-right">
+                <td className="py-3.5 px-3.5 text-right font-mono text-brand-primary whitespace-nowrap">{containerPlanData.grandTotalValueFormatted}</td>
+                <td className="py-3.5 px-3.5 text-right font-mono text-brand-primary text-sm font-black whitespace-nowrap">{containerPlanData.grandTotalPallets}</td>
+                <td className="py-3.5 px-3.5 text-right font-mono text-sm font-black whitespace-nowrap">{containerPlanData.grandTotalQty.toLocaleString()}</td>
+                <td className="py-3.5 px-3.5 text-right font-mono text-sm font-black whitespace-nowrap">{containerPlanData.grandTotalGrossWeight.toLocaleString()}</td>
+                <td className="py-3.5 px-3.5 text-right font-mono text-sm font-black whitespace-nowrap">{containerPlanData.grandTotalNetWeight.toLocaleString()}</td>
+                <td colSpan={4} className="py-3.5 px-4 text-content-secondary text-[11px] font-normal text-right whitespace-nowrap">
                   All containers combined
                 </td>
               </tr>
