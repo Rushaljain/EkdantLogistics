@@ -698,6 +698,7 @@ export type InventoryMovementStatus = 'IN_STOCK' | 'DISPATCHED' | 'PARTIAL_DISPA
 
 export interface InventoryMovementRecord {
   id: string;
+  sourceLedgerId?: string;
   receivedDate: string;
   dispatchedDate?: string;
   movementDate?: string;

@@ -24,6 +24,7 @@ import {
 import type {
   CFSLedgerEntry,
   ExtractedShipmentJSON,
+  InventoryMovementRecord,
   PalletStockUnit
 } from '../types/index.ts';
 import {
@@ -42,7 +43,8 @@ import {
   formatToDDMMYYYY,
   getDerivedInventoryMovements,
   exportCFSMovementLogsXlsx,
-  ingestShipmentToLedger
+  ingestShipmentToLedger,
+  deleteMovementLog
 } from '../utils/inventoryStore.ts';
 import { parseDocumentsToJSON } from '../utils/documentParser.ts';
 
@@ -538,12 +540,23 @@ export function WarehouseInventoryHub({
 
   // Deletion Confirmation Modal State & Handlers
   const [itemToDelete, setItemToDelete] = useState<{
-    type: 'invoice' | 'pallet' | 'selected_pallets';
+    type: 'invoice' | 'pallet' | 'selected_pallets' | 'log';
     id?: string;
     palletId?: string;
+    logId?: string;
     title: string;
     description: string;
   } | null>(null);
+
+  const promptDeleteLog = (record: InventoryMovementRecord) => {
+    setItemToDelete({
+      type: 'log',
+      id: record.sourceLedgerId || (record.id.startsWith('log_') ? record.id.replace(/^log_/, '') : undefined),
+      logId: record.id,
+      title: `Delete Log for ${record.customInvoiceNo}?`,
+      description: `This will permanently remove the movement log for invoice ${record.customInvoiceNo} (${record.customer}, ${record.pallets} Plt / ${record.batteries} Units).`
+    });
+  };
 
   const promptDeleteInvoice = (entry: CFSLedgerEntry) => {
     setItemToDelete({
@@ -603,6 +616,20 @@ export function WarehouseInventoryHub({
       setSelectedPalletIds(new Set());
       setSelectedDispatchCustomer('');
       showToast(`Deleted ${ids.length} pallets from inventory.`);
+    } else if (itemToDelete.type === 'log' && itemToDelete.logId) {
+      deleteMovementLog(itemToDelete.logId);
+      if (itemToDelete.id) {
+        setSelectedPalletIds((prev) => {
+          const next = new Set(prev);
+          const deletedEntry = entries.find((e) => e.id === itemToDelete.id);
+          if (deletedEntry?.pallets) {
+            deletedEntry.pallets.forEach((p) => next.delete(p.id));
+          }
+          if (next.size === 0) setSelectedDispatchCustomer('');
+          return next;
+        });
+      }
+      showToast('Movement log deleted successfully.');
     }
     setItemToDelete(null);
     reloadEntries();
@@ -1053,30 +1080,23 @@ export function WarehouseInventoryHub({
                 </p>
               </div>
 
-              {/* Status Filter Buttons */}
-              <div className="flex items-center space-x-1.5 text-xs font-mono">
-                {(['ALL', 'PENDING_GATE_IN', 'IN_WAREHOUSE', 'DISPATCHED', 'SHORTFALL'] as const).map((st) => {
-                  const labels = {
-                    ALL: 'All Active',
-                    PENDING_GATE_IN: 'Pending Gate-In',
-                    IN_WAREHOUSE: 'Ready in Warehouse',
-                    DISPATCHED: 'Dispatched (Stock-Out)',
-                    SHORTFALL: 'Shortfall'
-                  };
-                  return (
-                    <button
-                      key={st}
-                      onClick={() => setInventoryStatusFilter(st)}
-                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer font-sans text-xs ${
-                        inventoryStatusFilter === st
-                          ? 'bg-brand-primary text-white font-semibold'
-                          : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
-                      }`}
-                    >
-                      {labels[st]}
-                    </button>
-                  );
-                })}
+              {/* Status Filter Dropdown */}
+              <div className="flex items-center space-x-2 text-xs">
+                <label htmlFor="status-filter-select" className="text-content-secondary font-medium shrink-0">
+                  Status:
+                </label>
+                <select
+                  id="status-filter-select"
+                  value={inventoryStatusFilter}
+                  onChange={(e) => setInventoryStatusFilter(e.target.value as any)}
+                  className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs"
+                >
+                  <option value="ALL">All Active</option>
+                  <option value="PENDING_GATE_IN">Pending Gate-In</option>
+                  <option value="IN_WAREHOUSE">Ready in Warehouse</option>
+                  <option value="DISPATCHED">Dispatched (Stock-Out)</option>
+                  <option value="SHORTFALL">Shortfall</option>
+                </select>
               </div>
             </div>
 
@@ -1889,14 +1909,15 @@ export function WarehouseInventoryHub({
                       <th className="p-2.5 border-r border-divider whitespace-nowrap">Seal No</th>
                       <th className="p-2.5 border-r border-divider whitespace-nowrap">Shipping Bill</th>
                       <th className="p-2.5 border-r border-divider whitespace-nowrap">Vehicle No</th>
-                      <th className="p-2.5 text-right whitespace-nowrap">Remaining Balance</th>
+                      <th className="p-2.5 border-r border-divider text-right whitespace-nowrap">Remaining Balance</th>
+                      <th className="p-2.5 text-center whitespace-nowrap">Action</th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-divider/60">
                     {filteredMovementRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={14} className="p-12 text-center text-content-muted">
+                        <td colSpan={15} className="p-12 text-center text-content-muted">
                           <History className="w-8 h-8 mx-auto mb-1 opacity-50" />
                           <p>No inventory movements recorded matching criteria.</p>
                         </td>
@@ -1989,7 +2010,7 @@ export function WarehouseInventoryHub({
                             </td>
 
                             {/* Remaining Balance */}
-                            <td className="p-2.5 text-right whitespace-nowrap font-mono font-bold">
+                            <td className="p-2.5 border-r border-divider text-right whitespace-nowrap font-mono font-bold">
                               {r.remainingBalancePallets > 0 ? (
                                 <span className="text-emerald-700">
                                   {r.remainingBalancePallets} Plt <span className="text-content-muted">/</span> {r.remainingBalanceBatteries}u
@@ -1997,6 +2018,18 @@ export function WarehouseInventoryHub({
                               ) : (
                                 <span className="text-content-muted font-normal">0 (Cleared)</span>
                               )}
+                            </td>
+
+                            {/* Action: Delete Log */}
+                            <td className="p-2.5 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => promptDeleteLog(r)}
+                                className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                                title={`Delete log for invoice ${r.customInvoiceNo}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </td>
                           </tr>
                         );

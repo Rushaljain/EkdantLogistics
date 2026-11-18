@@ -1564,10 +1564,54 @@ export function recordMovementLog(record: Omit<InventoryMovementRecord, 'id' | '
   return newRecord;
 }
 
+export const CFS_DELETED_LOGS_STORAGE_KEY = 'ekdant_cfs_deleted_logs_v1';
+
+export function getDeletedMovementLogIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CFS_DELETED_LOGS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDeletedMovementLogIds(ids: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CFS_DELETED_LOGS_STORAGE_KEY, JSON.stringify(ids));
+  } catch (err) {
+    console.error('Failed to save deleted log ids to localStorage:', err);
+  }
+}
+
+export function deleteMovementLog(logId: string): void {
+  // 1. Delete from persisted logs if present
+  const persisted = getPersistedMovementLogs();
+  const filteredPersisted = persisted.filter((l) => l.id !== logId);
+  savePersistedMovementLogs(filteredPersisted);
+
+  // 2. Add to deleted log IDs set
+  const deleted = getDeletedMovementLogIds();
+  if (!deleted.includes(logId)) {
+    saveDeletedMovementLogIds([...deleted, logId]);
+  }
+
+  // 3. If it is a derived log (id starts with 'log_'), delete the underlying CFS ledger entry
+  if (logId.startsWith('log_')) {
+    const entryId = logId.replace(/^log_/, '');
+    deleteCFSEntry(entryId);
+  }
+}
+
 export function getDerivedInventoryMovements(entries: CFSLedgerEntry[]): InventoryMovementRecord[] {
   const derived: InventoryMovementRecord[] = [];
+  const deletedIds = new Set(getDeletedMovementLogIds());
 
   entries.forEach((e) => {
+    const logId = `log_${e.id}`;
+    if (deletedIds.has(logId)) return;
+
     const modelDesc = (e.pallets || [])
       .map((p) => p.model)
       .filter(Boolean)
@@ -1592,7 +1636,8 @@ export function getDerivedInventoryMovements(entries: CFSLedgerEntry[]): Invento
       : '-';
 
     derived.push({
-      id: `log_${e.id}`,
+      id: logId,
+      sourceLedgerId: e.id,
       receivedDate,
       dispatchedDate,
       movementDate: receivedDate,
@@ -1616,7 +1661,10 @@ export function getDerivedInventoryMovements(entries: CFSLedgerEntry[]): Invento
     });
   });
 
-  return derived.sort((a, b) => {
+  const persisted = getPersistedMovementLogs().filter((r) => !deletedIds.has(r.id));
+  const combined = [...derived, ...persisted];
+
+  return combined.sort((a, b) => {
     const tA = new Date(a.createdAt || a.receivedDate).getTime() || 0;
     const tB = new Date(b.createdAt || b.receivedDate).getTime() || 0;
     return tB - tA;
