@@ -45,7 +45,7 @@ import {
   exportCFSMovementLogsXlsx,
   ingestShipmentToLedger
 } from '../utils/inventoryStore.ts';
-import { parseDocumentsToJSON, type ParseSessionProgress } from '../utils/documentParser.ts';
+import { parseDocumentsToJSON } from '../utils/documentParser.ts';
 
 interface WarehouseInventoryHubProps {
   onLoadShipmentIntoWorkspace: (shipment: ExtractedShipmentJSON) => void;
@@ -195,33 +195,36 @@ export function WarehouseInventoryHub({
 
   // Invoice Upload (Stock-In) States
   const invoiceInputRef = useRef<HTMLInputElement | null>(null);
-  const [isParsingInvoice, setIsParsingInvoice] = useState(false);
-  const [invoiceParseProgress, setInvoiceParseProgress] = useState<ParseSessionProgress | null>(null);
+  const [uploadBannerState, setUploadBannerState] = useState<'idle' | 'uploading' | 'uploaded'>('idle');
 
   const handleInvoiceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files);
-    setIsParsingInvoice(true);
-    setInvoiceParseProgress(null);
+    setUploadBannerState('uploading');
     try {
       const customKey = localStorage.getItem('ekdant_custom_gemini_key') || undefined;
       const mode = files.length > 1 ? 'MULTI_INVOICE' : 'SINGLE_INVOICE';
-      const result = await parseDocumentsToJSON(files, mode, customKey, (p) => setInvoiceParseProgress(p));
+      const result = await parseDocumentsToJSON(files, mode, customKey);
       if (result.shipmentJson && result.shipmentJson.invoiceNumbers.length > 0) {
         ingestShipmentToLedger(result.shipmentJson);
         reloadEntries();
         const invoiceList = result.shipmentJson.invoiceNumbers.join(', ');
-        showToast(`Uploaded & Ingested ${invoiceList} (${result.shipmentJson.totalPallets} Pallets) into Warehouse!`);
+        showToast(`Uploaded ${invoiceList} (${result.shipmentJson.totalPallets} Pallets) into Warehouse!`);
+        setUploadBannerState('uploaded');
+        setTimeout(() => {
+          setUploadBannerState('idle');
+        }, 1000);
       } else if (result.warnings && result.warnings.length > 0) {
-        showToast(`Parsing warning: ${result.warnings.join(' ')}`);
+        showToast(`Warning: ${result.warnings.join(' ')}`);
+        setUploadBannerState('idle');
       } else {
         showToast('Document parsed without invoice numbers. Please verify file.');
+        setUploadBannerState('idle');
       }
     } catch (err: any) {
       showToast(`Upload failed: ${err?.message || 'Error parsing document'}`);
+      setUploadBannerState('idle');
     } finally {
-      setIsParsingInvoice(false);
-      setInvoiceParseProgress(null);
       if (invoiceInputRef.current) invoiceInputRef.current.value = '';
     }
   };
@@ -662,16 +665,19 @@ export function WarehouseInventoryHub({
 
       {/* TOP HEADER */}
       <header className="bg-surface border-b border-divider shrink-0 z-20 shadow-xs">
-        {/* Real-time Invoice Parsing Banner */}
-        {isParsingInvoice && (
+        {/* Real-time Upload Banner */}
+        {uploadBannerState !== 'idle' && (
           <div className="bg-emerald-600 text-white px-4 py-2 text-xs flex items-center justify-between animate-fade-in shadow-inner">
             <div className="flex items-center space-x-2">
-              <Loader2 className="w-4 h-4 animate-spin text-white" />
+              {uploadBannerState === 'uploading' ? (
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-white" />
+              )}
               <span className="font-semibold">
-                Parsing Invoice into Inventory: {invoiceParseProgress?.message || 'Extracting data with AI...'}
+                {uploadBannerState === 'uploading' ? 'Uploading...' : 'Uploaded'}
               </span>
             </div>
-            <span className="font-mono font-bold">{invoiceParseProgress?.percent || 45}%</span>
           </div>
         )}
 
@@ -686,16 +692,24 @@ export function WarehouseInventoryHub({
             {/* Prominent + Upload Invoice to Inventory (Stock-In) Button */}
             <button
               onClick={() => invoiceInputRef.current?.click()}
-              disabled={isParsingInvoice}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+              disabled={uploadBannerState !== 'idle'}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-85 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
               title="Upload commercial invoices or packing lists (select single or multiple PDF, Excel, Word files) into warehouse inventory"
             >
-              {isParsingInvoice ? (
+              {uploadBannerState === 'uploading' ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : uploadBannerState === 'uploaded' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
               ) : (
                 <Plus className="w-3.5 h-3.5" />
               )}
-              <span>{isParsingInvoice ? 'Parsing...' : '+ Upload Invoice to Inventory (Stock-In)'}</span>
+              <span>
+                {uploadBannerState === 'uploading'
+                  ? 'Uploading...'
+                  : uploadBannerState === 'uploaded'
+                  ? 'Uploaded'
+                  : '+ Upload Invoice to Inventory (Stock-In)'}
+              </span>
             </button>
 
             <button
