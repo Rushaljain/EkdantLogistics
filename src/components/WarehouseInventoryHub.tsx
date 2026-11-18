@@ -641,26 +641,6 @@ export function WarehouseInventoryHub({
     });
   }, [allMovementRecords, logStatusFilter, customerFilter, dateFrom, dateTo, searchQuery]);
 
-  // Customer Outgoing Summary
-  const customerOutgoingSummaries = useMemo(() => {
-    const map = new Map<string, { pallets: number; batteries: number; containers: Set<string> }>();
-    allMovementRecords.forEach((r) => {
-      if (r.status === 'DISPATCHED' || r.status === 'PARTIAL_DISPATCHED' || r.direction === 'STOCK_OUT') {
-        const cur = map.get(r.customer) || { pallets: 0, batteries: 0, containers: new Set() };
-        cur.pallets += r.pallets || 0;
-        cur.batteries += r.batteries || 0;
-        if (r.containerNo && r.containerNo !== '-') cur.containers.add(r.containerNo);
-        map.set(r.customer, cur);
-      }
-    });
-    return Array.from(map.entries()).map(([cust, s]) => ({
-      customer: cust,
-      pallets: s.pallets,
-      batteries: s.batteries,
-      containersCount: s.containers.size
-    }));
-  }, [allMovementRecords]);
-
   // Clear all filters
   const hasActiveFilters = searchQuery || customerFilter !== 'ALL' || selectedMonth !== 'ALL' || dateFrom || dateTo;
   const handleClearFilters = () => {
@@ -880,6 +860,39 @@ export function WarehouseInventoryHub({
                 </button>
               )}
             </div>
+
+            {/* Status Filter Pills for Logs (Placed right next to search where marked) */}
+            {activeSection === 'logs' && (
+              <div className="flex items-center space-x-1 font-mono">
+                {(['ALL', 'IN_STOCK', 'DISPATCHED'] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setLogStatusFilter(st)}
+                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer font-sans text-xs ${
+                      logStatusFilter === st
+                        ? 'bg-brand-primary text-white font-semibold shadow-xs'
+                        : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
+                    }`}
+                  >
+                    {st === 'ALL' ? 'All Invoices' : st === 'IN_STOCK' ? 'In Stock' : 'Dispatched'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right Actions */}
+          <div className="flex items-center space-x-2">
+            {activeSection === 'logs' && (
+              <button
+                onClick={() => exportCFSMovementLogsXlsx(filteredMovementRecords)}
+                className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
+                title="Export movement logs to Excel"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-600" />
+                <span>Export Logs (.xlsx)</span>
+              </button>
+            )}
 
             {hasActiveFilters && (
               <button
@@ -1879,76 +1892,7 @@ export function WarehouseInventoryHub({
             SECTION 3: INVENTORY LOGS (CUSTOMER-WISE AUDIT TRAIL)
             ===================================================================== */}
         {activeSection === 'logs' && (
-          <div className="space-y-4 pb-20">
-            {/* Logs Header Strip */}
-            <div className="bg-surface border border-divider rounded-xl p-3 sm:p-4 shadow-xs space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
-                    Inventory Movement Logs
-                  </h2>
-                  <p className="text-xs text-content-secondary mt-0.5">
-                    Chronological audit trail of outgoing dispatches (Stock-Out) and factory receipts (Stock-In)
-                  </p>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => exportCFSMovementLogsXlsx(filteredMovementRecords)}
-                    className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer"
-                    title="Export movement logs to Excel"
-                  >
-                    <Download className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Export Logs (.xlsx)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Customer Outgoing Summary Strip */}
-              <div className="pt-2 border-t border-divider/60">
-                <div className="text-[10px] uppercase font-mono tracking-wider text-content-secondary font-bold mb-1.5">
-                  Customer Outgoing Dispatched Summary (Stock-Out):
-                </div>
-                <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs font-mono tabular-nums">
-                  {customerOutgoingSummaries.length === 0 ? (
-                    <span className="text-content-muted text-xs italic">No outgoing dispatches recorded yet.</span>
-                  ) : (
-                    customerOutgoingSummaries.map((s) => (
-                      <div
-                        key={s.customer}
-                        className="px-3 py-1.5 rounded-lg bg-surface-secondary/70 border border-divider text-xs shrink-0 flex items-center space-x-2 shadow-2xs"
-                      >
-                        <span className="font-sans font-semibold text-content-primary">{s.customer}:</span>
-                        <span className="font-bold text-emerald-700">{s.pallets} Plt</span>
-                        <span className="text-content-muted">•</span>
-                        <span className="text-indigo-700">{s.batteries.toLocaleString()}u</span>
-                        <span className="text-content-muted">•</span>
-                        <span className="text-blue-700">{s.containersCount} Cont</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Status Filter Buttons */}
-              <div className="pt-2 border-t border-divider/60 flex items-center space-x-1.5 text-xs font-mono">
-                <span className="text-content-secondary font-sans mr-1 font-medium">Status:</span>
-                {(['ALL', 'IN_STOCK', 'DISPATCHED'] as const).map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setLogStatusFilter(st)}
-                    className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer font-sans text-xs ${
-                      logStatusFilter === st
-                        ? 'bg-brand-primary text-white font-semibold'
-                        : 'bg-surface hover:bg-surface-secondary text-content-secondary border border-divider'
-                    }`}
-                  >
-                    {st === 'ALL' ? 'All Invoices' : st === 'IN_STOCK' ? 'In Stock' : 'Dispatched'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+          <div className="pb-20">
             {/* Movement Logs Table */}
             <div className="bg-surface border border-divider rounded-xl shadow-xs overflow-hidden">
               <div className="overflow-x-auto max-h-[700px]">
