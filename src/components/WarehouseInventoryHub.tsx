@@ -164,6 +164,7 @@ export function WarehouseInventoryHub({
 
   // Stuffing & Dispatch Modal State
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
+  const [showVarianceModal, setShowVarianceModal] = useState<boolean>(false);
   const [dispatchDetails, setDispatchDetails] = useState(() => {
     const today = formatToDDMMYYYY(new Date());
     return {
@@ -273,6 +274,16 @@ export function WarehouseInventoryHub({
     });
     const dispatchedContainersCount = containerSet.size;
 
+    // Invoices with variance between Invoiced vs Actual Received Quantity
+    const varianceEntries = entries.filter((e) => {
+      const palletDiff = Math.abs((e.invoicedPallets || 0) - (e.actualReceivedPallets || 0));
+      const batteryDiff = Math.abs((e.invoicedBatteries || 0) - (e.actualReceivedBatteries || 0));
+      return (palletDiff > 0 || batteryDiff > 0 || e.shortfallPallets > 0 || e.shortfallBatteries > 0);
+    });
+
+    const totalShortfallPallets = entries.reduce((s, e) => s + (e.shortfallPallets || 0), 0);
+    const totalShortfallBatteries = entries.reduce((s, e) => s + (e.shortfallBatteries || 0), 0);
+
     return {
       totalBalancePallets,
       totalBalanceBatteries,
@@ -282,7 +293,11 @@ export function WarehouseInventoryHub({
       pendingGateInCount,
       totalStuffedPallets,
       totalStuffedBatteries,
-      dispatchedContainersCount
+      dispatchedContainersCount,
+      varianceEntries,
+      varianceCount: varianceEntries.length,
+      totalShortfallPallets,
+      totalShortfallBatteries
     };
   }, [entries]);
 
@@ -741,8 +756,9 @@ export function WarehouseInventoryHub({
             <button
               onClick={onNavigateToWorkspace}
               className="px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+              title="Open Dispatch Tool"
             >
-              <span>Workspace</span>
+              <span>Dispatch Tool</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -789,38 +805,87 @@ export function WarehouseInventoryHub({
               </div>
             </div>
 
-            {/* Card 2: Gate-In Received */}
-            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
-              <div className="text-xs font-semibold text-content-secondary font-sans">
-                Gate-In Received
+            {/* Card 2: Dispatched (Stock-Out) */}
+            <div className="bg-surface border border-divider rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between pb-1.5 border-b border-divider/60">
+                <span className="text-xs font-semibold text-content-primary font-sans">
+                  Dispatched
+                </span>
+                <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
+                  Shipped
+                </span>
               </div>
-              <div className="mt-1.5 flex items-baseline space-x-2">
-                <span className="text-xl font-bold text-content-primary">{kpis.totalReceivedPallets}</span>
-                <span className="text-xs text-content-muted font-sans font-normal">/ {kpis.totalInvoicedPallets} Pallets</span>
-              </div>
-              <div className="mt-1 text-xs text-content-secondary font-sans">
-                {kpis.pendingGateInCount > 0 ? (
-                  <span className="text-amber-700 font-medium">{kpis.pendingGateInCount} invoices pending receipt</span>
-                ) : (
-                  <span className="text-emerald-700 font-medium">All invoices received</span>
-                )}
+              <div className="grid grid-cols-3 gap-2 mt-2 pt-0.5 text-center">
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Pallets
+                  </span>
+                  <span className="text-lg font-bold text-content-primary leading-tight font-mono">
+                    {kpis.totalStuffedPallets.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Units
+                  </span>
+                  <span className="text-lg font-bold text-blue-700 dark:text-blue-400 leading-tight font-mono">
+                    {kpis.totalStuffedBatteries.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Containers
+                  </span>
+                  <span className="text-sm sm:text-base font-bold text-content-primary leading-tight font-mono truncate max-w-full">
+                    {kpis.dispatchedContainersCount} <span className="text-[10px] font-normal text-content-muted">cntr</span>
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Card 3: Dispatched */}
-            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs flex flex-col justify-between">
-              <div className="text-xs font-semibold text-content-secondary font-sans">
-                Dispatched
+            {/* Card 3: Invoiced vs Actual Received Variance */}
+            <div
+              onClick={() => setShowVarianceModal(true)}
+              className="bg-surface border border-divider hover:border-amber-500/60 rounded-xl p-3.5 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:shadow-md group select-none"
+              title="Click to view list of invoices with difference between Invoiced and Actual Received quantities"
+            >
+              <div className="flex items-center justify-between pb-1.5 border-b border-divider/60">
+                <span className="text-xs font-semibold text-content-primary font-sans flex items-center space-x-1.5">
+                  <span>Invoiced vs Actual Recd</span>
+                </span>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border transition-colors ${
+                  kpis.varianceCount > 0
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 group-hover:bg-amber-500/20'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                }`}>
+                  {kpis.varianceCount > 0 ? `${kpis.varianceCount} Discrepant` : '100% Match'}
+                </span>
               </div>
-              <div className="mt-1.5 flex items-baseline space-x-2">
-                <span className="text-xl font-bold text-content-primary">{kpis.totalStuffedPallets}</span>
-                <span className="text-xs text-content-muted font-sans font-normal">Pallets</span>
-                <span className="text-content-muted">•</span>
-                <span className="text-base font-bold text-blue-700">{kpis.totalStuffedBatteries.toLocaleString()}</span>
-                <span className="text-xs text-content-muted font-sans font-normal">Units</span>
+              <div className="grid grid-cols-2 gap-2 mt-2 pt-0.5 text-center">
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Pallet Diff
+                  </span>
+                  <span className={`text-lg font-bold leading-tight font-mono ${
+                    kpis.totalShortfallPallets > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-content-primary'
+                  }`}>
+                    {kpis.totalShortfallPallets > 0 ? `-${kpis.totalShortfallPallets}` : '0'}
+                  </span>
+                </div>
+                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg bg-surface-secondary/50 border border-divider/40">
+                  <span className="text-[10px] text-content-secondary font-sans uppercase tracking-wider block mb-0.5">
+                    Units Diff
+                  </span>
+                  <span className={`text-lg font-bold leading-tight font-mono ${
+                    kpis.totalShortfallBatteries > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-content-primary'
+                  }`}>
+                    {kpis.totalShortfallBatteries > 0 ? `-${kpis.totalShortfallBatteries.toLocaleString()}` : '0'}
+                  </span>
+                </div>
               </div>
-              <div className="mt-1 text-xs text-content-secondary font-sans">
-                <strong className="text-content-primary font-mono">{kpis.dispatchedContainersCount}</strong> containers shipped
+              <div className="mt-1.5 text-[10px] text-content-muted flex items-center justify-between group-hover:text-brand-primary">
+                <span>Click to view breakdown</span>
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
               </div>
             </div>
           </div>
@@ -2155,6 +2220,114 @@ export function WarehouseInventoryHub({
                 className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
                 Confirm Dispatch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoiced vs Actual Received Variance Breakdown Modal */}
+      {showVarianceModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-surface border border-divider rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-scale-in overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-divider flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-content-primary">
+                    Invoiced vs. Actual Received Discrepancy Breakdown
+                  </h3>
+                  <p className="text-xs text-content-secondary mt-0.5">
+                    {kpis.varianceEntries.length} invoice(s) with differences between invoiced and physically received quantities
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVarianceModal(false)}
+                className="p-1.5 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+              {kpis.varianceEntries.length === 0 ? (
+                <div className="p-8 text-center bg-surface-secondary/40 border border-dashed border-divider rounded-xl">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-content-primary">Zero Discrepancies</p>
+                  <p className="text-xs text-content-muted mt-1">All invoices match 100% between invoiced and actual received factory quantities.</p>
+                </div>
+              ) : (
+                <div className="border border-divider rounded-xl overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead className="bg-surface-secondary/80 border-b border-divider font-semibold text-content-secondary uppercase text-[10px] tracking-wider font-mono">
+                        <tr>
+                          <th className="py-2.5 px-3 border-r border-divider">Customer</th>
+                          <th className="py-2.5 px-3 border-r border-divider">Custom Invoice No</th>
+                          <th className="py-2.5 px-3 border-r border-divider text-right">Invoiced (Plt / Units)</th>
+                          <th className="py-2.5 px-3 border-r border-divider text-right">Actual Received (Plt / Units)</th>
+                          <th className="py-2.5 px-3 border-r border-divider text-right text-amber-600 font-bold">Variance / Shortfall</th>
+                          <th className="py-2.5 px-3">Status / Vehicle</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-divider font-mono">
+                        {kpis.varianceEntries.map((e) => {
+                          const pltDiff = (e.actualReceivedPallets || 0) - (e.invoicedPallets || 0);
+                          const unitDiff = (e.actualReceivedBatteries || 0) - (e.invoicedBatteries || 0);
+                          return (
+                            <tr key={e.id} className="hover:bg-surface-secondary/40 transition-colors">
+                              <td className="py-2.5 px-3 border-r border-divider font-sans font-semibold text-content-primary">
+                                {e.customer || '—'}
+                              </td>
+                              <td className="py-2.5 px-3 border-r border-divider font-bold text-brand-primary">
+                                {e.customInvoiceNo}
+                              </td>
+                              <td className="py-2.5 px-3 border-r border-divider text-right text-content-secondary">
+                                {e.invoicedPallets} plt / {e.invoicedBatteries.toLocaleString()} units
+                              </td>
+                              <td className="py-2.5 px-3 border-r border-divider text-right text-content-primary font-semibold">
+                                {e.actualReceivedPallets || 0} plt / {(e.actualReceivedBatteries || 0).toLocaleString()} units
+                              </td>
+                              <td className="py-2.5 px-3 border-r border-divider text-right">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                                  pltDiff < 0 || unitDiff < 0
+                                    ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                                }`}>
+                                  {pltDiff > 0 ? `+${pltDiff}` : pltDiff} plt / {unitDiff > 0 ? `+${unitDiff}` : unitDiff} units
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-sans text-content-secondary text-[11px]">
+                                {e.vehicleNo ? (
+                                  <span>Veh: <strong className="font-mono text-content-primary">{e.vehicleNo}</strong></span>
+                                ) : (
+                                  <span className="italic text-content-muted">Pending Gate-In</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 sm:p-4 bg-surface-secondary/40 border-t border-divider flex items-center justify-between">
+              <span className="text-xs text-content-secondary font-mono">
+                Total Shortfall: <strong className="text-amber-600 font-bold">{kpis.totalShortfallPallets} pallets</strong> / <strong className="text-amber-600 font-bold">{kpis.totalShortfallBatteries.toLocaleString()} units</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowVarianceModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

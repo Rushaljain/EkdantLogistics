@@ -38,14 +38,14 @@ export function NavigationSidebar({
   const navItems = [
     {
       id: 'workspace' as PageId,
-      label: 'Workspace',
+      label: 'Dispatch Tool',
       icon: Layers,
       description: 'Operational 3-panel processor',
       badge: null
     },
     {
       id: 'inventory' as PageId,
-      label: 'Warehouse Stock Ledger',
+      label: 'Warehouse',
       icon: Warehouse,
       description: 'CFS Carting & Stock Report',
       badge: inventoryCount && inventoryCount > 0 ? String(inventoryCount) : null
