@@ -1388,7 +1388,7 @@ export function WarehouseInventoryHub({
 
             {/* Bottom Docked Pallet Action Bar */}
             {selectedPalletIds.size > 0 && (
-              <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface/95 backdrop-blur-md border-t border-divider px-4 sm:px-6 py-3 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fade-in">
+              <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface border-t border-divider px-4 sm:px-6 py-3 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 animate-fade-in">
                 {/* Left: Summary Metrics */}
                 <div className="flex flex-wrap items-center gap-2.5 text-xs font-mono">
                   <span className="px-2.5 py-1.5 rounded-lg bg-brand-primary text-white font-bold tracking-tight shadow-xs">
