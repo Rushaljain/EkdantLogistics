@@ -725,10 +725,14 @@ export function WarehouseInventoryHub({
         )}
 
         <div className="h-12 px-4 sm:px-6 flex items-center justify-between border-b border-divider/60">
-          <div>
+          <div className="flex items-center space-x-3">
             <h1 className="text-sm font-bold text-content-primary tracking-tight">
               Warehouse
             </h1>
+            <span className="text-divider">•</span>
+            <span className="text-xs text-content-secondary font-medium">
+              {activeStockInvoices.length} active invoices • {availablePalletUnits.length} available pallets on floor
+            </span>
           </div>
 
           <div className="flex items-center space-x-2">
@@ -1058,16 +1062,6 @@ export function WarehouseInventoryHub({
             ===================================================================== */}
         {activeSection === 'inventory' && (
           <div className="space-y-4 pb-24">
-            {/* Header info */}
-            <div className="bg-surface border border-divider rounded-xl p-3 shadow-xs">
-              <h2 className="text-xs font-bold text-content-primary uppercase tracking-wide">
-                Floor Stock &amp; Pallet Picking
-              </h2>
-              <p className="text-xs text-content-secondary mt-0.5">
-                {activeStockInvoices.length} active invoices • {availablePalletUnits.length} available pallets on floor
-              </p>
-            </div>
-
             {/* Invoices List */}
             {activeStockInvoices.length === 0 ? (
               <div className="text-center py-20 bg-surface border border-dashed border-divider rounded-xl p-8">
