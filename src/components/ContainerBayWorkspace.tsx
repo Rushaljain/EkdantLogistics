@@ -45,7 +45,7 @@ interface ContainerBayWorkspaceProps {
 export function ContainerBayWorkspace({
   shipmentJson,
   onUpdateShipment,
-  onSwitchTab,
+  onSwitchTab: _onSwitchTab,
   registerSyncHandler
 }: ContainerBayWorkspaceProps): React.JSX.Element {
   // Hard-locked 20' GP container type and default tare
@@ -1034,39 +1034,6 @@ export function ContainerBayWorkspace({
 
   return (
     <div className="w-full max-w-[1700px] mx-auto space-y-6 pb-36 px-1 sm:px-2">
-      {/* Top Header */}
-      <div className="p-4 bg-surface border border-divider rounded-2xl shadow-sm flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-brand-primary-soft border border-brand-primary/30 flex items-center justify-center">
-            <Boxes className="w-5 h-5 text-brand-primary" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-content-primary uppercase tracking-wider">
-              Container Placement &amp; Equipment Allocation
-            </h2>
-          </div>
-        </div>
-
-        {onSwitchTab && (
-          <div className="relative flex items-center">
-            <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
-              <Boxes className="w-3.5 h-3.5" />
-            </div>
-            <select
-              aria-label="Select workspace view"
-              value="container_bay"
-              onChange={(e) => onSwitchTab(e.target.value as any)}
-              className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
-            >
-              <option value="dg_manifest">DG Manifest</option>
-              <option value="bl_manifest">Bill of Lading</option>
-              <option value="container_bay">Container Placement ({shipmentJson.pallets?.length || 0}p)</option>
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
-          </div>
-        )}
-      </div>
-
       {/* Main Grid: 5 Cols Left (Pallets List) | 7 Cols Right (Bay Grid & Equipment) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* =========================================================================

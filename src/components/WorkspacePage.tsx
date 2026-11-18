@@ -1039,16 +1039,53 @@ export function WorkspacePage({
             VIEW 4: Container Bay & Equipment Allocation (Inline Workspace Tab)
             --------------------------------------------------------------------- */}
         {activeTab === 'container_bay' && (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-app">
-            <ContainerBayWorkspace
-              key={shipmentJson.invoiceNumbers.join('-') + '-' + shipmentJson.pallets.length + '-' + (shipmentJson.containerNumber || '') + '-' + (shipmentJson.containerType || '')}
-              shipmentJson={shipmentJson}
-              onUpdateShipment={onUpdateShipment}
-              onSwitchTab={(tab) => setActiveTab(tab)}
-              registerSyncHandler={(handler) => {
-                containerSyncRef.current = handler;
-              }}
-            />
+          <div className="flex-1 flex flex-col overflow-hidden bg-app">
+            {/* Top Sub-Bar (Matches DG and BL Action Bars for Perfect UI/UX Consistency) */}
+            <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
+              <div className="flex items-center space-x-3">
+                {/* Primary Workspace View Selector Dropdown */}
+                <div className="relative flex items-center">
+                  <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
+                    <Boxes className="w-3.5 h-3.5" />
+                  </div>
+                  <select
+                    aria-label="Select workspace view"
+                    value={activeTab}
+                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
+                    className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
+                  >
+                    <option value="dg_manifest">
+                      DG Manifest ({dgStats.populated}/{dgStats.total})
+                    </option>
+                    <option value="bl_manifest">
+                      Bill of Lading ({blStats.populated}/{blStats.total})
+                    </option>
+                    <option value="container_bay">
+                      Container Placement ({shipmentJson.pallets.length}p)
+                    </option>
+                  </select>
+                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
+                </div>
+
+                <div className="h-4 w-px bg-divider hidden sm:block" />
+
+                <span className="text-xs font-semibold text-content-secondary uppercase tracking-wider hidden sm:inline">
+                  Container Placement &amp; Equipment Allocation
+                </span>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <ContainerBayWorkspace
+                key={shipmentJson.invoiceNumbers.join('-') + '-' + shipmentJson.pallets.length + '-' + (shipmentJson.containerNumber || '') + '-' + (shipmentJson.containerType || '')}
+                shipmentJson={shipmentJson}
+                onUpdateShipment={onUpdateShipment}
+                onSwitchTab={(tab) => setActiveTab(tab)}
+                registerSyncHandler={(handler) => {
+                  containerSyncRef.current = handler;
+                }}
+              />
+            </div>
           </div>
         )}
 
