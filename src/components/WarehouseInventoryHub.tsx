@@ -149,7 +149,6 @@ export function WarehouseInventoryHub({
   const [selectedMonth, setSelectedMonth] = useState<CFSMonth>('ALL');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
-  const [reportDensity, setReportDensity] = useState<'core_11' | 'full_25'>('core_11');
 
   // Inventory States
   const [selectedPalletIds, setSelectedPalletIds] = useState<Set<string>>(new Set());
@@ -1490,34 +1489,8 @@ export function WarehouseInventoryHub({
                 </div>
               </div>
 
-              {/* Right: Density Toggle & Export Buttons */}
+              {/* Right: Export & Print Buttons */}
               <div className="flex flex-wrap items-center gap-2">
-                {/* Column Density Toggle */}
-                <div className="bg-surface-secondary border border-divider p-0.5 rounded-lg flex items-center space-x-0.5 font-medium">
-                  <button
-                    type="button"
-                    onClick={() => setReportDensity('core_11')}
-                    className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer text-xs ${
-                      reportDensity === 'core_11'
-                        ? 'bg-surface text-brand-primary font-bold shadow-2xs'
-                        : 'text-content-secondary hover:text-content-primary'
-                    }`}
-                  >
-                    Core View (11 Cols)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setReportDensity('full_25')}
-                    className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer text-xs ${
-                      reportDensity === 'full_25'
-                        ? 'bg-surface text-brand-primary font-bold shadow-2xs'
-                        : 'text-content-secondary hover:text-content-primary'
-                    }`}
-                  >
-                    Full Report (25 Cols)
-                  </button>
-                </div>
-
                 {/* Single Primary Export Button: Export Master Report (.xlsx) */}
                 <button
                   type="button"
@@ -1545,132 +1518,9 @@ export function WarehouseInventoryHub({
             {/* UNIFIED MASTER TABLE CONTAINER */}
             <div className="bg-surface border border-divider rounded-lg shadow-xs overflow-hidden">
               <div className="overflow-x-auto max-h-[720px]">
-                {/* 1. CORE VIEW (11 HIGH-PRIORITY DAILY OPERATIONAL COLUMNS) */}
-                {reportDensity === 'core_11' ? (
-                  <table className="w-full text-xs font-mono border-collapse select-text">
-                    <thead className="bg-surface-secondary/70 sticky top-0 z-10 border-b border-divider">
-                      <tr className="text-[11px] font-semibold text-content-secondary uppercase tracking-wider text-left">
-                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">Invoice No.</th>
-                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap min-w-[160px]">Customer</th>
-                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Invoiced (Plt/Units)</th>
-                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Received (Plt/Units)</th>
-                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Shortfall</th>
-                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">Vehicle &amp; Carting</th>
-                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Stuffed (Plt/Units)</th>
-                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">Container / Seal</th>
-                        <th className="py-2.5 px-3 border-r border-divider whitespace-nowrap">SB No.</th>
-                        <th className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">Balance (Plt/Units)</th>
-                        <th className="py-2.5 px-3 text-center whitespace-nowrap">Days</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-divider/60 tabular-nums">
-                      {filteredEntries.length === 0 ? (
-                        <tr>
-                          <td colSpan={11} className="p-12 text-center text-content-muted">
-                            No ledger records found matching selected filters.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredEntries.map((e) => {
-                          const hasShortfall = e.shortfallPallets > 0 || e.shortfallBatteries > 0;
-                          return (
-                            <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
-                              {/* 1. Custom Invoice No */}
-                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
-                                {e.customInvoiceNo}
-                              </td>
-
-                              {/* 2. Customer */}
-                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary">
-                                {e.customer}
-                              </td>
-
-                              {/* 3. Invoiced (Plt / Units) */}
-                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
-                                <span className="font-semibold text-content-primary">{e.invoicedPallets}</span>
-                                <span className="text-content-muted"> p • </span>
-                                <span className="text-content-secondary">{e.invoicedBatteries.toLocaleString()}</span>
-                                <span className="text-content-muted"> u</span>
-                              </td>
-
-                              {/* 4. Received (Plt / Units) */}
-                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
-                                <span className="font-semibold text-emerald-800">{e.actualReceivedPallets}</span>
-                                <span className="text-content-muted"> p • </span>
-                                <span className="text-content-secondary">{e.actualReceivedBatteries.toLocaleString()}</span>
-                                <span className="text-content-muted"> u</span>
-                              </td>
-
-                              {/* 5. Shortfall */}
-                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap font-medium">
-                                {hasShortfall ? (
-                                  <span className="text-rose-700 font-bold">
-                                    {e.shortfallPallets}p / {e.shortfallBatteries}u
-                                  </span>
-                                ) : (
-                                  <span className="text-content-muted">-</span>
-                                )}
-                              </td>
-
-                              {/* 6. Vehicle & Carting Date */}
-                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap text-content-secondary">
-                                {e.vehicleNo ? (
-                                  <span>
-                                    <strong className="text-content-primary">{e.vehicleNo}</strong>
-                                    {e.cartingInDate && <span className="text-content-muted"> • {e.cartingInDate}</span>}
-                                  </span>
-                                ) : (
-                                  <span className="text-content-muted">{e.cartingInDate || '-'}</span>
-                                )}
-                              </td>
-
-                              {/* 7. Stuffed (Plt / Units) */}
-                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
-                                <span className="font-semibold text-blue-800">{e.actualStuffedPallets}</span>
-                                <span className="text-content-muted"> p • </span>
-                                <span className="text-content-secondary">{e.actualStuffedBatteries.toLocaleString()}</span>
-                                <span className="text-content-muted"> u</span>
-                              </td>
-
-                              {/* 8. Container / Seal */}
-                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap">
-                                {e.containerNo ? (
-                                  <span>
-                                    <strong className="text-blue-700 font-bold">{e.containerNo}</strong>
-                                    {e.sealNo && <span className="text-content-muted"> / {e.sealNo}</span>}
-                                  </span>
-                                ) : (
-                                  <span className="text-content-muted">-</span>
-                                )}
-                              </td>
-
-                              {/* 9. SB No */}
-                              <td className="py-2.5 px-3 border-r border-divider whitespace-nowrap text-content-secondary">
-                                {e.shippingBillNo || '-'}
-                              </td>
-
-                              {/* 10. Balance (Plt / Units) */}
-                              <td className="py-2.5 px-3 border-r border-divider text-right whitespace-nowrap">
-                                <span className="font-bold text-emerald-700">{e.balancePallets}</span>
-                                <span className="text-content-muted"> p • </span>
-                                <span className="font-bold text-indigo-700">{e.balanceBatteries.toLocaleString()}</span>
-                                <span className="text-content-muted"> u</span>
-                              </td>
-
-                              {/* 11. Days in CFS */}
-                              <td className="py-2.5 px-3 text-center whitespace-nowrap font-bold text-content-secondary">
-                                {e.daysInCFS || 0}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                ) : (
-                  /* 2. FULL REPORT (ALL 25 INDIVIDUAL COLUMNS WITH ZERO ROW LOSS) */
-                  <table className="w-full text-xs font-mono border-collapse select-text">
-                    <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
+                {/* FULL REPORT (ALL 25 INDIVIDUAL COLUMNS WITH ZERO ROW LOSS) */}
+                <table className="w-full text-xs font-mono border-collapse select-text">
+                  <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider">
                       {/* Group Header Row */}
                       <tr className="text-[10px] uppercase font-bold text-content-secondary text-center tracking-wider border-b border-divider/60">
                         <th colSpan={5} className="py-1 border-r border-divider bg-slate-100">
@@ -2010,7 +1860,6 @@ export function WarehouseInventoryHub({
                       )}
                     </tbody>
                   </table>
-                )}
               </div>
             </div>
           </div>
