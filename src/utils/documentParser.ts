@@ -207,8 +207,8 @@ export async function parseDocumentsToJSON(
   });
 
   const modeInstruction = mode === 'SINGLE_INVOICE'
-    ? 'Upload Mode is SINGLE_INVOICE. All provided files belong to 1 single shipment. Merge commercial invoice, packing list, and carrier DG sheets into one combined shipment JSON.'
-    : 'Upload Mode is MULTI_INVOICE. Documents contain multiple commercial invoices. Extract all invoice numbers, all pallets in physical order, and carrier/vessel details.';
+    ? 'Upload Mode is SINGLE_INVOICE. All provided files belong to 1 single shipment. Merge commercial invoice, packing list, and companion sheets into one combined shipment JSON.'
+    : 'Upload Mode is BATCH_UPLOAD. The provided files may contain companion documents for the same shipment (e.g. Commercial Invoice + Packing List) OR multiple distinct commercial invoices. If files share the same invoice number or represent an Invoice + Packing List pair for the same job, MERGE their commercial details and pallet packing tables into that single invoice. If documents contain multiple distinct commercial invoice numbers, extract all distinct invoice numbers and map each pallet to its respective invoice.';
 
   // Collect all deterministic batch references from spreadsheet pre-filters
   const allExtractedRefs: string[] = [];
