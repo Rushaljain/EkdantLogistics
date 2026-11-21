@@ -543,7 +543,8 @@ export function ManualInwardModal({
                   required
                   value={invoicedPalletsStr}
                   onChange={(e) => setInvoicedPalletsStr(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-medium outline-none transition-colors"
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-medium outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
 
@@ -558,7 +559,8 @@ export function ManualInwardModal({
                   required
                   value={invoicedBatteriesStr}
                   onChange={(e) => setInvoicedBatteriesStr(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-medium outline-none transition-colors"
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-medium outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
 
@@ -572,7 +574,8 @@ export function ManualInwardModal({
                   required
                   value={manualGrossWeightKgStr}
                   onChange={(e) => setManualGrossWeightKgStr(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-bold outline-none transition-colors"
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-bold outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
 
@@ -585,7 +588,8 @@ export function ManualInwardModal({
                   step="any"
                   value={manualNetWeightKgStr}
                   onChange={(e) => setManualNetWeightKgStr(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono outline-none transition-colors"
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
             </div>
@@ -711,7 +715,8 @@ export function ManualInwardModal({
                         required
                         value={row.qty}
                         onChange={(e) => handleUpdatePalletRow(row.id, 'qty', e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold outline-none focus:border-brand-primary"
+                        onWheel={(e) => e.currentTarget.blur()}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold outline-none focus:border-brand-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -942,7 +947,8 @@ export function ManualInwardModal({
                               shortfallUnits: Math.max(0, parseInt(e.target.value, 10) || 0)
                             })
                           }
-                          className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-amber-300 text-amber-700 outline-none focus:ring-1 focus:ring-amber-500"
+                          onWheel={(e) => e.currentTarget.blur()}
+                          className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-amber-300 text-amber-700 outline-none focus:ring-1 focus:ring-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                         {row.mode === 'PALLET' && (
                           <div className="mt-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 font-medium text-[10px] flex items-center justify-between">
@@ -1051,7 +1057,8 @@ export function ManualInwardModal({
                       max={priorRemainingShortfallUnits || undefined}
                       value={shortFillUnitsStr}
                       onChange={(e) => setShortFillUnitsStr(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold text-blue-600 outline-none"
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold text-blue-600 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                     {priorRemainingShortfallUnits > 0 && (
                       <span className="text-[10px] text-content-muted mt-0.5 block">
