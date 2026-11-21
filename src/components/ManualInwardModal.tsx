@@ -5,6 +5,8 @@
 import React, { useState, useMemo } from 'react';
 import {
   X,
+  Minus,
+  Maximize2,
   Plus,
   Trash2,
   CheckCircle2,
@@ -111,6 +113,9 @@ export function ManualInwardModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Minimise / Floating Drawer State
+  const [isMinimised, setIsMinimised] = useState(false);
+
   // Clean reset form state
   const resetForm = () => {
     setCustomInvoiceNo('');
@@ -133,6 +138,7 @@ export function ManualInwardModal({
     setSelectedPriorInvoiceNo('');
     setShortFillPalletNumber('');
     setShortFillUnitsStr('');
+    setIsMinimised(false);
     setErrorMsg(null);
   };
 
@@ -410,6 +416,61 @@ export function ManualInwardModal({
 
   if (!isOpen) return null;
 
+  // MINIMISED FLOATING DRAWER BAR
+  if (isMinimised) {
+    return (
+      <div className="fixed bottom-5 right-6 z-50 animate-fade-in font-sans">
+        <div className="bg-surface border border-brand-primary/40 shadow-2xl rounded-2xl p-3 flex items-center space-x-3.5 max-w-md w-full ring-2 ring-brand-primary/20 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={() => setIsMinimised(false)}
+            className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold shrink-0 hover:bg-emerald-500/20 transition-colors cursor-pointer"
+            title="Click to restore full form"
+          >
+            <ArrowDownToLine className="w-4 h-4" />
+          </button>
+          <div
+            className="min-w-0 flex-1 cursor-pointer select-none"
+            onClick={() => setIsMinimised(false)}
+            title="Click to restore full form"
+          >
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-content-primary truncate">
+                {customInvoiceNo.trim() ? customInvoiceNo.trim() : 'Stock-In Entry'}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Minimised
+              </span>
+            </div>
+            <div className="text-[11px] text-content-secondary truncate">
+              {invPallets > 0 ? `${invPallets} plts` : '0 plts'}
+              {invBatteries > 0 ? ` • ${invBatteries} units` : ''}
+              {customer ? ` • ${customer}` : ''}
+            </div>
+          </div>
+          <div className="flex items-center space-x-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsMinimised(false)}
+              className="p-1.5 rounded-lg text-content-secondary hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
+              title="Restore / Maximise"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+              title="Close & Discard"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-fade-in">
       <div className="bg-surface border border-divider rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden font-sans">
@@ -425,13 +486,24 @@ export function ManualInwardModal({
               </h2>
             </div>
           </div>
-          <button
-            onClick={handleClose}
-            className="p-1 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
-            title="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-1">
+            <button
+              type="button"
+              onClick={() => setIsMinimised(true)}
+              className="p-1 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
+              title="Minimise"
+            >
+              <Minus className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="p-1 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* FORM CONTENT (Vertical scroll only, zero horizontal overflow) */}
