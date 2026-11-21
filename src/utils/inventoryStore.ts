@@ -10,11 +10,24 @@ import type {
   InventoryMovementRecord,
   InventoryMovementStatus,
   PalletItem,
-  PalletStockUnit
+  PalletStockUnit,
+  ReceiptMode,
+  ShortfallMode,
+  ShortfallRecord,
+  LinkedShortFill,
+  MergedTransfer
 } from '../types/index.ts';
 import { createEmptyShipmentJSON } from '../types/index.ts';
 import { autoAllocate20GPContainers } from './manifestKeywordReference.ts';
 import { supabase, isSupabaseConfigured } from './supabaseClient.ts';
+
+/**
+ * Preserves exact decimal weight precision with 0.00 kg drift
+ */
+export function toExactWeight(val?: number | null): number {
+  if (val === undefined || val === null || isNaN(val)) return 0;
+  return Number(val.toFixed(3));
+}
 
 export const CFS_LEDGER_STORAGE_KEY = 'ekdant_cha_cfs_ledger_v1';
 export const CFS_MOVEMENT_LOGS_STORAGE_KEY = 'ekdant_cha_cfs_movement_logs_v1';
@@ -250,6 +263,10 @@ export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry
     ...entry,
     invoicedPallets: invPallets,
     invoicedBatteries: invBatteries,
+    invoicedGrossWeightKg: toExactWeight(entry.invoicedGrossWeightKg),
+    invoicedNetWeightKg: entry.invoicedNetWeightKg !== undefined ? toExactWeight(entry.invoicedNetWeightKg) : undefined,
+    actualGrossWeightKg: entry.actualGrossWeightKg !== undefined ? toExactWeight(entry.actualGrossWeightKg) : undefined,
+    actualNetWeightKg: entry.actualNetWeightKg !== undefined ? toExactWeight(entry.actualNetWeightKg) : undefined,
     actualReceivedPallets: recPallets,
     actualReceivedBatteries: recBatteries,
     shortfallPallets,
@@ -259,7 +276,12 @@ export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry
     balancePallets,
     balanceBatteries,
     daysInCFS,
-    remarks
+    remarks,
+    receiptMode: entry.receiptMode || 'RECEIVED_FULL',
+    shortfalls: entry.shortfalls || [],
+    shortFillLinks: entry.shortFillLinks || [],
+    dgCreated: Boolean(entry.dgCreated),
+    blCreated: Boolean(entry.blCreated)
   };
 }
 
@@ -347,6 +369,7 @@ export function deletePalletFromCFSEntry(entryId: string, palletId: string): CFS
 
   const removedUnits = targetPallet?.receivedBatteries || targetPallet?.invoicedBatteries || 0;
   const removedGrossKg = targetPallet?.grossWeightKg || 0;
+  const removedNetKg = targetPallet?.netWeightKg || 0;
 
   const updatedEntry: CFSLedgerEntry = {
     ...entry,
@@ -355,7 +378,11 @@ export function deletePalletFromCFSEntry(entryId: string, palletId: string): CFS
     actualReceivedPallets: Math.max(0, (entry.actualReceivedPallets || 0) - 1),
     invoicedBatteries: Math.max(0, (entry.invoicedBatteries || 0) - removedUnits),
     actualReceivedBatteries: Math.max(0, (entry.actualReceivedBatteries || 0) - removedUnits),
-    invoicedGrossWeightKg: Math.max(0, (entry.invoicedGrossWeightKg || 0) - removedGrossKg)
+    invoicedGrossWeightKg: Math.max(0, toExactWeight((entry.invoicedGrossWeightKg || 0) - removedGrossKg)),
+    invoicedNetWeightKg: entry.invoicedNetWeightKg !== undefined ? Math.max(0, toExactWeight(entry.invoicedNetWeightKg - removedNetKg)) : undefined,
+    actualGrossWeightKg: entry.actualGrossWeightKg !== undefined ? Math.max(0, toExactWeight(entry.actualGrossWeightKg - removedGrossKg)) : undefined,
+    actualNetWeightKg: entry.actualNetWeightKg !== undefined ? Math.max(0, toExactWeight(entry.actualNetWeightKg - removedNetKg)) : undefined,
+    updatedAt: new Date().toISOString()
   };
 
   const recomputed = recomputeCFSDerivedFields(updatedEntry);
@@ -379,12 +406,14 @@ export function deletePalletsFromCFS(palletIds: string[]): void {
     let removedPalletsCount = 0;
     let removedUnits = 0;
     let removedGrossKg = 0;
+    let removedNetKg = 0;
 
     const remainingPallets = (entry.pallets || []).filter((p) => {
       if (palletIdSet.has(p.id)) {
         removedPalletsCount++;
         removedUnits += p.receivedBatteries || p.invoicedBatteries || 0;
         removedGrossKg += p.grossWeightKg || 0;
+        removedNetKg += p.netWeightKg || 0;
         return false;
       }
       return true;
@@ -397,7 +426,11 @@ export function deletePalletsFromCFS(palletIds: string[]): void {
       actualReceivedPallets: Math.max(0, (entry.actualReceivedPallets || 0) - removedPalletsCount),
       invoicedBatteries: Math.max(0, (entry.invoicedBatteries || 0) - removedUnits),
       actualReceivedBatteries: Math.max(0, (entry.actualReceivedBatteries || 0) - removedUnits),
-      invoicedGrossWeightKg: Math.max(0, (entry.invoicedGrossWeightKg || 0) - removedGrossKg)
+      invoicedGrossWeightKg: Math.max(0, toExactWeight((entry.invoicedGrossWeightKg || 0) - removedGrossKg)),
+      invoicedNetWeightKg: entry.invoicedNetWeightKg !== undefined ? Math.max(0, toExactWeight(entry.invoicedNetWeightKg - removedNetKg)) : undefined,
+      actualGrossWeightKg: entry.actualGrossWeightKg !== undefined ? Math.max(0, toExactWeight(entry.actualGrossWeightKg - removedGrossKg)) : undefined,
+      actualNetWeightKg: entry.actualNetWeightKg !== undefined ? Math.max(0, toExactWeight(entry.actualNetWeightKg - removedNetKg)) : undefined,
+      updatedAt: new Date().toISOString()
     };
 
     return recomputeCFSDerivedFields(updatedEntry);
@@ -453,8 +486,11 @@ export function ingestShipmentToLedger(shipment: ExtractedShipmentJSON): CFSLedg
       ? groupPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0)
       : (shipment.totalBoxes || 0);
     const invoicedGrossKg = groupPallets.length > 0
-      ? groupPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0)
-      : (shipment.grossWeightKg || 0);
+      ? toExactWeight(groupPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0))
+      : toExactWeight(shipment.grossWeightKg || 0);
+    const invoicedNetKg = groupPallets.length > 0
+      ? toExactWeight(groupPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0))
+      : toExactWeight(shipment.netWeightKg || 0);
 
     const palletUnits: PalletStockUnit[] = groupPallets.map((p, idx) => ({
       id: `plt-${invoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}`,
@@ -463,8 +499,9 @@ export function ingestShipmentToLedger(shipment: ExtractedShipmentJSON): CFSLedg
       brand: p.brand || shipment.brandName || '',
       invoicedBatteries: p.boxCount || 0,
       receivedBatteries: p.boxCount || 0, // Defaults to 100% received on upload
-      netWeightKg: p.netWeightKg || 0,
-      grossWeightKg: p.grossWeightKg || 0,
+      remainingUnits: p.boxCount || 0,
+      netWeightKg: toExactWeight(p.netWeightKg || 0),
+      grossWeightKg: toExactWeight(p.grossWeightKg || 0),
       status: 'IN_WAREHOUSE' as const,
       invoiceNumber: invoiceNo
     }));
@@ -527,10 +564,18 @@ export function ingestShipmentToLedger(shipment: ExtractedShipmentJSON): CFSLedg
         invoicedPallets,
         invoicedBatteries,
         invoicedGrossWeightKg: invoicedGrossKg,
+        invoicedNetWeightKg: invoicedNetKg,
+        actualGrossWeightKg: invoicedGrossKg,
+        actualNetWeightKg: invoicedNetKg,
         actualReceivedPallets: invoicedPallets, // Defaults to 100% received on upload
         actualReceivedBatteries: invoicedBatteries,
         shortfallPallets: 0,
         shortfallBatteries: 0,
+        receiptMode: 'RECEIVED_FULL',
+        shortfalls: [],
+        shortFillLinks: [],
+        dgCreated: false,
+        blCreated: false,
         cartingInDate: todayFormatted,
         vehicleNo: '',
         lastPltRecdDate: todayFormatted,
@@ -777,9 +822,14 @@ export function getCustomerStockSummaries(entries: CFSLedgerEntry[]): CustomerSt
     const totalBalancePallets = customerEntries.reduce((s, e) => s + (e.balancePallets || 0), 0);
     const totalBalanceBatteries = customerEntries.reduce((s, e) => s + (e.balanceBatteries || 0), 0);
     const totalBalanceGrossWeightKg = customerEntries.reduce((s, e) => {
-      // Estimate weight proportional to balance pallets
+      // Sum actual floor pallets if available
+      const floorPallets = (e.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
+      if (floorPallets.length > 0) {
+        return s + floorPallets.reduce((ps, p) => ps + (p.grossWeightKg || 0), 0);
+      }
+      const weightBase = e.actualGrossWeightKg || e.invoicedGrossWeightKg || 0;
       const ratio = e.invoicedPallets > 0 ? (e.balancePallets || 0) / e.invoicedPallets : 0;
-      return s + (e.invoicedGrossWeightKg || 0) * ratio;
+      return s + weightBase * ratio;
     }, 0);
 
     const required20GPContainers = Math.ceil(totalBalancePallets / 22);
@@ -807,7 +857,7 @@ export function getCustomerStockSummaries(entries: CFSLedgerEntry[]): CustomerSt
       totalStuffedPallets,
       totalBalancePallets,
       totalBalanceBatteries,
-      totalBalanceGrossWeightKg: Math.round(totalBalanceGrossWeightKg),
+      totalBalanceGrossWeightKg: toExactWeight(totalBalanceGrossWeightKg),
       required20GPContainers,
       alertType,
       alertMessage
@@ -840,8 +890,8 @@ export function buildShipmentFromStockPallets(
 
   const totalPallets = palletItems.length;
   const totalBoxes = palletItems.reduce((s, p) => s + (p.boxCount || 0), 0);
-  const grossWeightKg = Math.round(palletItems.reduce((s, p) => s + (p.grossWeightKg || 0), 0));
-  const netWeightKg = Math.round(palletItems.reduce((s, p) => s + (p.netWeightKg || 0), 0));
+  const grossWeightKg = toExactWeight(palletItems.reduce((s, p) => s + (p.grossWeightKg || 0), 0));
+  const netWeightKg = toExactWeight(palletItems.reduce((s, p) => s + (p.netWeightKg || 0), 0));
 
   const uniqueInvoices: string[] = Array.from(new Set(palletItems.map((p) => p.invoiceNumber).filter((inv): inv is string => Boolean(inv))));
   const primaryInvoice = uniqueInvoices[0] || 'DISPATCH-1';
@@ -921,8 +971,8 @@ export function buildShipmentFromInventoryInvoices(
       source.totalPackages = source.totalBoxes;
       source.outerPackagingCount = filteredPallets.length;
       source.innerPackageCount = source.totalBoxes;
-      source.grossWeightKg = Math.round(filteredPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0));
-      source.netWeightKg = Math.round(filteredPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0));
+      source.grossWeightKg = toExactWeight(filteredPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0));
+      source.netWeightKg = toExactWeight(filteredPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0));
       source.containers = autoAllocate20GPContainers(filteredPallets, [], '', '');
       source.tareWeightKg = source.containers.reduce((sum, c) => sum + (c.tareWeightKg || 2150), 0);
       source.volumeCbm = Number((filteredPallets.length * 1.15).toFixed(2));
@@ -1050,9 +1100,9 @@ export function executeWorkspaceDispatch(
 
     // Record movement log
     if (newlyStuffedPallets > 0) {
-      const grossKg = entry.invoicedPallets > 0
-        ? Math.round((entry.invoicedGrossWeightKg / entry.invoicedPallets) * newlyStuffedPallets)
-        : 0;
+      const grossKg = newlyStuffedPalletIds.length > 0
+        ? toExactWeight(updatedPallets.filter((p) => newlyStuffedPalletIds.includes(p.id)).reduce((s, p) => s + (p.grossWeightKg || 0), 0))
+        : (entry.invoicedPallets > 0 ? toExactWeight((entry.invoicedGrossWeightKg / entry.invoicedPallets) * newlyStuffedPallets) : 0);
 
       recordMovementLog({
         receivedDate: entry.cartingInDate || entry.truckReportingDate || entry.lastPltRecdDate || today,
@@ -1953,9 +2003,9 @@ export async function hydrateInventoryFromSupabase(): Promise<{
         if (!local) {
           localMap.set(row.id, recomputeCFSDerivedFields(cloudEntry));
         } else {
-          const cloudTime = new Date(row.updated_at || cloudEntry.createdAt || 0).getTime();
-          const localTime = new Date(local.createdAt || 0).getTime();
-          if (cloudTime >= localTime) {
+          const cloudTime = new Date(row.updated_at || cloudEntry.updatedAt || cloudEntry.createdAt || 0).getTime();
+          const localTime = new Date(local.updatedAt || local.createdAt || 0).getTime();
+          if (cloudTime > localTime) {
             localMap.set(row.id, recomputeCFSDerivedFields({ ...local, ...cloudEntry }));
           }
         }
@@ -2058,5 +2108,731 @@ export async function importInventoryBackupJson(jsonString: string): Promise<{
 
 // Alias for closed-loop workspace dispatch deduction
 export const deductInventoryOnDispatch = executeWorkspaceDispatch;
+
+// =========================================================================
+// Sprint 7.1: Manual Inward, Shortfall (PALLET vs UNITS) & Multi-Short-Fill
+// =========================================================================
+
+export interface ManualInwardShortfallInput {
+  mode: ShortfallMode; // 'PALLET' | 'UNITS'
+  palletNumber: string | number;
+  billedUnits: number;
+  shortfallUnits: number;
+}
+
+export interface ManualInwardShortFillInput {
+  priorShortfallInvoiceNo: string;
+  priorShortfallLedgerId?: string;
+  palletNumber?: string | number;
+  unitsFilled: number;
+}
+
+export interface RecordManualInwardParams {
+  customer: string;
+  exporterShipper?: string;
+  customInvoiceNo: string;
+  invoiceDate?: string;
+  pod?: string;
+  receiptMode: ReceiptMode; // 'RECEIVED_FULL' | 'SHORT_FALL' | 'SHORT_FILL'
+  invoicedPallets: number;
+  invoicedBatteries: number;
+  invoicedGrossWeightKg: number;
+  invoicedNetWeightKg?: number;
+  actualGrossWeightKg?: number;
+  actualNetWeightKg?: number;
+  cartingInDate?: string;
+  vehicleNo?: string;
+  truckReportingDate?: string;
+  pallets?: {
+    palletNumber: number | string;
+    model: string;
+    brand?: string;
+    invoicedBatteries: number;
+    receivedBatteries?: number;
+    grossWeightKg?: number;
+    netWeightKg?: number;
+  }[];
+  shortfallInputs?: ManualInwardShortfallInput[];
+  shortFillInputs?: ManualInwardShortFillInput[];
+  month?: string;
+  remarks?: string;
+}
+
+/**
+ * Records a manual stock-inward with exact weights, shortfall handling, or short-fill reconciliation.
+ */
+export function recordManualInward(params: RecordManualInwardParams): CFSLedgerEntry {
+  const today = formatToDDMMYYYY(new Date());
+  const entryMonth = params.month || getMonthFromDate(params.cartingInDate || params.truckReportingDate || new Date());
+  const entryId = `cfs_inw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const invoicedGrossKg = toExactWeight(params.invoicedGrossWeightKg);
+  const invoicedNetKg = params.invoicedNetWeightKg !== undefined ? toExactWeight(params.invoicedNetWeightKg) : undefined;
+  const actualGrossKg = params.actualGrossWeightKg !== undefined ? toExactWeight(params.actualGrossWeightKg) : invoicedGrossKg;
+  const actualNetKg = params.actualNetWeightKg !== undefined ? toExactWeight(params.actualNetWeightKg) : invoicedNetKg;
+
+  // Synthesize or map pallets
+  let rawPallets = params.pallets && params.pallets.length > 0 ? params.pallets : [];
+  if (rawPallets.length === 0 && params.invoicedPallets > 0) {
+    const avgUnits = Math.floor(params.invoicedBatteries / params.invoicedPallets);
+    const unitRemainder = params.invoicedBatteries - (avgUnits * params.invoicedPallets);
+    const avgGross = invoicedGrossKg > 0 ? invoicedGrossKg / params.invoicedPallets : 0;
+    const avgNet = (invoicedNetKg || 0) > 0 ? (invoicedNetKg! / params.invoicedPallets) : 0;
+
+    for (let i = 1; i <= params.invoicedPallets; i++) {
+      const units = i === params.invoicedPallets ? avgUnits + unitRemainder : avgUnits;
+      rawPallets.push({
+        palletNumber: i,
+        model: 'STANDARD',
+        invoicedBatteries: units,
+        receivedBatteries: units,
+        grossWeightKg: toExactWeight(avgGross),
+        netWeightKg: toExactWeight(avgNet)
+      });
+    }
+  }
+
+  let finalPalletUnits: PalletStockUnit[] = [];
+  const shortfallRecords: ShortfallRecord[] = [];
+  let totalShortfallPallets = 0;
+  let totalShortfallBatteries = 0;
+
+  if (params.receiptMode === 'RECEIVED_FULL') {
+    finalPalletUnits = rawPallets.map((p, idx) => ({
+      id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
+      palletNumber: p.palletNumber || idx + 1,
+      model: p.model || 'STANDARD',
+      brand: p.brand || '',
+      invoicedBatteries: p.invoicedBatteries,
+      receivedBatteries: p.invoicedBatteries,
+      remainingUnits: p.invoicedBatteries,
+      grossWeightKg: toExactWeight(p.grossWeightKg ?? (invoicedGrossKg / (rawPallets.length || 1))),
+      netWeightKg: toExactWeight(p.netWeightKg ?? ((invoicedNetKg || 0) / (rawPallets.length || 1))),
+      status: 'IN_WAREHOUSE' as const,
+      invoiceNumber: params.customInvoiceNo
+    }));
+  } else if (params.receiptMode === 'SHORT_FALL') {
+    const shortfallInputs = params.shortfallInputs || [];
+    const shortfallByPallet = new Map<string, ManualInwardShortfallInput>();
+    shortfallInputs.forEach((sf) => shortfallByPallet.set(String(sf.palletNumber).trim(), sf));
+
+    finalPalletUnits = rawPallets.map((p, idx) => {
+      const pNumStr = String(p.palletNumber || idx + 1).trim();
+      const sf = shortfallByPallet.get(pNumStr);
+      const palletId = `plt-${params.customInvoiceNo}-${pNumStr}-${Date.now()}-${idx}`;
+      const origGross = toExactWeight(p.grossWeightKg ?? (invoicedGrossKg / (rawPallets.length || 1)));
+      const origNet = toExactWeight(p.netWeightKg ?? ((invoicedNetKg || 0) / (rawPallets.length || 1)));
+
+      if (!sf) {
+        // Pallet arrived in full
+        return {
+          id: palletId,
+          palletNumber: p.palletNumber || idx + 1,
+          model: p.model || 'STANDARD',
+          brand: p.brand || '',
+          invoicedBatteries: p.invoicedBatteries,
+          receivedBatteries: p.invoicedBatteries,
+          remainingUnits: p.invoicedBatteries,
+          grossWeightKg: origGross,
+          netWeightKg: origNet,
+          status: 'IN_WAREHOUSE' as const,
+          invoiceNumber: params.customInvoiceNo
+        };
+      }
+
+      if (sf.mode === 'PALLET') {
+        // Entire pallet missing: 0 units, 0 weight on floor
+        totalShortfallPallets += 1;
+        totalShortfallBatteries += sf.billedUnits || p.invoicedBatteries;
+        shortfallRecords.push({
+          id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}`,
+          mode: 'PALLET',
+          palletNumber: p.palletNumber || idx + 1,
+          billedUnits: sf.billedUnits || p.invoicedBatteries,
+          shortfallUnits: sf.billedUnits || p.invoicedBatteries,
+          remainingShortfallUnits: sf.billedUnits || p.invoicedBatteries,
+          openedDate: today,
+          openedMonth: entryMonth,
+          status: 'OPEN',
+          linkedShortFills: []
+        });
+
+        return {
+          id: palletId,
+          palletNumber: p.palletNumber || idx + 1,
+          model: p.model || 'STANDARD',
+          brand: p.brand || '',
+          invoicedBatteries: p.invoicedBatteries,
+          receivedBatteries: 0,
+          remainingUnits: 0,
+          grossWeightKg: 0,
+          netWeightKg: 0,
+          status: 'PENDING_GATE_IN' as const,
+          invoiceNumber: params.customInvoiceNo
+        };
+      } else {
+        // UNITS shortfall: partial units arrived
+        const sfUnits = Math.min(sf.shortfallUnits, p.invoicedBatteries);
+        const recUnits = Math.max(0, p.invoicedBatteries - sfUnits);
+        totalShortfallBatteries += sfUnits;
+
+        const pGross = recUnits > 0 ? toExactWeight((origGross / p.invoicedBatteries) * recUnits) : 0;
+        const pNet = recUnits > 0 ? toExactWeight((origNet / p.invoicedBatteries) * recUnits) : 0;
+
+        shortfallRecords.push({
+          id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}`,
+          mode: 'UNITS',
+          palletNumber: p.palletNumber || idx + 1,
+          billedUnits: sf.billedUnits || p.invoicedBatteries,
+          shortfallUnits: sfUnits,
+          remainingShortfallUnits: sfUnits,
+          openedDate: today,
+          openedMonth: entryMonth,
+          status: 'OPEN',
+          linkedShortFills: []
+        });
+
+        return {
+          id: palletId,
+          palletNumber: p.palletNumber || idx + 1,
+          model: p.model || 'STANDARD',
+          brand: p.brand || '',
+          invoicedBatteries: p.invoicedBatteries,
+          receivedBatteries: recUnits,
+          remainingUnits: recUnits,
+          grossWeightKg: pGross,
+          netWeightKg: pNet,
+          status: recUnits > 0 ? ('IN_WAREHOUSE' as const) : ('PENDING_GATE_IN' as const),
+          invoiceNumber: params.customInvoiceNo
+        };
+      }
+    });
+  } else if (params.receiptMode === 'SHORT_FILL') {
+    // Process short fill links against prior shortfall entries
+    const shortFillInputs = params.shortFillInputs || [];
+    const allLedger = getCFSLedgerEntries();
+
+    shortFillInputs.forEach((sfi) => {
+      const priorEntry = allLedger.find(
+        (e) => (sfi.priorShortfallLedgerId && e.id === sfi.priorShortfallLedgerId) ||
+               (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === sfi.priorShortfallInvoiceNo.trim().toUpperCase())
+      );
+
+      if (priorEntry && priorEntry.shortfalls && priorEntry.shortfalls.length > 0) {
+        let unitsToAllocate = sfi.unitsFilled;
+        const updatedShortfalls = priorEntry.shortfalls.map((sf) => {
+          if (unitsToAllocate <= 0 || sf.status === 'CLEARED') return sf;
+          const matchPallet = !sfi.palletNumber || String(sf.palletNumber).trim() === String(sfi.palletNumber).trim();
+          if (!matchPallet) return sf;
+
+          const fillAmt = Math.min(unitsToAllocate, sf.remainingShortfallUnits);
+          unitsToAllocate -= fillAmt;
+          const newRemaining = Math.max(0, sf.remainingShortfallUnits - fillAmt);
+          const isCleared = newRemaining === 0;
+
+          const linked: LinkedShortFill = {
+            shortFillInvoiceNo: params.customInvoiceNo,
+            shortFillLedgerId: entryId,
+            palletNumber: sf.palletNumber,
+            unitsFilled: fillAmt,
+            filledDate: today,
+            filledMonth: entryMonth
+          };
+
+          return {
+            ...sf,
+            remainingShortfallUnits: newRemaining,
+            status: isCleared ? ('CLEARED' as const) : ('PARTIAL_FILL' as const),
+            clearedDate: isCleared ? today : sf.clearedDate,
+            clearedMonth: isCleared ? entryMonth : sf.clearedMonth,
+            linkedShortFills: [...(sf.linkedShortFills || []), linked]
+          };
+        });
+
+        const remainingShortfallBatteries = updatedShortfalls.reduce((sum, sf) => sum + sf.remainingShortfallUnits, 0);
+        const remainingShortfallPallets = updatedShortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED').length;
+
+        const updatedPriorEntry = recomputeCFSDerivedFields({
+          ...priorEntry,
+          shortfalls: updatedShortfalls,
+          shortfallBatteries: remainingShortfallBatteries,
+          shortfallPallets: remainingShortfallPallets,
+          updatedAt: new Date().toISOString()
+        });
+
+        addOrUpdateCFSEntry(updatedPriorEntry);
+      }
+    });
+
+    finalPalletUnits = rawPallets.map((p, idx) => ({
+      id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
+      palletNumber: p.palletNumber || idx + 1,
+      model: p.model || 'STANDARD',
+      brand: p.brand || '',
+      invoicedBatteries: p.invoicedBatteries,
+      receivedBatteries: p.invoicedBatteries,
+      remainingUnits: p.invoicedBatteries,
+      grossWeightKg: toExactWeight(p.grossWeightKg ?? (invoicedGrossKg / (rawPallets.length || 1))),
+      netWeightKg: toExactWeight(p.netWeightKg ?? ((invoicedNetKg || 0) / (rawPallets.length || 1))),
+      status: 'IN_WAREHOUSE' as const,
+      invoiceNumber: params.customInvoiceNo
+    }));
+  }
+
+  const actualRecPallets = finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').length;
+  const actualRecBatteries = finalPalletUnits.reduce((sum, p) => sum + (p.receivedBatteries || 0), 0);
+
+  const newEntry: CFSLedgerEntry = recomputeCFSDerivedFields({
+    id: entryId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    month: entryMonth,
+    customer: params.customer,
+    exporterShipper: params.exporterShipper || 'EXIDE INDUSTRIES LIMITED',
+    customInvoiceNo: params.customInvoiceNo,
+    invoiceDate: params.invoiceDate || today,
+    pod: params.pod || '',
+    invoicedPallets: params.invoicedPallets,
+    invoicedBatteries: params.invoicedBatteries,
+    invoicedGrossWeightKg: invoicedGrossKg,
+    invoicedNetWeightKg: invoicedNetKg,
+    actualGrossWeightKg: actualGrossKg,
+    actualNetWeightKg: actualNetKg,
+    actualReceivedPallets: actualRecPallets,
+    actualReceivedBatteries: actualRecBatteries,
+    shortfallPallets: totalShortfallPallets,
+    shortfallBatteries: totalShortfallBatteries,
+    receiptMode: params.receiptMode,
+    shortfalls: shortfallRecords,
+    shortFillLinks: params.shortFillInputs?.map((sfi) => ({
+      priorShortfallInvoiceNo: sfi.priorShortfallInvoiceNo,
+      priorShortfallLedgerId: sfi.priorShortfallLedgerId || '',
+      palletNumber: sfi.palletNumber,
+      unitsFilled: sfi.unitsFilled
+    })),
+    dgCreated: false,
+    blCreated: false,
+    cartingInDate: params.cartingInDate || today,
+    vehicleNo: params.vehicleNo || '',
+    truckReportingDate: params.truckReportingDate || today,
+    lastPltRecdDate: actualRecPallets === params.invoicedPallets ? today : '',
+    actualStuffedPallets: 0,
+    actualStuffedBatteries: 0,
+    balancePallets: actualRecPallets,
+    balanceBatteries: actualRecBatteries,
+    shippingBillNo: '',
+    shippingBillDate: '',
+    containerNo: '',
+    sealNo: '',
+    stuffingDate: '',
+    pickupDate: '',
+    portGateInDate: '',
+    daysInCFS: 0,
+    remarks: params.remarks || (totalShortfallBatteries > 0 ? 'FACTORY SHORTFALL' : 'IN CFS - READY'),
+    pallets: finalPalletUnits
+  });
+
+  addOrUpdateCFSEntry(newEntry);
+  return newEntry;
+}
+
+// =========================================================================
+// Sprint 7.1: Pallet Unit Split Helper (Capped by Available Floor Stock)
+// =========================================================================
+
+/**
+ * Splits N units from an existing warehouse pallet, creating a split piece
+ * with proportional decimal weights and exact remainder balancing (0.00 kg drift).
+ */
+export function splitPalletUnits(
+  entryId: string,
+  palletId: string,
+  unitsToSplit: number
+): { updatedEntry: CFSLedgerEntry; splitPallet: PalletStockUnit; sourcePallet: PalletStockUnit } | null {
+  const existing = getCFSLedgerEntries();
+  const entryIndex = existing.findIndex((e) => e.id === entryId);
+  if (entryIndex === -1) return null;
+
+  const entry = existing[entryIndex];
+  const targetPalletIndex = (entry.pallets || []).findIndex((p) => p.id === palletId);
+  if (targetPalletIndex === -1) return null;
+
+  const sourcePallet = entry.pallets[targetPalletIndex];
+  const availableUnits = sourcePallet.receivedBatteries || sourcePallet.invoicedBatteries || 0;
+
+  if (unitsToSplit <= 0 || unitsToSplit >= availableUnits) {
+    console.warn(`[splitPalletUnits] Invalid unitsToSplit: ${unitsToSplit}. Must be between 1 and ${availableUnits - 1}.`);
+    return null;
+  }
+
+  const remainingUnits = availableUnits - unitsToSplit;
+  const origGross = sourcePallet.grossWeightKg || 0;
+  const origNet = sourcePallet.netWeightKg || 0;
+
+  // Proportional weight distribution with exact remainder balancing (0.00 kg drift)
+  const splitGross = toExactWeight((origGross / availableUnits) * unitsToSplit);
+  const splitNet = toExactWeight((origNet / availableUnits) * unitsToSplit);
+  const remainingGross = toExactWeight(origGross - splitGross);
+  const remainingNet = toExactWeight(origNet - splitNet);
+
+  const basePalletNumber = String(sourcePallet.parentPalletNumber || sourcePallet.palletNumber)
+    .replace(/-S\d+$/i, '')
+    .replace(/-[A-Z]$/i, '');
+  const existingSplits = (entry.pallets || []).filter((p) => {
+    const pBase = String(p.parentPalletNumber || p.palletNumber)
+      .replace(/-S\d+$/i, '')
+      .replace(/-[A-Z]$/i, '');
+    return pBase === basePalletNumber && p.isSplitPiece;
+  });
+  const splitSuffix = `-S${existingSplits.length + 1}`;
+  const splitPalletNumber = `${basePalletNumber}${splitSuffix}`;
+
+  const updatedSourcePallet: PalletStockUnit = {
+    ...sourcePallet,
+    parentPalletNumber: sourcePallet.parentPalletNumber || basePalletNumber,
+    isSplitPiece: true,
+    invoicedBatteries: remainingUnits,
+    receivedBatteries: remainingUnits,
+    remainingUnits: remainingUnits,
+    grossWeightKg: remainingGross,
+    netWeightKg: remainingNet
+  };
+
+  const splitPallet: PalletStockUnit = {
+    id: `${sourcePallet.id}_split_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    palletNumber: splitPalletNumber,
+    parentPalletNumber: basePalletNumber,
+    isSplitPiece: true,
+    model: sourcePallet.model,
+    brand: sourcePallet.brand,
+    invoiceNumber: sourcePallet.invoiceNumber || entry.customInvoiceNo,
+    invoicedBatteries: unitsToSplit,
+    receivedBatteries: unitsToSplit,
+    allocatedUnits: unitsToSplit,
+    remainingUnits: unitsToSplit,
+    grossWeightKg: splitGross,
+    netWeightKg: splitNet,
+    status: sourcePallet.status
+  };
+
+  const updatedPallets = [...entry.pallets];
+  updatedPallets[targetPalletIndex] = updatedSourcePallet;
+  updatedPallets.splice(targetPalletIndex + 1, 0, splitPallet);
+
+  const updatedEntry: CFSLedgerEntry = recomputeCFSDerivedFields({
+    ...entry,
+    invoicedPallets: entry.invoicedPallets + 1,
+    actualReceivedPallets: entry.actualReceivedPallets + 1,
+    pallets: updatedPallets,
+    updatedAt: new Date().toISOString()
+  });
+
+  existing[entryIndex] = updatedEntry;
+  saveCFSLedgerEntries(existing);
+  syncEntryToCloud(updatedEntry);
+
+  return {
+    updatedEntry,
+    splitPallet,
+    sourcePallet: updatedSourcePallet
+  };
+}
+
+/**
+ * Merges / tops-up units from a source pallet onto an existing target pallet
+ * without creating a new physical pallet (preserving pallet count and 22-pallet container limits).
+ * Applies exact decimal delta weights (0.00 kg drift) and attaches a MergedTransfer record.
+ */
+export function mergeUnitsOntoPallet(
+  entryId: string,
+  sourcePalletId: string,
+  targetPalletId: string,
+  unitsToMove: number
+): {
+  success: boolean;
+  error?: string;
+  updatedEntry?: CFSLedgerEntry;
+  sourcePallet?: PalletStockUnit;
+  targetPallet?: PalletStockUnit;
+} {
+  const existing = getCFSLedgerEntries();
+  const entryIndex = existing.findIndex((e) => e.id === entryId);
+  if (entryIndex === -1) return { success: false, error: 'Ledger entry not found' };
+
+  const entry = existing[entryIndex];
+  const sourceIndex = (entry.pallets || []).findIndex((p) => p.id === sourcePalletId);
+  const targetIndex = (entry.pallets || []).findIndex((p) => p.id === targetPalletId);
+
+  if (sourceIndex === -1 || targetIndex === -1) {
+    return { success: false, error: 'Source or target pallet not found in entry' };
+  }
+  if (sourcePalletId === targetPalletId) {
+    return { success: false, error: 'Cannot merge a pallet onto itself' };
+  }
+
+  const sourcePallet = entry.pallets[sourceIndex];
+  const targetPallet = entry.pallets[targetIndex];
+
+  const sourceAvailableUnits = sourcePallet.receivedBatteries || sourcePallet.invoicedBatteries || 0;
+  if (unitsToMove <= 0 || unitsToMove > sourceAvailableUnits) {
+    return { success: false, error: `Invalid unitsToMove: ${unitsToMove}. Max available: ${sourceAvailableUnits}.` };
+  }
+
+  // Exact proportional decimal weights
+  const origSourceGross = sourcePallet.grossWeightKg || 0;
+  const origSourceNet = sourcePallet.netWeightKg || 0;
+
+  const deltaGross = toExactWeight((origSourceGross / sourceAvailableUnits) * unitsToMove);
+  const deltaNet = toExactWeight((origSourceNet / sourceAvailableUnits) * unitsToMove);
+
+  const newSourceUnits = sourceAvailableUnits - unitsToMove;
+  const newSourceGross = toExactWeight(origSourceGross - deltaGross);
+  const newSourceNet = toExactWeight(origSourceNet - deltaNet);
+
+  const targetAvailableUnits = targetPallet.receivedBatteries || targetPallet.invoicedBatteries || 0;
+  const origTargetGross = targetPallet.grossWeightKg || 0;
+  const origTargetNet = targetPallet.netWeightKg || 0;
+
+  const newTargetUnits = targetAvailableUnits + unitsToMove;
+  const newTargetGross = toExactWeight(origTargetGross + deltaGross);
+  const newTargetNet = toExactWeight(origTargetNet + deltaNet);
+
+  const transferRecord: MergedTransfer = {
+    fromPalletId: sourcePallet.id,
+    fromPalletNumber: sourcePallet.palletNumber,
+    units: unitsToMove,
+    grossWeightKg: deltaGross,
+    netWeightKg: deltaNet
+  };
+
+  const updatedSourcePallet: PalletStockUnit = {
+    ...sourcePallet,
+    invoicedBatteries: newSourceUnits,
+    receivedBatteries: newSourceUnits,
+    remainingUnits: newSourceUnits,
+    grossWeightKg: newSourceGross,
+    netWeightKg: newSourceNet
+  };
+
+  const updatedTargetPallet: PalletStockUnit = {
+    ...targetPallet,
+    invoicedBatteries: newTargetUnits,
+    receivedBatteries: newTargetUnits,
+    remainingUnits: newTargetUnits,
+    grossWeightKg: newTargetGross,
+    netWeightKg: newTargetNet,
+    mergedTransfers: [...(targetPallet.mergedTransfers || []), transferRecord]
+  };
+
+  const updatedPallets = [...entry.pallets];
+  updatedPallets[sourceIndex] = updatedSourcePallet;
+  updatedPallets[targetIndex] = updatedTargetPallet;
+
+  const updatedEntry: CFSLedgerEntry = recomputeCFSDerivedFields({
+    ...entry,
+    pallets: updatedPallets,
+    updatedAt: new Date().toISOString()
+  });
+
+  existing[entryIndex] = updatedEntry;
+  saveCFSLedgerEntries(existing);
+  syncEntryToCloud(updatedEntry);
+
+  return {
+    success: true,
+    updatedEntry,
+    sourcePallet: updatedSourcePallet,
+    targetPallet: updatedTargetPallet
+  };
+}
+
+// =========================================================================
+// Sprint 7.1: DG/BL Document Gate & Dispatch Restore Actions
+// =========================================================================
+
+/**
+ * Stamps DG or BL generation completion flags onto target ledger rows
+ */
+export function markLedgerDocumentCreated(ledgerIds: string[], docType: 'DG' | 'BL'): void {
+  if (!ledgerIds || ledgerIds.length === 0) return;
+  const ledgerIdSet = new Set(ledgerIds);
+  const existing = getCFSLedgerEntries();
+
+  const updatedEntries = existing.map((entry) => {
+    if (!ledgerIdSet.has(entry.id)) return entry;
+    const updated: CFSLedgerEntry = {
+      ...entry,
+      dgCreated: docType === 'DG' ? true : entry.dgCreated,
+      blCreated: docType === 'BL' ? true : entry.blCreated,
+      updatedAt: new Date().toISOString()
+    };
+    syncEntryToCloud(updated);
+    return updated;
+  });
+
+  saveCFSLedgerEntries(updatedEntries);
+}
+
+/**
+ * Restores all pallets and units from a completed dispatch back into active floor stock.
+ * Recomputes balances and cleans up movement logs in local cache and Supabase.
+ */
+export function restoreDispatchedRecord(dispatchOrLogId: string): {
+  success: boolean;
+  error?: string;
+  restoredEntry?: CFSLedgerEntry;
+  restoredPallets?: number;
+  restoredBatteries?: number;
+} {
+  const allLogs = getPersistedMovementLogs();
+  const targetLog = allLogs.find((l) => l.id === dispatchOrLogId || l.sourceLedgerId === dispatchOrLogId);
+
+  if (!targetLog) {
+    return { success: false, error: 'Movement log record not found.' };
+  }
+
+  const existingEntries = getCFSLedgerEntries();
+  const entryIndex = existingEntries.findIndex(
+    (e) => (targetLog.sourceLedgerId && e.id === targetLog.sourceLedgerId) ||
+           (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === targetLog.customInvoiceNo.trim().toUpperCase())
+  );
+
+  if (entryIndex === -1) {
+    deleteMovementLog(targetLog.id);
+    return { success: true, restoredPallets: targetLog.pallets, restoredBatteries: targetLog.batteries };
+  }
+
+  const entry = existingEntries[entryIndex];
+  const containerNo = targetLog.containerNo?.trim().toUpperCase() || '';
+  const dispatchedIds = new Set(entry.dispatchedPalletIds || []);
+
+  let restoredPalletsCount = 0;
+  let restoredBatteriesCount = 0;
+
+  const updatedPallets = (entry.pallets || []).map((p) => {
+    const isMatchingContainer = Boolean(containerNo && p.containerNo && p.containerNo.trim().toUpperCase() === containerNo);
+    const isDispatched = p.status === 'STUFFED_DISPATCHED';
+
+    if (isDispatched && (isMatchingContainer || !containerNo || dispatchedIds.has(p.id))) {
+      restoredPalletsCount += 1;
+      restoredBatteriesCount += p.receivedBatteries || p.invoicedBatteries || 0;
+      dispatchedIds.delete(p.id);
+      return {
+        ...p,
+        status: 'IN_WAREHOUSE' as const,
+        containerNo: undefined,
+        stuffedDate: undefined
+      };
+    }
+    return p;
+  });
+
+  const effectiveRestoredPallets = restoredPalletsCount > 0 ? restoredPalletsCount : (targetLog.pallets || 0);
+  const effectiveRestoredBatteries = restoredBatteriesCount > 0 ? restoredBatteriesCount : (targetLog.batteries || 0);
+
+  const updatedStuffedPallets = Math.max(0, (entry.actualStuffedPallets || 0) - effectiveRestoredPallets);
+  const updatedStuffedBatteries = Math.max(0, (entry.actualStuffedBatteries || 0) - effectiveRestoredBatteries);
+  const updatedBalancePallets = Math.max(0, (entry.actualReceivedPallets || 0) - updatedStuffedPallets);
+  const updatedBalanceBatteries = Math.max(0, (entry.actualReceivedBatteries || 0) - updatedStuffedBatteries);
+
+  const isFullyOnFloor = updatedStuffedPallets === 0;
+
+  const updatedShortfalls = (entry.shortfalls || []).map((sf) => {
+    if (sf.status === 'CLEARED' && (sf.remainingShortfallUnits > 0 || isFullyOnFloor)) {
+      return {
+        ...sf,
+        status: sf.remainingShortfallUnits === 0 ? ('CLEARED' as const) : ('OPEN' as const),
+        clearedDate: sf.remainingShortfallUnits === 0 ? sf.clearedDate : undefined,
+        clearedMonth: sf.remainingShortfallUnits === 0 ? sf.clearedMonth : undefined
+      };
+    }
+    return sf;
+  });
+
+  const updatedEntry: CFSLedgerEntry = recomputeCFSDerivedFields({
+    ...entry,
+    pallets: updatedPallets,
+    shortfalls: updatedShortfalls,
+    dispatchedPalletIds: Array.from(dispatchedIds),
+    actualStuffedPallets: updatedStuffedPallets,
+    actualStuffedBatteries: updatedStuffedBatteries,
+    balancePallets: updatedBalancePallets,
+    balanceBatteries: updatedBalanceBatteries,
+    containerNo: isFullyOnFloor ? '' : entry.containerNo,
+    sealNo: isFullyOnFloor ? '' : entry.sealNo,
+    shippingBillNo: isFullyOnFloor ? '' : entry.shippingBillNo,
+    stuffingDate: isFullyOnFloor ? '' : entry.stuffingDate,
+    updatedAt: new Date().toISOString()
+  });
+
+  existingEntries[entryIndex] = updatedEntry;
+  saveCFSLedgerEntries(existingEntries);
+  syncEntryToCloud(updatedEntry);
+
+  // Remove movement log locally and in cloud
+  deleteMovementLog(targetLog.id);
+
+  return {
+    success: true,
+    restoredEntry: updatedEntry,
+    restoredPallets: effectiveRestoredPallets,
+    restoredBatteries: effectiveRestoredBatteries
+  };
+}
+
+// =========================================================================
+// Sprint 7.1: Financial-Year Monthly Shortfall Status Engine
+// =========================================================================
+
+const FY_MONTH_ORDER = ['APR', 'MAY', 'JUNE', 'JULY', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JAN', 'FEB', 'MAR'];
+
+/**
+ * Returns the operational status of a shortfall record for a given financial year month
+ */
+export function getShortfallStatusForMonth(
+  shortfall: ShortfallRecord,
+  targetMonth: string
+): 'OPEN' | 'PARTIAL_FILL' | 'CLEARED' | 'NOT_OPEN' {
+  if (!targetMonth || targetMonth === 'ALL') {
+    return shortfall.status;
+  }
+
+  const upperTarget = targetMonth.toUpperCase();
+  const openedMonthUpper = (shortfall.openedMonth || '').toUpperCase();
+  const clearedMonthUpper = (shortfall.clearedMonth || '').toUpperCase();
+
+  const targetIdx = FY_MONTH_ORDER.indexOf(upperTarget);
+  const openedIdx = FY_MONTH_ORDER.indexOf(openedMonthUpper);
+  const clearedIdx = clearedMonthUpper ? FY_MONTH_ORDER.indexOf(clearedMonthUpper) : -1;
+
+  // If targetMonth is prior to openedMonth in financial year cycle
+  if (openedIdx !== -1 && targetIdx !== -1 && targetIdx < openedIdx) {
+    return 'NOT_OPEN';
+  }
+
+  // If already cleared in or before targetMonth
+  if (clearedIdx !== -1 && targetIdx !== -1 && targetIdx >= clearedIdx) {
+    return 'CLEARED';
+  }
+
+  // Check fills that occurred on or before targetMonth
+  if (shortfall.linkedShortFills && shortfall.linkedShortFills.length > 0) {
+    const fillsUpToMonth = shortfall.linkedShortFills.filter((fill) => {
+      const fillMonthIdx = FY_MONTH_ORDER.indexOf((fill.filledMonth || '').toUpperCase());
+      return fillMonthIdx !== -1 && targetIdx !== -1 && fillMonthIdx <= targetIdx;
+    });
+
+    const unitsFilledUpToMonth = fillsUpToMonth.reduce((sum, f) => sum + (f.unitsFilled || 0), 0);
+    if (unitsFilledUpToMonth >= shortfall.shortfallUnits) {
+      return 'CLEARED';
+    }
+    if (unitsFilledUpToMonth > 0) {
+      return 'PARTIAL_FILL';
+    }
+  }
+
+  return 'OPEN';
+}
+
 
 

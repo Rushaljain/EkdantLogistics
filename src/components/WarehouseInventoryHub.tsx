@@ -10,8 +10,6 @@ import {
   CheckCircle2,
   ArrowRight,
   Search,
-  ChevronDown,
-  ChevronRight,
   X,
   Printer,
   History,
@@ -19,14 +17,15 @@ import {
   Loader2,
   Trash2,
   AlertTriangle,
-  Truck,
-  RefreshCw
+  RefreshCw,
+  RotateCcw
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
   ExtractedShipmentJSON,
   InventoryMovementRecord,
-  PalletStockUnit
+  PalletStockUnit,
+  ShortfallRecord
 } from '../types/index.ts';
 import {
   CFS_MONTHS,
@@ -51,9 +50,15 @@ import {
   subscribeToSyncStatus,
   exportInventoryBackupJson,
   importInventoryBackupJson,
-  type CloudSyncStatus
+  type CloudSyncStatus,
+  toExactWeight,
+  getShortfallStatusForMonth,
+  markLedgerDocumentCreated,
+  restoreDispatchedRecord
 } from '../utils/inventoryStore.ts';
 import { parseDocumentsToJSON } from '../utils/documentParser.ts';
+import { ManualInwardModal } from './ManualInwardModal.tsx';
+import { CompactInvoiceBlock } from './CompactInvoiceBlock.tsx';
 
 interface WarehouseInventoryHubProps {
   onLoadShipmentIntoWorkspace: (shipment: ExtractedShipmentJSON) => void;
@@ -193,8 +198,8 @@ export function WarehouseInventoryHub({
     }
   };
 
-  // Section Selector: 'inventory' | 'reports' | 'logs'
-  const [activeSection, setActiveSection] = useState<'inventory' | 'reports' | 'logs'>('inventory');
+  // Section Selector: 'inventory' | 'backlog' | 'reports' | 'logs'
+  const [activeSection, setActiveSection] = useState<'inventory' | 'backlog' | 'reports' | 'logs'>('inventory');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -213,6 +218,7 @@ export function WarehouseInventoryHub({
   const [logStatusFilter, setLogStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'DISPATCHED'>('ALL');
 
   // Stuffing & Dispatch Modal State
+  const [showManualInwardModal, setShowManualInwardModal] = useState<boolean>(false);
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
   const [showVarianceModal, setShowVarianceModal] = useState<boolean>(false);
   const [showLowStockModal, setShowLowStockModal] = useState<boolean>(false);
@@ -299,13 +305,63 @@ export function WarehouseInventoryHub({
       .sort((a, b) => a.customer.localeCompare(b.customer));
   }, [entries]);
 
+  // Open Shortfalls for Dedicated Backlog Tab
+  const openShortfallBacklog = useMemo(() => {
+    const list: {
+      invoiceId: string;
+      customInvoiceNo: string;
+      customer: string;
+      month: string;
+      shortfall: ShortfallRecord;
+    }[] = [];
+
+    entries.forEach((entry) => {
+      if (entry.shortfalls && entry.shortfalls.length > 0) {
+        entry.shortfalls.forEach((sf) => {
+          if (sf.status !== 'CLEARED' && sf.remainingShortfallUnits > 0) {
+            list.push({
+              invoiceId: entry.id,
+              customInvoiceNo: entry.customInvoiceNo,
+              customer: entry.customer,
+              month: entry.month || sf.openedMonth || 'OCT',
+              shortfall: sf
+            });
+          }
+        });
+      } else if ((entry.shortfallBatteries || 0) > 0 || (entry.shortfallPallets || 0) > 0) {
+        // Fallback for legacy shortfall records
+        list.push({
+          invoiceId: entry.id,
+          customInvoiceNo: entry.customInvoiceNo,
+          customer: entry.customer,
+          month: entry.month || 'OCT',
+          shortfall: {
+            id: `legacy_${entry.id}`,
+            mode: (entry.shortfallPallets || 0) > 0 ? 'PALLET' : 'UNITS',
+            palletNumber: (entry.shortfallPallets || 0) > 0 ? 'ALL' : '1',
+            billedUnits: entry.invoicedBatteries,
+            shortfallUnits: entry.shortfallBatteries || 0,
+            remainingShortfallUnits: entry.shortfallBatteries || 0,
+            openedDate: entry.cartingInDate || entry.invoiceDate || '',
+            openedMonth: entry.month || 'OCT',
+            status: 'OPEN',
+            linkedShortFills: []
+          }
+        });
+      }
+    });
+
+    return list;
+  }, [entries]);
+
   // Clean KPI Totals
   const kpis = useMemo(() => {
     const totalBalancePallets = entries.reduce((s, e) => s + (e.balancePallets || 0), 0);
     const totalBalanceBatteries = entries.reduce((s, e) => s + (e.balanceBatteries || 0), 0);
     const totalBalanceGrossKg = entries.reduce((s, e) => {
       if (e.invoicedPallets > 0 && e.balancePallets > 0) {
-        return s + Math.round((e.invoicedGrossWeightKg / e.invoicedPallets) * e.balancePallets);
+        const gross = e.actualGrossWeightKg ?? e.invoicedGrossWeightKg;
+        return toExactWeight(s + (gross / e.invoicedPallets) * e.balancePallets);
       }
       return s;
     }, 0);
@@ -461,7 +517,7 @@ export function WarehouseInventoryHub({
     });
 
     const required20GP = Math.ceil(count / 22);
-    return { count, batteries, grossKg: Math.round(grossKg), required20GP, palletList };
+    return { count, batteries, grossKg: toExactWeight(grossKg), required20GP, palletList };
   }, [selectedPalletIds, entries]);
 
   // Toggle Pallet Selection
@@ -521,8 +577,8 @@ export function WarehouseInventoryHub({
 
     const today = formatToDDMMYYYY(new Date());
     setDispatchDetails({
-      containerNo: entry.containerNo || `CONT-${entry.customInvoiceNo}`,
-      sealNo: entry.sealNo || `SL-${Date.now().toString().slice(-6)}`,
+      containerNo: entry.containerNo || '',
+      sealNo: entry.sealNo || '',
       shippingBillNo: entry.shippingBillNo || '',
       shippingBillDate: entry.shippingBillDate || today,
       stuffingDate: entry.stuffingDate || today,
@@ -537,8 +593,8 @@ export function WarehouseInventoryHub({
   const handleExecuteDispatch = () => {
     if (selectedPalletsStats.palletList.length === 0) return;
 
-    const containerNo = dispatchDetails.containerNo.trim() || `CONT-${Date.now().toString().slice(-4)}`;
-    const sealNo = dispatchDetails.sealNo.trim() || `SEAL-${Date.now().toString().slice(-4)}`;
+    const containerNo = dispatchDetails.containerNo.trim();
+    const sealNo = dispatchDetails.sealNo.trim();
 
     const { stuffedCount } = confirmStuffingDispatch(
       Array.from(selectedPalletIds),
@@ -574,6 +630,19 @@ export function WarehouseInventoryHub({
     title: string;
     description: string;
   } | null>(null);
+
+  const handleRestoreDispatch = (record: InventoryMovementRecord) => {
+    if (!window.confirm(`Restore dispatch for Invoice ${record.customInvoiceNo} (${record.pallets} Pallets, ${record.batteries} Units)?\nThis will return the stock back to Active Floor Inventory and re-enable document generation.`)) {
+      return;
+    }
+    const result = restoreDispatchedRecord(record.id);
+    if (result.success) {
+      reloadEntries();
+      showToast(`Restored ${result.restoredPallets || record.pallets} pallets for Invoice ${record.customInvoiceNo} back to active warehouse floor!`);
+    } else {
+      showToast(`Restore failed: ${result.error || 'Unknown error'}`);
+    }
+  };
 
   const promptDeleteLog = (record: InventoryMovementRecord) => {
     setItemToDelete({
@@ -846,26 +915,36 @@ export function WarehouseInventoryHub({
               <span className="hidden sm:inline">Restore</span>
             </button>
 
-            {/* Prominent Upload Invoice to Inventory (Stock-In) Button */}
+            {/* Primary Manual Inward Button */}
+            <button
+              onClick={() => setShowManualInwardModal(true)}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+              title="Record direct manual stock-inward with exact weights, shortfall, or short-fill reconciliation"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Inward</span>
+            </button>
+
+            {/* Upload Invoice to Inventory (Stock-In) Button */}
             <button
               onClick={() => invoiceInputRef.current?.click()}
               disabled={uploadBannerState !== 'idle'}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-85 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-85"
               title="Upload commercial invoices or packing lists (select single or multiple PDF, Excel, Word files) into warehouse inventory"
             >
               {uploadBannerState === 'uploading' ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : uploadBannerState === 'uploaded' ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               ) : (
-                <Plus className="w-3.5 h-3.5" />
+                <Upload className="w-3.5 h-3.5 text-content-muted" />
               )}
               <span>
                 {uploadBannerState === 'uploading'
                   ? 'Uploading...'
                   : uploadBannerState === 'uploaded'
                   ? 'Uploaded'
-                  : 'Upload Invoice to Inventory (Stock-In)'}
+                  : 'Import Doc'}
               </span>
             </button>
 
@@ -1068,12 +1147,13 @@ export function WarehouseInventoryHub({
               <select
                 id="section-select"
                 value={activeSection}
-                onChange={(e) => setActiveSection(e.target.value as 'inventory' | 'reports' | 'logs')}
+                onChange={(e) => setActiveSection(e.target.value as 'inventory' | 'backlog' | 'reports' | 'logs')}
                 className="px-3 py-1.5 bg-surface-secondary border border-divider rounded-lg font-semibold text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs shrink-0"
               >
                 <option value="inventory">Inventory ({availablePalletUnits.length} pallets)</option>
+                <option value="backlog">Shortfall / Backlog ({openShortfallBacklog.length})</option>
                 <option value="reports">Monthly Live Reports</option>
-                <option value="logs">Inventory Logs ({allMovementRecords.length})</option>
+                <option value="logs">Dispatch History ({allMovementRecords.length})</option>
               </select>
             </div>
 
@@ -1183,314 +1263,77 @@ export function WarehouseInventoryHub({
               <div className="space-y-3">
                 {activeStockInvoices.map((entry) => {
                   const isExpanded = expandedInventoryInvoiceIds.has(entry.id);
-                  const availableUnits = (entry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
-
                   return (
-                    <div
+                    <CompactInvoiceBlock
                       key={entry.id}
-                      className="bg-surface border border-divider/80 rounded-xl overflow-hidden shadow-xs hover:border-divider transition-all"
-                    >
-                      {/* Modern Enterprise SaaS Data-Row */}
-                      <div className="p-4 bg-surface hover:bg-slate-50/50 transition-colors border-b border-divider/60">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                          
-                          {/* Left: Expand, Invoice ID, Customer, Port & Carting Date */}
-                          <div className="flex items-start space-x-3.5 min-w-0 flex-1">
-                            <button
-                              onClick={() => {
-                                setExpandedInventoryInvoiceIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(entry.id)) next.delete(entry.id);
-                                  else next.add(entry.id);
-                                  return next;
-                                });
-                              }}
-                              className="mt-0.5 p-1 rounded-md text-content-muted hover:text-content-primary hover:bg-surface-secondary border border-divider/60 transition-colors cursor-pointer shrink-0"
-                              title={isExpanded ? 'Collapse Pallets' : 'Expand Pallets'}
-                            >
-                              {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                            </button>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-mono text-sm font-bold text-brand-primary tracking-tight">
-                                  #{entry.customInvoiceNo}
-                                </span>
-                                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md bg-indigo-50/80 text-indigo-700 font-semibold border border-indigo-200/70">
-                                  {entry.month}
-                                </span>
-                                <span className="text-xs font-semibold text-content-primary" title={entry.customer}>
-                                  {entry.customer}
-                                </span>
-                              </div>
-
-                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-secondary">
-                                <span className="flex items-center space-x-1">
-                                  <span className="text-content-muted">POD:</span>
-                                  <strong className="text-content-primary font-medium">{entry.pod || '—'}</strong>
-                                </span>
-                                <span className="text-divider">•</span>
-                                <span className="flex items-center space-x-1">
-                                  <span className="text-content-muted">Gross Wt:</span>
-                                  <strong className="text-content-primary font-medium">{(entry.invoicedGrossWeightKg || 0).toLocaleString()} kg</strong>
-                                </span>
-                                {entry.cartingInDate && (
-                                  <>
-                                    <span className="text-divider">•</span>
-                                    <span className="flex items-center space-x-1">
-                                      <span className="text-content-muted">Carting:</span>
-                                      <span className="font-mono text-content-primary">{entry.cartingInDate}</span>
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Center: Inventory Progress & Live Balance Metrics */}
-                          <div className="flex flex-wrap items-center gap-3 shrink-0 py-1 px-3.5 rounded-lg bg-surface-secondary/70 border border-divider/60">
-                            {/* Live Floor Balance */}
-                            <div className="flex flex-col text-left">
-                              <span className="text-[10px] font-medium uppercase tracking-wider text-content-muted">Floor Balance</span>
-                              <div className="flex items-baseline space-x-1.5 font-mono">
-                                <span className="text-sm font-bold text-emerald-700">{entry.balancePallets} Plt</span>
-                                <span className="text-content-muted text-xs">/</span>
-                                <span className="text-xs font-bold text-indigo-700">{entry.balanceBatteries} u</span>
-                              </div>
-                            </div>
-
-                            <div className="h-7 w-px bg-divider/80 mx-1 hidden sm:block" />
-
-                            {/* Invoiced vs Received Ratio */}
-                            <div className="flex flex-col text-left">
-                              <span className="text-[10px] font-medium uppercase tracking-wider text-content-muted">Invoiced</span>
-                              <div className="flex items-baseline space-x-1 text-xs font-mono text-content-secondary">
-                                <span>{entry.invoicedPallets} Plt</span>
-                                <span>({entry.invoicedBatteries} u)</span>
-                              </div>
-                            </div>
-
-                            {/* Shortfall Tag if any */}
-                            {(entry.shortfallPallets > 0 || entry.shortfallBatteries > 0) && (
-                              <div className="px-2 py-0.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold flex items-center space-x-1">
-                                <span>-{entry.shortfallBatteries} u Short</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Right: Actions and Status */}
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* Gate-in status badge */}
-                            {entry.actualReceivedPallets < entry.invoicedPallets ? (
-                              <button
-                                onClick={() => handleConfirmFullGateIn(entry.id)}
-                                className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-medium flex items-center space-x-1 transition-colors cursor-pointer"
-                                title="Click to confirm 100% gate-in receipt"
-                              >
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                <span>Pending ({entry.actualReceivedPallets}/{entry.invoicedPallets})</span>
-                              </button>
-                            ) : (
-                              <span className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-medium flex items-center space-x-1.5">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>100% Received</span>
-                              </span>
-                            )}
-
-                            {/* Dispatch Primary Action Button */}
-                            {entry.balancePallets > 0 ? (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenDispatchForInvoice(entry)}
-                                className="px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-medium text-xs flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
-                                title={`Dispatch ${entry.balancePallets} pallets for invoice ${entry.customInvoiceNo} (Stock-Out)`}
-                              >
-                                <Truck className="w-3.5 h-3.5" />
-                                <span>Dispatch ({entry.balancePallets})</span>
-                              </button>
-                            ) : (
-                              <span className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 text-xs font-medium flex items-center space-x-1">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Dispatched</span>
-                              </span>
-                            )}
-
-                            {/* Delete Invoice */}
-                            <button
-                              type="button"
-                              onClick={() => promptDeleteInvoice(entry)}
-                              className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
-                              title={`Delete invoice ${entry.customInvoiceNo}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Docked Inline Form: Gate-In Logistics Details */}
-                      <div className="px-4 py-2 bg-slate-50/70 border-b border-divider/60 text-xs flex flex-wrap items-center gap-x-6 gap-y-2 text-content-secondary">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-content-muted font-medium">Carting Date:</span>
-                          <InlineCell
-                            value={entry.cartingInDate}
-                            className="w-28 bg-surface border border-divider/80 rounded px-1.5"
-                            onChange={(val) => {
-                              addOrUpdateCFSEntry({ ...entry, cartingInDate: val });
-                              reloadEntries();
-                            }}
-                          />
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          <span className="text-content-muted font-medium">Vehicle No:</span>
-                          <InlineCell
-                            value={entry.vehicleNo}
-                            className="w-28 bg-surface border border-divider/80 rounded px-1.5"
-                            onChange={(val) => {
-                              addOrUpdateCFSEntry({ ...entry, vehicleNo: val });
-                              reloadEntries();
-                            }}
-                          />
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          <span className="text-content-muted font-medium">Received Pallets:</span>
-                          <InlineCell
-                            value={entry.actualReceivedPallets}
-                            type="number"
-                            className="w-14 bg-surface border border-divider/80 rounded text-right px-1.5"
-                            onChange={(val) => {
-                              const num = parseInt(val, 10) || 0;
-                              addOrUpdateCFSEntry({ ...entry, actualReceivedPallets: num });
-                              reloadEntries();
-                            }}
-                          />
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          <span className="text-content-muted font-medium">Received Units:</span>
-                          <InlineCell
-                            value={entry.actualReceivedBatteries}
-                            type="number"
-                            className="w-16 bg-surface border border-divider/80 rounded text-right px-1.5"
-                            onChange={(val) => {
-                              const num = parseInt(val, 10) || 0;
-                              addOrUpdateCFSEntry({ ...entry, actualReceivedBatteries: num });
-                              reloadEntries();
-                            }}
-                          />
-                        </div>
-
-                        {(entry.shortfallPallets > 0 || entry.shortfallBatteries > 0) && (
-                          <div className="text-rose-600 font-semibold ml-auto flex items-center space-x-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                            <span>Shortfall: {entry.shortfallPallets} Plt / {entry.shortfallBatteries} Units</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Expandable Pallets Grid */}
-                      {isExpanded && (
-                        <div className="p-3 sm:p-4 bg-surface border-t border-divider/60">
-                          <div className="text-xs font-semibold text-content-secondary mb-2">
-                            <span>Pallet Units ({entry.pallets?.length || 0} Total • {availableUnits.length} Ready in Warehouse)</span>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-6 gap-2.5 font-mono">
-                            {(entry.pallets || []).map((pallet) => {
-                              const isSelected = selectedPalletIds.has(pallet.id);
-                              const isStuffed = pallet.status === 'STUFFED_DISPATCHED';
-                              const isPending = pallet.status === 'PENDING_GATE_IN';
-                              const displayPalletNum = String(pallet.palletNumber || '').replace(/^PLT\s*#?/i, '').replace(/^#/, '');
-
-                              return (
-                                <div
-                                  key={pallet.id}
-                                  onClick={() => {
-                                    if (!isStuffed && !isPending) {
-                                      togglePalletSelection(pallet.id, entry.customer);
-                                    }
-                                  }}
-                                  className={`p-2.5 rounded-lg border text-xs transition-all flex flex-col justify-between ${
-                                    isStuffed
-                                      ? 'bg-slate-100 text-content-muted border-slate-200 cursor-not-allowed opacity-75'
-                                      : isPending
-                                      ? 'bg-amber-50/50 text-amber-900 border-amber-200 cursor-not-allowed'
-                                      : isSelected
-                                      ? 'bg-brand-primary-soft border-brand-primary ring-1 ring-brand-primary cursor-pointer shadow-xs'
-                                      : 'bg-surface border-divider hover:border-brand-primary cursor-pointer shadow-2xs'
-                                  }`}
-                                >
-                                  {/* Top Row: Checkbox + Pallet identifier & Model badge + Delete */}
-                                  <div className="flex items-start justify-between gap-1.5 min-w-0">
-                                    <div className="flex items-center space-x-1.5 min-w-0 flex-1">
-                                      {!isStuffed && !isPending && (
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={() => {}}
-                                          className="rounded border-divider text-brand-primary focus:ring-brand-primary shrink-0"
-                                        />
-                                      )}
-                                      <span className="font-bold text-brand-primary truncate text-[11px]" title={`PLT #${displayPalletNum}`}>
-                                        PLT #{displayPalletNum}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center space-x-1 shrink-0">
-                                      <span
-                                        className="text-[10px] px-1.5 py-0.5 rounded bg-surface-secondary border border-divider text-content-secondary font-medium truncate max-w-[85px]"
-                                        title={pallet.model}
-                                      >
-                                        {pallet.model}
-                                      </span>
-                                      {!isStuffed && (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            promptDeletePallet(entry, pallet);
-                                          }}
-                                          className="p-1 rounded text-content-muted hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                          title={`Delete Pallet #${displayPalletNum}`}
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Bottom Row: Qty, Weight, Status */}
-                                  <div className="mt-2 pt-1.5 border-t border-divider/40 flex items-center justify-between text-[11px]">
-                                    <div className="flex items-center space-x-1 text-content-secondary">
-                                      <span>Qty:</span>
-                                      <strong className="text-content-primary font-bold">
-                                        {pallet.receivedBatteries || pallet.invoicedBatteries} u
-                                      </strong>
-                                    </div>
-                                    <div className="flex items-center space-x-1.5 text-[10px]">
-                                      <span className="text-content-muted font-medium">{pallet.grossWeightKg} kg</span>
-                                      <span
-                                        className={`px-1 py-0.2 rounded font-semibold uppercase text-[9px] ${
-                                          isStuffed
-                                            ? 'bg-slate-200/70 text-slate-700'
-                                            : isPending
-                                            ? 'bg-amber-100 text-amber-800'
-                                            : 'bg-emerald-50 text-emerald-700'
-                                        }`}
-                                      >
-                                        {isStuffed ? (pallet.containerNo ? `Shipped (${pallet.containerNo})` : 'Shipped') : isPending ? 'Pending' : 'Ready'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                      entry={entry}
+                      isExpanded={isExpanded}
+                      onToggleExpand={() => {
+                        setExpandedInventoryInvoiceIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(entry.id)) next.delete(entry.id);
+                          else next.add(entry.id);
+                          return next;
+                        });
+                      }}
+                      selectedPalletIds={selectedPalletIds}
+                      onTogglePallet={(palletId, customer) => {
+                        togglePalletSelection(palletId, customer);
+                      }}
+                      onSelectAllPallets={(palletIds, customer) => {
+                        if (selectedDispatchCustomer && selectedDispatchCustomer.toUpperCase() !== customer.toUpperCase()) {
+                          setSelectedPalletIds(new Set(palletIds));
+                          setSelectedDispatchCustomer(customer);
+                        } else {
+                          setSelectedDispatchCustomer(customer);
+                          setSelectedPalletIds((prev) => {
+                            const next = new Set(prev);
+                            palletIds.forEach((id) => next.add(id));
+                            return next;
+                          });
+                        }
+                      }}
+                      onDeselectAllPallets={(palletIds) => {
+                        setSelectedPalletIds((prev) => {
+                          const next = new Set(prev);
+                          palletIds.forEach((id) => next.delete(id));
+                          if (next.size === 0) setSelectedDispatchCustomer('');
+                          return next;
+                        });
+                      }}
+                      onConfirmFullGateIn={(entryId) => handleConfirmFullGateIn(entryId)}
+                      onOpenDispatch={(invEntry) => handleOpenDispatchForInvoice(invEntry)}
+                      onLoadCheckedIntoWorkspace={(pallets) => {
+                        const targetPallets = pallets.length > 0 ? pallets : (entry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
+                        if (targetPallets.length === 0) {
+                          showToast('No ready pallets available to load into container planner.');
+                          return;
+                        }
+                        const shipment = buildShipmentFromStockPallets(targetPallets, entry.customer, entry.pod, entry.exporterShipper);
+                        onLoadShipmentIntoWorkspace(shipment);
+                        onNavigateToWorkspace();
+                      }}
+                      onGenerateDgBl={(invEntry, pallets) => {
+                        const targetPallets = pallets.length > 0 ? pallets : (invEntry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
+                        if (targetPallets.length === 0) {
+                          showToast('No ready pallets available for document generation.');
+                          return;
+                        }
+                        // Stamp both DG and BL as created on this ledger row
+                        markLedgerDocumentCreated([invEntry.id], 'DG');
+                        markLedgerDocumentCreated([invEntry.id], 'BL');
+                        reloadEntries();
+                        const shipment = buildShipmentFromStockPallets(targetPallets, invEntry.customer, invEntry.pod, invEntry.exporterShipper);
+                        onLoadShipmentIntoWorkspace(shipment);
+                        onNavigateToWorkspace();
+                        showToast(`DG Manifest & BL generated for #${invEntry.customInvoiceNo}!`);
+                      }}
+                      onRecordShortFill={(_invEntry) => {
+                        setShowManualInwardModal(true);
+                      }}
+                      onDeleteInvoice={(invEntry) => promptDeleteInvoice(invEntry)}
+                      onDeletePallet={(invEntry, pallet) => promptDeletePallet(invEntry, pallet)}
+                    />
                   );
                 })}
               </div>
@@ -1548,15 +1391,11 @@ export function WarehouseInventoryHub({
                   <button
                     type="button"
                     onClick={() => {
-                      if (!dispatchDetails.containerNo) {
-                        const firstPallet = selectedPalletsStats.palletList[0];
-                        const inv = firstPallet?.invoiceNumber || '20GP';
-                        setDispatchDetails((prev) => ({
-                          ...prev,
-                          containerNo: prev.containerNo || `CONT-${inv}`,
-                          sealNo: prev.sealNo || `SL-${Date.now().toString().slice(-6)}`
-                        }));
-                      }
+                      setDispatchDetails((prev) => ({
+                        ...prev,
+                        containerNo: prev.containerNo || '',
+                        sealNo: prev.sealNo || ''
+                      }));
                       setShowDispatchModal(true);
                     }}
                     className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
@@ -1564,6 +1403,135 @@ export function WarehouseInventoryHub({
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Confirm Dispatch (Stock-Out)</span>
                   </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* =====================================================================
+            SECTION: SHORTFALL / BACKLOG (DEDICATED TAB)
+            ===================================================================== */}
+        {activeSection === 'backlog' && (
+          <div className="space-y-4 pb-24 font-sans">
+            {/* Backlog Summary Header */}
+            <div className="bg-surface border border-divider rounded-xl p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-content-primary flex items-center space-x-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <span>Unreceived / Unshipped Shortfall Backlog</span>
+                </h3>
+                <p className="text-xs text-content-secondary mt-0.5">
+                  Track open shortfalls across invoices. Items automatically clear once linked short-fills reduce remaining shortfall to 0.
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowManualInwardModal(true)}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Record Short Fill</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Backlog List */}
+            {openShortfallBacklog.length === 0 ? (
+              <div className="text-center py-20 bg-surface border border-dashed border-divider rounded-xl p-8">
+                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2 opacity-80" />
+                <h3 className="text-xs font-semibold text-content-secondary">All Shortfalls Cleared!</h3>
+                <p className="text-xs text-content-muted mt-1">Zero open backlog across all warehouse invoices</p>
+              </div>
+            ) : (
+              <div className="bg-surface border border-divider rounded-xl overflow-hidden shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs font-mono border-collapse select-text">
+                    <thead className="bg-surface-secondary/70 border-b border-divider text-left text-[11px] font-semibold text-content-secondary">
+                      <tr>
+                        <th className="p-3 border-r border-divider">Mode</th>
+                        <th className="p-3 border-r border-divider">Invoice No.</th>
+                        <th className="p-3 border-r border-divider">Customer</th>
+                        <th className="p-3 border-r border-divider text-center">Pallet #</th>
+                        <th className="p-3 border-r border-divider text-right">Billed Units</th>
+                        <th className="p-3 border-r border-divider text-right text-rose-700 font-bold">Short Units</th>
+                        <th className="p-3 border-r border-divider text-right text-amber-700 font-bold">Remaining</th>
+                        <th className="p-3 border-r border-divider">Opened</th>
+                        <th className="p-3 border-r border-divider">Linked Short Fills</th>
+                        <th className="p-3 border-r border-divider text-center">Status</th>
+                        <th className="p-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-divider/60 tabular-nums">
+                      {openShortfallBacklog.map((item) => {
+                        const sf = item.shortfall;
+                        return (
+                          <tr key={sf.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="p-3 border-r border-divider whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                sf.mode === 'PALLET' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {sf.mode}
+                              </span>
+                            </td>
+                            <td className="p-3 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
+                              #{item.customInvoiceNo}
+                            </td>
+                            <td className="p-3 border-r border-divider font-sans text-content-primary">
+                              {item.customer}
+                            </td>
+                            <td className="p-3 border-r border-divider text-center font-bold">
+                              PLT #{sf.palletNumber}
+                            </td>
+                            <td className="p-3 border-r border-divider text-right">
+                              {sf.billedUnits} u
+                            </td>
+                            <td className="p-3 border-r border-divider text-right font-bold text-rose-600">
+                              {sf.shortfallUnits} u
+                            </td>
+                            <td className="p-3 border-r border-divider text-right font-bold text-amber-600">
+                              {sf.remainingShortfallUnits} u
+                            </td>
+                            <td className="p-3 border-r border-divider whitespace-nowrap text-content-secondary">
+                              {sf.openedDate || '—'} ({sf.openedMonth || item.month})
+                            </td>
+                            <td className="p-3 border-r border-divider text-[11px] text-content-secondary">
+                              {(sf.linkedShortFills || []).length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {sf.linkedShortFills.map((lsf, i) => (
+                                    <div key={i} className="text-emerald-700">
+                                      +{lsf.unitsFilled} u via #{lsf.shortFillInvoiceNo}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-content-muted">None</span>
+                              )}
+                            </td>
+                            <td className="p-3 border-r border-divider text-center whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                sf.status === 'PARTIAL_FILL' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                              }`}>
+                                {sf.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-center whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => setShowManualInwardModal(true)}
+                                className="px-2.5 py-1 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-semibold transition-colors cursor-pointer"
+                                title="Open Short Fill inward form"
+                              >
+                                Record Short Fill
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -1885,9 +1853,39 @@ export function WarehouseInventoryHub({
                                 {e.shortfallPallets || 0}
                               </td>
 
-                              {/* 15. Shortfall Batteries */}
+                              {/* 15. Shortfall Batteries & Monthly Carryover Status */}
                               <td className="p-2 border-r border-divider text-right bg-rose-50/10 font-bold text-rose-700">
-                                {e.shortfallBatteries || 0}
+                                {e.shortfalls && e.shortfalls.length > 0 ? (
+                                  <div className="flex flex-col items-end space-y-0.5">
+                                    <span>{e.shortfallBatteries || 0}</span>
+                                    {selectedMonth !== 'ALL' && (
+                                      <div className="flex flex-wrap gap-0.5 justify-end">
+                                        {e.shortfalls.map((sf) => {
+                                          const monthStatus = getShortfallStatusForMonth(sf, selectedMonth);
+                                          return (
+                                            <span
+                                              key={sf.id}
+                                              className={`text-[9px] px-1 py-0.2 rounded font-semibold uppercase ${
+                                                monthStatus === 'CLEARED'
+                                                  ? 'bg-emerald-100 text-emerald-800'
+                                                  : monthStatus === 'PARTIAL_FILL'
+                                                  ? 'bg-amber-100 text-amber-800'
+                                                  : monthStatus === 'OPEN'
+                                                  ? 'bg-rose-100 text-rose-800'
+                                                  : 'bg-slate-100 text-slate-500'
+                                              }`}
+                                              title={`PLT #${sf.palletNumber}: ${monthStatus} in ${selectedMonth}`}
+                                            >
+                                              {monthStatus === 'CLEARED' ? 'Cleared' : monthStatus === 'PARTIAL_FILL' ? 'Partial' : monthStatus === 'OPEN' ? 'Open' : '—'}
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  e.shortfallBatteries || 0
+                                )}
                               </td>
 
                               {/* 16. Stuffed Pallets */}
@@ -2138,16 +2136,29 @@ export function WarehouseInventoryHub({
                               )}
                             </td>
 
-                            {/* Action: Delete Log */}
+                            {/* Action: Restore Dispatch or Delete Log */}
                             <td className="p-2.5 text-center whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => promptDeleteLog(r)}
-                                className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
-                                title={`Delete log for invoice ${r.customInvoiceNo}`}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center justify-center space-x-1.5">
+                                {(isDispatched || isPartial || r.direction === 'STOCK_OUT') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreDispatch(r)}
+                                    className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                                    title={`Restore ${r.pallets} pallets for invoice ${r.customInvoiceNo} back to active floor stock`}
+                                  >
+                                    <RotateCcw className="w-3 h-3 text-amber-700" />
+                                    <span>Restore</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => promptDeleteLog(r)}
+                                  className="p-1.5 rounded-lg text-content-muted hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                                  title={`Delete log for invoice ${r.customInvoiceNo}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2559,6 +2570,17 @@ export function WarehouseInventoryHub({
             </div>
           </div>
         </div>
+      )}
+      {/* Manual Inward Pop-Up Modal */}
+      {showManualInwardModal && (
+        <ManualInwardModal
+          isOpen={showManualInwardModal}
+          onClose={() => setShowManualInwardModal(false)}
+          onSuccess={(newEntry) => {
+            reloadEntries();
+            showToast(`Inward recorded: ${newEntry.customInvoiceNo} (${newEntry.actualReceivedPallets} Pallets, ${newEntry.actualReceivedBatteries} Units) into Warehouse!`);
+          }}
+        />
       )}
     </div>
   );

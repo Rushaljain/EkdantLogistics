@@ -30,12 +30,27 @@ function getCleanShipperValue(shipment: ExtractedShipmentJSON): string {
   const onBehalfIdx = lines.findIndex((l) => /^(ON BEHALF OF|FOR AND ON BEHALF OF|\(ON BEHALF OF\))/i.test(l));
   const primaryLines = onBehalfIdx >= 0 ? lines.slice(0, onBehalfIdx) : lines;
 
-  let name = shipment.shipperName || '';
-  let addrLines = primaryLines;
-  if (primaryLines.length > 0 && /LIMITED|LTD|INDUSTRIES|CORP|INC|CO\b/i.test(primaryLines[0])) {
-    name = primaryLines[0];
-    addrLines = primaryLines.slice(1);
+  const fallbackName = (shipment.shipperName || '').trim();
+  const normalizedFallback = fallbackName.toLowerCase();
+  const uniquePrimary: string[] = [];
+  for (const l of primaryLines) {
+    if (!uniquePrimary.some((existing) => existing.toLowerCase() === l.toLowerCase())) {
+      uniquePrimary.push(l);
+    }
   }
+
+  let name = fallbackName;
+  let addrLines = uniquePrimary;
+  if (uniquePrimary.length > 0) {
+    const firstLine = uniquePrimary[0];
+    const isCompany = /LIMITED|LTD|INDUSTRIES|CORP|INC|COMPANY|CO\b/i.test(firstLine);
+    if (!name || isCompany || firstLine.toLowerCase() === normalizedFallback) {
+      name = firstLine;
+      addrLines = uniquePrimary.slice(1);
+    }
+  }
+
+  addrLines = addrLines.filter((l) => l.toLowerCase() !== name.toLowerCase());
 
   const addr1 = addrLines[0] || '';
   const addr2 = addrLines[1] || '';
@@ -47,12 +62,28 @@ function getCleanShipperValue(shipment: ExtractedShipmentJSON): string {
 function getCleanConsigneeValue(shipment: ExtractedShipmentJSON): string {
   const full = `${shipment.consigneeName || ''}\n${shipment.consigneeAddress || ''}`.trim();
   const lines = full.split('\n').map((l) => l.trim()).filter(Boolean);
-  let name = shipment.consigneeName || '';
-  let addrLines = lines;
-  if (lines.length > 0 && /LIMITED|LTD|COMPANY|CORP|INC|CO\b/i.test(lines[0])) {
-    name = lines[0];
-    addrLines = lines.slice(1);
+  const fallbackName = (shipment.consigneeName || '').trim();
+  const normalizedFallback = fallbackName.toLowerCase();
+  const uniqueLines: string[] = [];
+  for (const l of lines) {
+    if (!uniqueLines.some((existing) => existing.toLowerCase() === l.toLowerCase())) {
+      uniqueLines.push(l);
+    }
   }
+
+  let name = fallbackName;
+  let addrLines = uniqueLines;
+  if (uniqueLines.length > 0) {
+    const firstLine = uniqueLines[0];
+    const isCompany = /LIMITED|LTD|COMPANY|CORP|INC|CO\b/i.test(firstLine);
+    if (!name || isCompany || firstLine.toLowerCase() === normalizedFallback) {
+      name = firstLine;
+      addrLines = uniqueLines.slice(1);
+    }
+  }
+
+  addrLines = addrLines.filter((l) => l.toLowerCase() !== name.toLowerCase());
+
   const addr1 = addrLines[0] || '';
   const addr2 = addrLines[1] || '';
   const addr3 = addrLines.length > 2 ? addrLines.slice(2).join(', ') : '';
@@ -390,7 +421,7 @@ export function DgDocumentCanvas({
                 <textarea
                   rows={9}
                   value={getVal('box_14_shipping_marks', cargoBlockText)}
-                  onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value, 'shippingMarks')}
+                  onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-[9px] font-mono font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed tracking-tight"
                 />
               </div>
@@ -682,7 +713,7 @@ export function DgDocumentCanvas({
                 <textarea
                   rows={9}
                   value={getVal('box_14_shipping_marks', cargoBlockText)}
-                  onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value, 'shippingMarks')}
+                  onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded p-1.5 text-[9px] font-mono text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed whitespace-pre-wrap break-words"
                 />
               </div>

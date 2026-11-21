@@ -6,13 +6,50 @@ import JSZip from 'jszip';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
-import { groupManifestFieldsBySection } from './manifestMatcher.ts';
+import { groupManifestFieldsBySection, deduplicateMultiLineText, deduplicateTokens } from './manifestMatcher.ts';
 import {
   type DgTemplateId,
   DG_TEMPLATE_DEFINITIONS,
   buildTemplateCargoBlock,
   detectRecommendedDgTemplate
 } from './dgTemplates.ts';
+
+/**
+ * Builds a clean, single or multi-line party block (Name + Address + Extra IDs)
+ * with zero duplicate lines or repeated company names.
+ */
+function buildCleanPartyBlock(
+  name?: string,
+  address?: string,
+  extraLines: (string | undefined | null)[] = []
+): string {
+  const parts: string[] = [];
+  const cleanName = (name || '').trim();
+  if (cleanName) {
+    parts.push(cleanName);
+  }
+
+  if (address && address.trim()) {
+    const rawLines = address.split('\n').map((l) => l.trim()).filter(Boolean);
+    for (const l of rawLines) {
+      if (cleanName && l.toLowerCase() === cleanName.toLowerCase()) continue;
+      if (!parts.some((p) => p.toLowerCase() === l.toLowerCase())) {
+        parts.push(l);
+      }
+    }
+  }
+
+  for (const extra of extraLines) {
+    if (extra && extra.trim()) {
+      const trimmed = extra.trim();
+      if (!parts.some((p) => p.toLowerCase() === trimmed.toLowerCase())) {
+        parts.push(trimmed);
+      }
+    }
+  }
+
+  return parts.join('\n');
+}
 
 /**
  * Escapes characters for HTML output
@@ -114,7 +151,10 @@ function generateDgManifestHtml(
   const val = (pred: (id: string, label: string) => boolean) => findFieldValue(mappedFields, pred);
 
   const box1Shipper = val((id, lbl) => id.includes('box_1') || lbl.includes('shipper') || lbl.includes('consignor')) ||
-    `${shipment.shipperName}\n${shipment.shipperAddress}${shipment.shipperIec ? `\nIEC: ${shipment.shipperIec}` : ''}${shipment.shipperGstin ? `\nGSTIN: ${shipment.shipperGstin}` : ''}`;
+    buildCleanPartyBlock(shipment.shipperName, shipment.shipperAddress, [
+      shipment.shipperIec ? `IEC: ${shipment.shipperIec}` : '',
+      shipment.shipperGstin ? `GSTIN: ${shipment.shipperGstin}` : ''
+    ]);
   
   const rawBooking = shipment.bookingNumber || shipment.invoiceNumbers?.join(', ') || '';
   let box2TransportDoc = val((id, lbl) => id.includes('box_2') || lbl.includes('transport document')) || rawBooking;
@@ -127,7 +167,8 @@ function generateDgManifestHtml(
   const box3Page = val((id, lbl) => id.includes('box_3') || lbl.includes('page of page') || id.includes('page')) || (isOneLine || isMscLine ? '3 Page of Page' : '1 OF 1');
   const box4ShipperRef = val((id, lbl) => id.includes('box_4') || lbl.includes("shipper's ref") || lbl.includes('shipper ref')) || shipment.shipperReference || '';
   const box5ForwarderRef = val((id, lbl) => id.includes('box_5') || lbl.includes('forwarder') || lbl.includes('freight forwarder')) || shipment.forwarderReference || '';
-  const box6Consignee = val((id, lbl) => id.includes('box_6') || lbl.includes('consignee')) || `${shipment.consigneeName}\n${shipment.consigneeAddress}`;
+  const box6Consignee = val((id, lbl) => id.includes('box_6') || lbl.includes('consignee')) ||
+    buildCleanPartyBlock(shipment.consigneeName, shipment.consigneeAddress);
   const defaultCarrier = isCmaCgm ? 'CMA-CGM AGENCIES INDIA PVT.LTD.' : (isKmtc ? 'KOREA MARINE TRANSPORT CO. LTD.' : '');
   const box7Carrier = val((id, lbl) => id.includes('box_7') || lbl.includes('carrier')) || shipment.carrierName || defaultCarrier;
 
@@ -682,16 +723,20 @@ function generateBlManifestHtml(
   const val = (pred: (id: string, label: string) => boolean) => findFieldValue(mappedFields, pred);
 
   const shipper = val((id, lbl) => id.includes('shipper') || lbl.includes('shipper')) ||
-    `${shipment.shipperName}\n${shipment.shipperAddress}${shipment.shipperIec ? `\nIEC: ${shipment.shipperIec}` : ''}${shipment.shipperGstin ? `\nGSTIN: ${shipment.shipperGstin}` : ''}`;
+    buildCleanPartyBlock(shipment.shipperName, shipment.shipperAddress, [
+      shipment.shipperIec ? `IEC: ${shipment.shipperIec}` : '',
+      shipment.shipperGstin ? `GSTIN: ${shipment.shipperGstin}` : ''
+    ]);
   const consignee = val((id, lbl) => id.includes('consignee') || lbl.includes('consignee')) ||
-    `${shipment.consigneeName}\n${shipment.consigneeAddress}`;
+    buildCleanPartyBlock(shipment.consigneeName, shipment.consigneeAddress);
   const notifyParty = val((id, lbl) => id.includes('notify') || lbl.includes('notify party')) ||
-    `${shipment.notifyPartyName || 'SAME AS CONSIGNEE'}\n${shipment.notifyPartyAddress || ''}`.trim();
+    buildCleanPartyBlock(shipment.notifyPartyName || 'SAME AS CONSIGNEE', shipment.notifyPartyAddress || '');
 
   const bookingNo = val((id, lbl) => id.includes('booking') || lbl.includes('booking')) || shipment.bookingNumber || '';
   const blNo = val((id, lbl) => id.includes('bl_number') || lbl.includes('bill of lading')) || shipment.bookingNumber || 'DRAFT-BL';
-  const exportRefs = val((id, lbl) => id.includes('export_reference') || lbl.includes('export ref') || lbl.includes("shipper's ref")) ||
+  const rawExportRefs = val((id, lbl) => id.includes('export_reference') || lbl.includes('export ref') || lbl.includes("shipper's ref")) ||
     shipment.shipperReference || shipment.invoiceNumbers?.join(', ') || '';
+  const exportRefs = deduplicateMultiLineText(rawExportRefs);
   const shippingBills = val((id, lbl) => id.includes('shipping_bill') || lbl.includes('shipping bill')) || shipment.shippingBillNumbers || '';
 
   const preCarriage = val((id, lbl) => id.includes('pre_carriage') || lbl.includes('pre-carriage')) || shipment.preCarriageBy || '';
@@ -706,8 +751,10 @@ function generateBlManifestHtml(
   const placeOfDelivery = val((id, lbl) => id.includes('place_of_delivery') || lbl.includes('place of delivery') || lbl.includes('final destination')) ||
     shipment.placeOfDelivery || shipment.finalDestination || shipment.portOfDischarge || '';
 
-  const marksAndNumbers = val((id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers')) || shipment.shippingMarks || '';
-  const cargoDesc = val((id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars')) || shipment.productDescription || '';
+  const rawMarks = val((id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers')) || shipment.shippingMarks || '';
+  const marksAndNumbers = deduplicateMultiLineText(rawMarks);
+  const rawCargoDesc = val((id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars')) || shipment.productDescription || '';
+  const cargoDesc = deduplicateMultiLineText(rawCargoDesc);
 
   const grossWt = val((id, lbl) => id.includes('gross_weight') || lbl.includes('gross weight')) || (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : '');
   const netWt = val((id, lbl) => id.includes('net_weight') || lbl.includes('net weight')) || (shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toFixed(2)} KGS` : '');
@@ -774,7 +821,7 @@ function generateBlManifestHtml(
         <td>
           <span class="cell-title">Export References (Invoices / PO / IEC)</span>
           <div class="cell-data">${escapeHtml(exportRefs || '---')}</div>
-          ${shippingBills ? `<div style="font-size: 8.5px; font-weight: bold; color: #0284c7; margin-top: 2px;">SHIPPING BILL: ${escapeHtml(shippingBills)}</div>` : ''}
+          ${shippingBills && !exportRefs.toLowerCase().includes(shippingBills.toLowerCase()) ? `<div style="font-size: 8.5px; font-weight: bold; color: #0284c7; margin-top: 2px;">SHIPPING BILL: ${escapeHtml(shippingBills)}</div>` : ''}
         </td>
       </tr>
 
@@ -1039,15 +1086,27 @@ function parseCleanShipperBlock(rawText: string, fallbackName: string) {
   const primaryLines = onBehalfIdx >= 0 ? lines.slice(0, onBehalfIdx) : lines;
   const onBehalfLines = onBehalfIdx >= 0 ? lines.slice(onBehalfIdx) : [];
 
-  let name = fallbackName;
-  let addrLines = primaryLines;
-  if (primaryLines.length > 0 && /LIMITED|LTD|INDUSTRIES|CORP|INC|CO\b/i.test(primaryLines[0])) {
-    name = primaryLines[0];
-    addrLines = primaryLines.slice(1);
-  } else if (!name && primaryLines.length > 0) {
-    name = primaryLines[0];
-    addrLines = primaryLines.slice(1);
+  const normalizedFallback = fallbackName.trim().toLowerCase();
+  const uniquePrimary: string[] = [];
+  for (const l of primaryLines) {
+    if (!uniquePrimary.some((existing) => existing.toLowerCase() === l.toLowerCase())) {
+      uniquePrimary.push(l);
+    }
   }
+
+  let name = fallbackName.trim();
+  let addrLines = uniquePrimary;
+  if (uniquePrimary.length > 0) {
+    const firstLine = uniquePrimary[0];
+    const isCompany = /LIMITED|LTD|INDUSTRIES|CORP|INC|COMPANY|CO\b/i.test(firstLine);
+    if (!name || isCompany || firstLine.toLowerCase() === normalizedFallback) {
+      name = firstLine;
+      addrLines = uniquePrimary.slice(1);
+    }
+  }
+
+  // Ensure address lines do not duplicate the company name
+  addrLines = addrLines.filter((l) => l.toLowerCase() !== name.toLowerCase());
 
   const addr1 = addrLines[0] || '';
   const addr2 = addrLines[1] || '';
@@ -1068,15 +1127,27 @@ function parseCleanShipperBlock(rawText: string, fallbackName: string) {
 
 function parseCleanConsigneeBlock(rawText: string, fallbackName: string) {
   const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
-  let name = fallbackName;
-  let addrLines = lines;
-  if (lines.length > 0 && /LIMITED|LTD|COMPANY|CORP|INC|CO\b/i.test(lines[0])) {
-    name = lines[0];
-    addrLines = lines.slice(1);
-  } else if (!name && lines.length > 0) {
-    name = lines[0];
-    addrLines = lines.slice(1);
+  const normalizedFallback = fallbackName.trim().toLowerCase();
+  const uniqueLines: string[] = [];
+  for (const l of lines) {
+    if (!uniqueLines.some((existing) => existing.toLowerCase() === l.toLowerCase())) {
+      uniqueLines.push(l);
+    }
   }
+
+  let name = fallbackName.trim();
+  let addrLines = uniqueLines;
+  if (uniqueLines.length > 0) {
+    const firstLine = uniqueLines[0];
+    const isCompany = /LIMITED|LTD|COMPANY|CORP|INC|CO\b/i.test(firstLine);
+    if (!name || isCompany || firstLine.toLowerCase() === normalizedFallback) {
+      name = firstLine;
+      addrLines = uniqueLines.slice(1);
+    }
+  }
+
+  // Ensure address lines do not duplicate the company name
+  addrLines = addrLines.filter((l) => l.toLowerCase() !== name.toLowerCase());
 
   const addr1 = addrLines[0] || '';
   const addr2 = addrLines[1] || '';
@@ -1188,8 +1259,8 @@ export async function generatePopulatedDocxBlob(
       netMass: val('box_17_net_mass_kg', val('box_17_net_mass', shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '')),
       cube: val('box_18_cube_m3', shipment.volumeCbm > 0 ? `${shipment.volumeCbm} CBM` : (isDiamond ? '25 CBM' : '')),
       unPackingCode: val('box_other_details_un_pack', unPkg || ''),
-      containerNo: val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || '')),
-      sealNo: val('box_16_seal_number', shipment.sealNumber || ''),
+      containerNo: deduplicateTokens(val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || ''))),
+      sealNo: deduplicateTokens(val('box_16_seal_number', shipment.sealNumber || '')),
       containerType: val('box_17_container_size_type', isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP")))),
       tareMass: val('box_19_tare_mass_kg', `${tareVal.toLocaleString()} KGS`),
       totalGrossVgm: vgmVal > 0 ? `${vgmVal.toLocaleString()} KGS` : '',
@@ -1258,12 +1329,10 @@ export async function exportManifestToDocx(
         };
 
         const sFull = val('box_1_shipper', shipment.shipperAddress || shipment.shipperName || '');
-        const sLines = sFull.split('\n').filter(Boolean);
-        const sName = val('box_1_shipper_name', shipment.shipperName || sLines[0] || '');
+        const sParsed = parseCleanShipperBlock(sFull, shipment.shipperName || '');
 
         const cFull = val('box_6_consignee', shipment.consigneeAddress || shipment.consigneeName || '');
-        const cLines = cFull.split('\n').filter(Boolean);
-        const cName = val('box_6_consignee_name', shipment.consigneeName || cLines[0] || '');
+        const cParsed = parseCleanConsigneeBlock(cFull, shipment.consigneeName || '');
 
         const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
         const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
@@ -1289,14 +1358,14 @@ export async function exportManifestToDocx(
         const placeDate = val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || '');
 
         const tags: Record<string, string> = {
-          shipperName: sName,
-          shipperAddressLine1: sLines.length > 1 ? sLines[1] : (sLines[0] || ''),
-          shipperAddressLine2: sLines.length > 2 ? sLines[2] : '',
-          shipperAddressLine3: sLines.length > 3 ? sLines.slice(3).join(', ') : '',
-          consigneeName: cName,
-          consigneeAddressLine1: cLines.length > 1 ? cLines[1] : (cLines[0] || ''),
-          consigneeAddressLine2: cLines.length > 2 ? cLines[2] : '',
-          consigneeAddressLine3: cLines.length > 3 ? cLines.slice(3).join(', ') : '',
+          shipperName: sParsed.name,
+          shipperAddressLine1: sParsed.addr1,
+          shipperAddressLine2: sParsed.addr2,
+          shipperAddressLine3: sParsed.addr3,
+          consigneeName: cParsed.name,
+          consigneeAddressLine1: cParsed.addr1,
+          consigneeAddressLine2: cParsed.addr2,
+          consigneeAddressLine3: cParsed.addr3,
           shipperRef: val('box_4_shipper_reference', shipment.shipperReference || shipment.invoiceNumbers?.[0] || ''),
           emergencyContact: val('box_21_emergency_contact', val('box_9_place_of_receipt', shipment.emergencyContactPhone || '')),
           carrierName: carrier,
@@ -1308,8 +1377,8 @@ export async function exportManifestToDocx(
             shipment.vesselName ? (shipment.voyageNumber ? `${shipment.vesselName} / ${shipment.voyageNumber}` : shipment.vesselName) : ''
           ),
           portOfLoading: val('box_11_port_of_loading', shipment.portOfLoading || ''),
-          containerNo: val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || '')),
-          sealNo: val('box_16_seal_number', shipment.sealNumber || ''),
+          containerNo: deduplicateTokens(val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || ''))),
+          sealNo: deduplicateTokens(val('box_16_seal_number', shipment.sealNumber || '')),
           containerType: val('box_17_container_size_type', shipment.containerType || "1x20'FT"),
           portOfDischarge: val('box_12_port_of_discharge', shipment.portOfDischarge || ''),
           destination: val('box_13_destination', shipment.finalDestination || shipment.portOfDischarge || ''),

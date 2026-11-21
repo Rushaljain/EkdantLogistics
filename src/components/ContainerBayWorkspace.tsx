@@ -12,17 +12,21 @@ import {
   Layers,
   GripVertical,
   FileSpreadsheet,
-  Download
+  Download,
+  Scissors,
+  Undo2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type {
   ExtractedShipmentJSON,
   ExtractedPallet,
   ContainerType,
-  ContainerAllocation
+  ContainerAllocation,
+  MergedTransfer
 } from '../types/index.ts';
 import { CONTAINER_SPECS } from '../types/index.ts';
 import { autoAllocate20GPContainers } from '../utils/manifestKeywordReference.ts';
+import { toExactWeight } from '../utils/inventoryStore.ts';
 
 export interface ContainerItem {
   id: string;
@@ -68,34 +72,41 @@ export function ContainerBayWorkspace({
     });
   }, [shipmentJson.pallets, shipmentJson.brandName, shipmentJson.invoiceNumbers]);
 
+  const sanitizeRef = (val?: string): string => {
+    if (!val) return '';
+    const s = val.trim();
+    if (/^CONT-|^SL-|^SEAL-|^BKG-\d+$/i.test(s)) return '';
+    return s;
+  };
+
   // Deterministic 20' GP multi-container allocation (Max 22 Pallets / 25,000 kg)
   const initialContainers: ContainerItem[] = useMemo(() => {
     if (shipmentJson.containers && shipmentJson.containers.length > 0) {
       return shipmentJson.containers.map((c, idx) => ({
         id: c.id || `container-${idx + 1}`,
         label: c.label || `Container ${idx + 1}`,
-        containerNumber: c.containerNumber || '',
-        sealNumber: c.sealNumber || '',
+        containerNumber: sanitizeRef(c.containerNumber),
+        sealNumber: sanitizeRef(c.sealNumber),
         containerType: '20GP' as ContainerType,
         tareWeightKg: c.tareWeightKg || 2150,
-        bookingNumber: c.bookingNumber || shipmentJson.bookingNumber || '',
+        bookingNumber: sanitizeRef(c.bookingNumber || shipmentJson.bookingNumber),
         palletIndices: c.palletIndices || []
       }));
     }
     const allocated = autoAllocate20GPContainers(
       shipmentJson.pallets || [],
       undefined,
-      shipmentJson.containerNumber,
-      shipmentJson.sealNumber
+      sanitizeRef(shipmentJson.containerNumber),
+      sanitizeRef(shipmentJson.sealNumber)
     );
     return allocated.map((c, idx) => ({
       id: c.id || `container-${idx + 1}`,
       label: c.label || `Container ${idx + 1}`,
-      containerNumber: c.containerNumber || '',
-      sealNumber: c.sealNumber || '',
+      containerNumber: sanitizeRef(c.containerNumber),
+      sealNumber: sanitizeRef(c.sealNumber),
       containerType: '20GP' as ContainerType,
       tareWeightKg: c.tareWeightKg || 2150,
-      bookingNumber: c.bookingNumber || shipmentJson.bookingNumber || '',
+      bookingNumber: sanitizeRef(c.bookingNumber || shipmentJson.bookingNumber),
       palletIndices: c.palletIndices || []
     }));
   }, [shipmentJson.containers, shipmentJson.pallets, shipmentJson.containerNumber, shipmentJson.sealNumber, shipmentJson.bookingNumber]);
@@ -126,17 +137,28 @@ export function ContainerBayWorkspace({
   const [carrierName, setCarrierName] = useState<string>(shipmentJson.carrierName || '');
   const [vesselName, setVesselName] = useState<string>(shipmentJson.vesselName || '');
   const [voyageNumber, setVoyageNumber] = useState<string>(shipmentJson.voyageNumber || '');
-  const [bookingNumber, setBookingNumber] = useState<string>(shipmentJson.bookingNumber || '');
+  const [bookingNumber, setBookingNumber] = useState<string>(sanitizeRef(shipmentJson.bookingNumber));
 
-  // Pallet allocation state: maps palletNumber -> containerId (or undefined if unallocated)
-  const [pallets, setPallets] = useState<ExtractedPallet[]>(() => [...initialPallets]);
+  // Pallet allocation state: maps palletId / palletNumber -> containerId (or undefined if unallocated)
+  const [pallets, setPallets] = useState<ExtractedPallet[]>(() =>
+    initialPallets.map((p, idx) => ({
+      ...p,
+      id: p.id || `plt_${p.palletNumber}_${idx}`
+    }))
+  );
   const [palletAllocationMap, setPalletAllocationMap] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
+    const prepared = initialPallets.map((p, idx) => ({
+      ...p,
+      id: p.id || `plt_${p.palletNumber}_${idx}`
+    }));
+
     initialContainers.forEach((cont) => {
       if (cont.palletIndices && cont.palletIndices.length > 0) {
         cont.palletIndices.forEach((pIdx) => {
-          const p = initialPallets[pIdx];
+          const p = prepared[pIdx];
           if (p) {
+            map[p.id!] = cont.id;
             map[p.palletNumber] = cont.id;
           }
         });
@@ -146,47 +168,42 @@ export function ContainerBayWorkspace({
     // Fallback: assign remaining sequentially within 20' GP limits
     let contIdx = 0;
     let countInCont = 0;
-    initialPallets.forEach((p) => {
-      if (!map[p.palletNumber]) {
+    prepared.forEach((p) => {
+      if (!map[p.id!]) {
         if (countInCont >= 22) {
           contIdx++;
           countInCont = 0;
         }
         const targetCont = initialContainers[contIdx] || initialContainers[0];
-        map[p.palletNumber] = targetCont?.id || 'container-1';
+        const targetId = targetCont?.id || 'container-1';
+        map[p.id!] = targetId;
+        map[p.palletNumber] = targetId;
         countInCont++;
       }
     });
     return map;
   });
 
-  // Explicit slot order per container: containerId -> array of (palletNumber | null) of size specs.maxPallets
+  // Explicit slot order per container: containerId -> array of (palletId | null) of size specs.maxPallets
   const [containerSlotMap, setContainerSlotMap] = useState<Record<string, (string | null)[]>>(() => {
     const initialSlotState: Record<string, (string | null)[]> = {};
+    const prepared = initialPallets.map((p, idx) => ({
+      ...p,
+      id: p.id || `plt_${p.palletNumber}_${idx}`
+    }));
+
     initialContainers.forEach((cont) => {
       const slots: (string | null)[] = Array(22).fill(null);
       let slotIdx = 0;
       if (cont.palletIndices && cont.palletIndices.length > 0) {
         cont.palletIndices.forEach((pIdx) => {
-          const p = initialPallets[pIdx];
+          const p = prepared[pIdx];
           if (p && slotIdx < 22) {
-            slots[slotIdx++] = p.palletNumber;
+            slots[slotIdx++] = p.id!;
           }
         });
       }
       initialSlotState[cont.id] = slots;
-    });
-
-    // Allocate any mapped pallets into their container's slots
-    initialPallets.forEach((p) => {
-      // Find where p is allocated
-      initialContainers.forEach((cont) => {
-        const slots = initialSlotState[cont.id] || Array(22).fill(null);
-        if (!slots.includes(p.palletNumber)) {
-          // If palletAllocationMap will have it here
-          // We'll let the synchronization helper reconcile
-        }
-      });
     });
 
     return initialSlotState;
@@ -229,6 +246,225 @@ export function ContainerBayWorkspace({
     containerType: '20GP',
     tareWeightKg: 2150
   });
+
+  // Split / Move Units State
+  const [splitMoveState, setSplitMoveState] = useState<{
+    isOpen: boolean;
+    sourcePallet: ExtractedPallet | null;
+    unitsToMove: number;
+    destinationMode: 'SEPARATE_SPLIT' | 'TOP_UP_MERGE';
+    targetContainerId: string;
+    targetPalletId: string;
+  }>({
+    isOpen: false,
+    sourcePallet: null,
+    unitsToMove: 1,
+    destinationMode: 'SEPARATE_SPLIT',
+    targetContainerId: activeContainer.id,
+    targetPalletId: ''
+  });
+
+  const handleOpenSplitMove = (pallet: ExtractedPallet) => {
+    const otherPallets = pallets.filter((p) => (p.id || p.palletNumber) !== (pallet.id || pallet.palletNumber));
+    setSplitMoveState({
+      isOpen: true,
+      sourcePallet: pallet,
+      unitsToMove: Math.max(1, Math.min(Math.floor((pallet.boxCount || 0) / 2) || 1, Math.max(1, (pallet.boxCount || 1) - 1))),
+      destinationMode: 'SEPARATE_SPLIT',
+      targetContainerId: activeContainer.id,
+      targetPalletId: otherPallets[0]?.id || otherPallets[0]?.palletNumber || ''
+    });
+  };
+
+  const handleExecuteSplitMove = () => {
+    if (!splitMoveState.sourcePallet) return;
+    const source = splitMoveState.sourcePallet;
+    const sourceKey = source.id || source.palletNumber;
+    const units = splitMoveState.unitsToMove;
+
+    if (units <= 0 || units >= source.boxCount) {
+      alert(`Units to move must be between 1 and ${source.boxCount - 1}.`);
+      return;
+    }
+
+    const origGross = source.grossWeightKg || 0;
+    const origNet = source.netWeightKg || 0;
+    const deltaGross = toExactWeight((origGross / source.boxCount) * units);
+    const deltaNet = toExactWeight((origNet / source.boxCount) * units);
+
+    if (splitMoveState.destinationMode === 'SEPARATE_SPLIT') {
+      const baseNum = String(source.parentPalletNumber || source.palletNumber)
+        .replace(/-S\d+$/i, '')
+        .replace(/-[A-Z]$/i, '');
+      const existingSplits = pallets.filter((p) => {
+        const pBase = String(p.parentPalletNumber || p.palletNumber)
+          .replace(/-S\d+$/i, '')
+          .replace(/-[A-Z]$/i, '');
+        return pBase === baseNum && p.isSplitPiece;
+      });
+      const splitSuffix = `-S${existingSplits.length + 1}`;
+      const splitPalletNum = `${baseNum}${splitSuffix}`;
+      const newSplitId = `plt_${splitPalletNum}_${Date.now()}`;
+
+      const remainingGross = toExactWeight(origGross - deltaGross);
+      const remainingNet = toExactWeight(origNet - deltaNet);
+
+      const updatedSource: ExtractedPallet = {
+        ...source,
+        parentPalletNumber: baseNum,
+        isSplitPiece: true,
+        boxCount: source.boxCount - units,
+        grossWeightKg: remainingGross,
+        netWeightKg: remainingNet
+      };
+
+      let targetContId = splitMoveState.targetContainerId;
+      if (targetContId === '+new') {
+        const nextContNum = containers.length + 1;
+        targetContId = `container-${nextContNum}`;
+        const newCont: ContainerItem = {
+          id: targetContId,
+          label: `Container ${nextContNum}`,
+          containerNumber: '',
+          sealNumber: '',
+          containerType: '20GP',
+          tareWeightKg: 2150,
+          bookingNumber
+        };
+        setContainers((prev) => [...prev, newCont]);
+      }
+
+      const newSplitPallet: ExtractedPallet = {
+        id: newSplitId,
+        palletNumber: splitPalletNum,
+        parentPalletNumber: baseNum,
+        isSplitPiece: true,
+        modelCode: source.modelCode,
+        brand: source.brand,
+        invoiceNumber: source.invoiceNumber,
+        boxCount: units,
+        grossWeightKg: deltaGross,
+        netWeightKg: deltaNet,
+        sourceFile: source.sourceFile || 'CFS_SPLIT'
+      };
+
+      setPallets((prev) => {
+        const idx = prev.findIndex((p) => (p.id || p.palletNumber) === sourceKey);
+        const next = [...prev];
+        if (idx !== -1) {
+          next[idx] = updatedSource;
+          next.splice(idx + 1, 0, newSplitPallet);
+        } else {
+          next.push(newSplitPallet);
+        }
+        return next;
+      });
+
+      setPalletAllocationMap((prev) => ({
+        ...prev,
+        [newSplitId]: targetContId,
+        [splitPalletNum]: targetContId
+      }));
+
+      setContainerSlotMap((prev) => {
+        const next = { ...prev };
+        const slots = [...(next[targetContId] || Array(22).fill(null))];
+        const emptyIdx = slots.indexOf(null);
+        if (emptyIdx !== -1) {
+          slots[emptyIdx] = newSplitId;
+          next[targetContId] = slots;
+        }
+        return next;
+      });
+    } else {
+      const targetKey = splitMoveState.targetPalletId;
+      const target = pallets.find((p) => (p.id || p.palletNumber) === targetKey);
+      if (!target) {
+        alert('Please select a valid target pallet to top-up.');
+        return;
+      }
+
+      const remainingGross = toExactWeight(origGross - deltaGross);
+      const remainingNet = toExactWeight(origNet - deltaNet);
+
+      const updatedSource: ExtractedPallet = {
+        ...source,
+        boxCount: source.boxCount - units,
+        grossWeightKg: remainingGross,
+        netWeightKg: remainingNet
+      };
+
+      const transferRecord: MergedTransfer = {
+        fromPalletId: source.id || source.palletNumber,
+        fromPalletNumber: source.palletNumber,
+        units,
+        grossWeightKg: deltaGross,
+        netWeightKg: deltaNet
+      };
+
+      const updatedTarget: ExtractedPallet = {
+        ...target,
+        boxCount: target.boxCount + units,
+        grossWeightKg: toExactWeight((target.grossWeightKg || 0) + deltaGross),
+        netWeightKg: toExactWeight((target.netWeightKg || 0) + deltaNet),
+        mergedTransfers: [...(target.mergedTransfers || []), transferRecord]
+      };
+
+      setPallets((prev) => {
+        return prev.map((p) => {
+          const pk = p.id || p.palletNumber;
+          if (pk === sourceKey) return updatedSource;
+          if (pk === targetKey) return updatedTarget;
+          return p;
+        });
+      });
+    }
+
+    setSplitMoveState({
+      isOpen: false,
+      sourcePallet: null,
+      unitsToMove: 1,
+      destinationMode: 'SEPARATE_SPLIT',
+      targetContainerId: activeContainer.id,
+      targetPalletId: ''
+    });
+  };
+
+  const handleUndoMergeTransfer = (targetPallet: ExtractedPallet, transferIndex: number) => {
+    const transfer = targetPallet.mergedTransfers?.[transferIndex];
+    if (!transfer) return;
+
+    const sourcePallet = pallets.find(
+      (p) => (p.id || p.palletNumber) === transfer.fromPalletId || p.palletNumber === transfer.fromPalletNumber
+    );
+
+    const updatedMergedTransfers = [...(targetPallet.mergedTransfers || [])];
+    updatedMergedTransfers.splice(transferIndex, 1);
+
+    const updatedTarget: ExtractedPallet = {
+      ...targetPallet,
+      boxCount: targetPallet.boxCount - transfer.units,
+      grossWeightKg: toExactWeight((targetPallet.grossWeightKg || 0) - transfer.grossWeightKg),
+      netWeightKg: toExactWeight((targetPallet.netWeightKg || 0) - transfer.netWeightKg),
+      mergedTransfers: updatedMergedTransfers.length > 0 ? updatedMergedTransfers : undefined
+    };
+
+    setPallets((prev) => {
+      return prev.map((p) => {
+        const pk = p.id || p.palletNumber;
+        if (pk === (targetPallet.id || targetPallet.palletNumber)) return updatedTarget;
+        if (sourcePallet && pk === (sourcePallet.id || sourcePallet.palletNumber)) {
+          return {
+            ...p,
+            boxCount: p.boxCount + transfer.units,
+            grossWeightKg: toExactWeight((p.grossWeightKg || 0) + transfer.grossWeightKg),
+            netWeightKg: toExactWeight((p.netWeightKg || 0) + transfer.netWeightKg)
+          };
+        }
+        return p;
+      });
+    });
+  };
 
   // Move a pallet to a specific container (or unallocate)
   const movePalletToContainer = (palletNumber: string, targetContainerId: string | null) => {
@@ -727,8 +963,8 @@ export function ContainerBayWorkspace({
             item.valueFormatted !== '-' ? item.valueFormatted : '',
             item.palletsCount,
             item.quantity,
-            Math.round(item.grossWeightKg * 100) / 100,
-            Math.round(item.netWeightKg * 100) / 100,
+            toExactWeight(item.grossWeightKg),
+            toExactWeight(item.netWeightKg),
             item.sbNo !== '-' ? item.sbNo : '',
             item.date !== '-' ? item.date : '',
             item.containerNo,
@@ -749,8 +985,8 @@ export function ContainerBayWorkspace({
         group.subtotalValueFormatted !== '-' ? group.subtotalValueFormatted : '',
         group.subtotalPallets,
         group.subtotalQty,
-        Math.round(group.subtotalGrossWeight * 100) / 100,
-        Math.round(group.subtotalNetWeight * 100) / 100,
+        toExactWeight(group.subtotalGrossWeight),
+        toExactWeight(group.subtotalNetWeight),
         '',
         '',
         group.container.containerNumber || group.container.label,
@@ -773,8 +1009,8 @@ export function ContainerBayWorkspace({
       containerPlanData.grandTotalValueFormatted !== '-' ? containerPlanData.grandTotalValueFormatted : '',
       containerPlanData.grandTotalPallets,
       containerPlanData.grandTotalQty,
-      Math.round(containerPlanData.grandTotalGrossWeight * 100) / 100,
-      Math.round(containerPlanData.grandTotalNetWeight * 100) / 100,
+      toExactWeight(containerPlanData.grandTotalGrossWeight),
+      toExactWeight(containerPlanData.grandTotalNetWeight),
       '',
       '',
       containers.map((c) => c.containerNumber || c.label).filter(Boolean).join(', '),
@@ -1201,8 +1437,13 @@ export function ContainerBayWorkspace({
                           className="rounded border-divider bg-input-bg text-brand-primary focus:ring-0 cursor-pointer"
                         />
                         <span className="text-xs font-mono font-bold text-brand-primary shrink-0">
-                          {p.palletNumber}
+                          {p.palletNumber} ({p.boxCount || 0} u)
                         </span>
+                        {p.isSplitPiece && (
+                          <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800 shrink-0">
+                            SPLIT
+                          </span>
+                        )}
                         {p.modelCode && (
                           <span
                             className="font-mono text-[11px] font-medium tracking-tight leading-none px-2 py-0.5 rounded border bg-surface border-divider text-content-primary whitespace-nowrap shrink-0"
@@ -1255,6 +1496,19 @@ export function ContainerBayWorkspace({
                       </div>
 
                       <div className="flex items-center space-x-1 shrink-0">
+                        {(p.boxCount || 0) > 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenSplitMove(p);
+                            }}
+                            className="p-1 text-content-muted hover:text-brand-primary transition-colors cursor-pointer"
+                            title="Split / Move Units"
+                          >
+                            <Scissors className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1294,6 +1548,33 @@ export function ContainerBayWorkspace({
                         <span className="font-semibold text-content-primary">{p.netWeightKg} kg</span>
                       </div>
                     </div>
+
+                    {p.mergedTransfers && p.mergedTransfers.length > 0 && (
+                      <div className="mt-1.5 pt-1.5 border-t border-divider/60 space-y-1">
+                        <div className="text-[10px] font-semibold text-content-muted">Top-Up Merged Units:</div>
+                        {p.mergedTransfers.map((mt, mtIdx) => (
+                          <div
+                            key={`${mt.fromPalletNumber}-${mtIdx}`}
+                            className="flex items-center justify-between text-[10px] font-mono bg-brand-primary-soft/30 px-2 py-0.5 rounded border border-brand-primary/20"
+                          >
+                            <span className="text-content-primary">
+                              +{mt.units} u from {mt.fromPalletNumber} ({mt.grossWeightKg} kg)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUndoMergeTransfer(p, mtIdx);
+                              }}
+                              className="text-content-muted hover:text-state-error p-0.5 cursor-pointer"
+                              title="Undo merge transfer"
+                            >
+                              <Undo2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -1537,11 +1818,18 @@ export function ContainerBayWorkspace({
                         >
                           {pallet ? (
                             <>
-                              <span className="text-[9px] font-mono font-bold leading-tight truncate max-w-full px-0.5">
-                                {pallet.palletNumber}
-                              </span>
+                              <div className="flex items-center space-x-0.5 justify-center max-w-full px-0.5">
+                                <span className="text-[9px] font-mono font-bold leading-tight truncate">
+                                  {pallet.palletNumber}
+                                </span>
+                                {pallet.isSplitPiece && (
+                                  <span className="text-[7px] font-bold px-0.5 py-0 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 shrink-0">
+                                    SPLIT
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[8px] font-mono text-content-secondary mt-0.5">
-                                {pallet.grossWeightKg.toLocaleString()}k
+                                {pallet.boxCount ? `${pallet.boxCount}u · ` : ''}{pallet.grossWeightKg.toLocaleString()}k
                               </span>
                               {/* Explicit Unallocate Action on hover */}
                               <button
@@ -1619,11 +1907,18 @@ export function ContainerBayWorkspace({
                         >
                           {pallet ? (
                             <>
-                              <span className="text-[9px] font-mono font-bold leading-tight truncate max-w-full px-0.5">
-                                {pallet.palletNumber}
-                              </span>
+                              <div className="flex items-center space-x-0.5 justify-center max-w-full px-0.5">
+                                <span className="text-[9px] font-mono font-bold leading-tight truncate">
+                                  {pallet.palletNumber}
+                                </span>
+                                {pallet.isSplitPiece && (
+                                  <span className="text-[7px] font-bold px-0.5 py-0 rounded bg-purple-500/20 text-purple-700 dark:text-purple-300 shrink-0">
+                                    SPLIT
+                                  </span>
+                                )}
+                              </div>
                               <span className="text-[8px] font-mono text-content-secondary mt-0.5">
-                                {pallet.grossWeightKg.toLocaleString()}k
+                                {pallet.boxCount ? `${pallet.boxCount}u · ` : ''}{pallet.grossWeightKg.toLocaleString()}k
                               </span>
                               {/* Explicit Unallocate Action on hover */}
                               <button
@@ -2178,6 +2473,180 @@ export function ContainerBayWorkspace({
                 className="px-4 py-1.5 rounded-lg text-xs font-bold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm cursor-pointer"
               >
                 Add Container
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split / Move Units Pop-up Modal */}
+      {splitMoveState.isOpen && splitMoveState.sourcePallet && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-divider">
+              <div className="flex items-center space-x-2">
+                <Scissors className="w-4 h-4 text-brand-primary" />
+                <h3 className="text-sm font-bold text-content-primary">
+                  Split / Move Units &mdash; {splitMoveState.sourcePallet.palletNumber}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSplitMoveState((prev) => ({ ...prev, isOpen: false, sourcePallet: null }))}
+                className="text-content-muted hover:text-content-primary p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Source summary */}
+            <div className="p-2.5 rounded-xl bg-surface-secondary border border-divider text-xs font-mono space-y-1">
+              <div className="flex justify-between text-content-secondary">
+                <span>Current Pallet Boxes:</span>
+                <span className="font-bold text-content-primary">{splitMoveState.sourcePallet.boxCount} units</span>
+              </div>
+              <div className="flex justify-between text-content-secondary">
+                <span>Gross / Net Weight:</span>
+                <span className="text-content-primary font-semibold">
+                  {splitMoveState.sourcePallet.grossWeightKg} kg / {splitMoveState.sourcePallet.netWeightKg} kg
+                </span>
+              </div>
+            </div>
+
+            {/* Units to move */}
+            <div>
+              <label className="block text-[11px] font-semibold text-content-secondary mb-1">
+                Units to Move (1 to {splitMoveState.sourcePallet.boxCount - 1}):
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={splitMoveState.sourcePallet.boxCount - 1}
+                value={splitMoveState.unitsToMove}
+                onChange={(e) => {
+                  const val = Math.max(1, Math.min(splitMoveState.sourcePallet!.boxCount - 1, Number(e.target.value) || 1));
+                  setSplitMoveState((prev) => ({ ...prev, unitsToMove: val }));
+                }}
+                className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary text-xs"
+              />
+            </div>
+
+            {/* Destination Mode */}
+            <div>
+              <label className="block text-[11px] font-semibold text-content-secondary mb-1">
+                Destination Type:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSplitMoveState((prev) => ({ ...prev, destinationMode: 'SEPARATE_SPLIT' }))}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all text-left cursor-pointer ${
+                    splitMoveState.destinationMode === 'SEPARATE_SPLIT'
+                      ? 'bg-brand-primary text-brand-primary-text border-brand-primary shadow-xs'
+                      : 'bg-surface-secondary text-content-secondary border-divider hover:text-content-primary'
+                  }`}
+                >
+                  <div className="font-bold">Separate Split Piece</div>
+                  <div className="text-[10px] opacity-80 mt-0.5">Load into container slot</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSplitMoveState((prev) => ({ ...prev, destinationMode: 'TOP_UP_MERGE' }))}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-all text-left cursor-pointer ${
+                    splitMoveState.destinationMode === 'TOP_UP_MERGE'
+                      ? 'bg-brand-primary text-brand-primary-text border-brand-primary shadow-xs'
+                      : 'bg-surface-secondary text-content-secondary border-divider hover:text-content-primary'
+                  }`}
+                >
+                  <div className="font-bold">Load onto Pallet</div>
+                  <div className="text-[10px] opacity-80 mt-0.5">Top-up existing pallet</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Destination selector */}
+            {splitMoveState.destinationMode === 'SEPARATE_SPLIT' ? (
+              <div>
+                <label className="block text-[11px] font-semibold text-content-secondary mb-1">
+                  Target Container:
+                </label>
+                <select
+                  value={splitMoveState.targetContainerId}
+                  onChange={(e) => setSplitMoveState((prev) => ({ ...prev, targetContainerId: e.target.value }))}
+                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary text-xs focus:outline-none focus:border-brand-primary cursor-pointer"
+                >
+                  {containers.map((c, cIdx) => (
+                    <option key={c.id} value={c.id}>
+                      Container {cIdx + 1} {c.containerNumber ? `(${c.containerNumber})` : ''}
+                    </option>
+                  ))}
+                  <option value="+new">+ New Container</option>
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[11px] font-semibold text-content-secondary mb-1">
+                  Target Pallet to Top-Up:
+                </label>
+                <select
+                  value={splitMoveState.targetPalletId}
+                  onChange={(e) => setSplitMoveState((prev) => ({ ...prev, targetPalletId: e.target.value }))}
+                  className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary text-xs font-mono focus:outline-none focus:border-brand-primary cursor-pointer"
+                >
+                  {pallets
+                    .filter((p) => (p.id || p.palletNumber) !== (splitMoveState.sourcePallet?.id || splitMoveState.sourcePallet?.palletNumber))
+                    .map((p) => (
+                      <option key={p.id || p.palletNumber} value={p.id || p.palletNumber}>
+                        {p.palletNumber} ({p.boxCount || 0} u &bull; {p.grossWeightKg} kg)
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            {/* Live Preview Strip */}
+            {(() => {
+              const src = splitMoveState.sourcePallet;
+              const u = splitMoveState.unitsToMove;
+              const origG = src.grossWeightKg || 0;
+              const origN = src.netWeightKg || 0;
+              const deltaG = toExactWeight((origG / (src.boxCount || 1)) * u);
+              const deltaN = toExactWeight((origN / (src.boxCount || 1)) * u);
+              const remG = toExactWeight(origG - deltaG);
+              const remN = toExactWeight(origN - deltaN);
+              const remU = src.boxCount - u;
+
+              return (
+                <div className="p-3 bg-brand-primary-soft/20 border border-brand-primary/30 rounded-xl space-y-1.5 text-xs font-mono">
+                  <div className="text-[11px] font-bold text-brand-primary uppercase tracking-wide">
+                    Live Split Preview (0.00 kg Variance)
+                  </div>
+                  <div className="flex justify-between text-content-secondary">
+                    <span>Source {src.palletNumber} Remains:</span>
+                    <span className="font-semibold text-content-primary">{remU} u &bull; {remG} kg gross ({remN} kg net)</span>
+                  </div>
+                  <div className="flex justify-between text-content-secondary">
+                    <span>Split / Moved:</span>
+                    <span className="font-semibold text-brand-primary">+{u} u &bull; {deltaG} kg gross ({deltaN} kg net)</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-divider">
+              <button
+                type="button"
+                onClick={() => setSplitMoveState((prev) => ({ ...prev, isOpen: false, sourcePallet: null }))}
+                className="px-3 py-1.5 rounded-lg text-xs text-content-secondary hover:text-content-primary cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteSplitMove}
+                className="px-4 py-1.5 rounded-lg text-xs font-bold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm cursor-pointer"
+              >
+                Confirm Split / Move
               </button>
             </div>
           </div>

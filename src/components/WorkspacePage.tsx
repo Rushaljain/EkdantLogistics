@@ -27,7 +27,7 @@ import { DgDocumentCanvas } from './DgDocumentCanvas.tsx';
 import { BlDocumentCanvas } from './BlDocumentCanvas.tsx';
 import { ContainerBayWorkspace } from './ContainerBayWorkspace.tsx';
 import { synthesizePalletRanges } from '../utils/manifestKeywordReference.ts';
-import { syncStage2FieldsToLedger, executeWorkspaceDispatch, formatToDDMMYYYY } from '../utils/inventoryStore.ts';
+import { syncStage2FieldsToLedger, executeWorkspaceDispatch, formatToDDMMYYYY, markLedgerDocumentCreated } from '../utils/inventoryStore.ts';
 import { InventoryStockSelector } from './InventoryStockSelector.tsx';
 import {
   buildDgCargoItems,
@@ -157,6 +157,36 @@ export function WorkspacePage({
       vehicleNo: ''
     };
   });
+
+  // Standalone Document Creation tracking (DG / BL)
+  const handlePrintPdf = (docType: FormatDocumentType) => {
+    if (shipmentJson.sourceLedgerIds && shipmentJson.sourceLedgerIds.length > 0) {
+      markLedgerDocumentCreated(shipmentJson.sourceLedgerIds, docType);
+    }
+    onPrintPdf(docType);
+  };
+
+  const handleDownloadDocx = (docType: FormatDocumentType, overrideShipment?: ExtractedShipmentJSON) => {
+    if (shipmentJson.sourceLedgerIds && shipmentJson.sourceLedgerIds.length > 0) {
+      markLedgerDocumentCreated(shipmentJson.sourceLedgerIds, docType);
+    }
+    onDownloadDocx(docType, overrideShipment);
+  };
+
+  const handleDownloadHtml = (docType: FormatDocumentType) => {
+    if (shipmentJson.sourceLedgerIds && shipmentJson.sourceLedgerIds.length > 0) {
+      markLedgerDocumentCreated(shipmentJson.sourceLedgerIds, docType);
+    }
+    onDownloadHtml(docType);
+  };
+
+  const handleDownloadZip = () => {
+    if (shipmentJson.sourceLedgerIds && shipmentJson.sourceLedgerIds.length > 0) {
+      markLedgerDocumentCreated(shipmentJson.sourceLedgerIds, 'DG');
+      markLedgerDocumentCreated(shipmentJson.sourceLedgerIds, 'BL');
+    }
+    onDownloadZip();
+  };
 
   const handleExecuteWorkspaceDispatch = () => {
     if (!dispatchDetails.containerNo.trim() || !dispatchDetails.sealNo.trim()) {
@@ -1124,7 +1154,7 @@ export function WorkspacePage({
 
                 <div className="grid grid-cols-3 gap-2">
                   <button
-                    onClick={() => onPrintPdf('DG')}
+                    onClick={() => handlePrintPdf('DG')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <Printer className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1133,7 +1163,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => onDownloadDocx('DG', activeFilteredDgShipment)}
+                    onClick={() => handleDownloadDocx('DG', activeFilteredDgShipment)}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1146,7 +1176,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => onDownloadHtml('DG')}
+                    onClick={() => handleDownloadHtml('DG')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <ExternalLink className="w-4 h-4 text-brand-accent mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1175,7 +1205,7 @@ export function WorkspacePage({
 
                 <div className="grid grid-cols-3 gap-2">
                   <button
-                    onClick={() => onPrintPdf('BL')}
+                    onClick={() => handlePrintPdf('BL')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <Printer className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1184,7 +1214,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => onDownloadDocx('BL')}
+                    onClick={() => handleDownloadDocx('BL')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1193,7 +1223,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => onDownloadHtml('BL')}
+                    onClick={() => handleDownloadHtml('BL')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <ExternalLink className="w-4 h-4 text-brand-accent mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1217,7 +1247,7 @@ export function WorkspacePage({
               </div>
 
               <button
-                onClick={onDownloadZip}
+                onClick={handleDownloadZip}
                 disabled={isExportingZip}
                 className="px-6 py-3 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text font-bold text-xs shadow-md flex items-center space-x-2 transition-all shrink-0"
               >
@@ -1284,9 +1314,9 @@ export function WorkspacePage({
                     if (!val) return;
                     const targetDoc: FormatDocumentType = activeTab === 'bl_manifest' ? 'BL' : 'DG';
                     if (val === 'PDF') {
-                      onPrintPdf(targetDoc);
+                      handlePrintPdf(targetDoc);
                     } else if (val === 'Word') {
-                      onDownloadDocx(targetDoc, targetDoc === 'DG' ? activeFilteredDgShipment : undefined);
+                      handleDownloadDocx(targetDoc, targetDoc === 'DG' ? activeFilteredDgShipment : undefined);
                     }
                   }}
                   className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
@@ -1304,7 +1334,7 @@ export function WorkspacePage({
               </div>
 
               <button
-                onClick={onDownloadZip}
+                onClick={handleDownloadZip}
                 disabled={isExportingZip}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all"
                 title="Download Complete Shipment Package (.zip)"

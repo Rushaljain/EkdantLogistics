@@ -10,6 +10,59 @@ import {
   IMDG_UN_LOOKUP
 } from './manifestKeywordReference.ts';
 
+/**
+ * Deduplicates multiline text blocks preserving line order and removing duplicate lines (case-insensitive)
+ */
+export function deduplicateMultiLineText(text: string): string {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const uniqueLines: string[] = [];
+  const seen = new Set<string>();
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      if (uniqueLines.length > 0 && uniqueLines[uniqueLines.length - 1] !== '') {
+        uniqueLines.push('');
+      }
+      continue;
+    }
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      uniqueLines.push(rawLine);
+    }
+  }
+
+  while (uniqueLines.length > 0 && uniqueLines[uniqueLines.length - 1] === '') {
+    uniqueLines.pop();
+  }
+
+  return uniqueLines.join('\n');
+}
+
+/**
+ * Deduplicates comma/delimiter-separated string tokens case-insensitively
+ */
+export function deduplicateTokens(tokens: string[] | string, separator = ', '): string {
+  if (!tokens) return '';
+  const list = Array.isArray(tokens)
+    ? tokens.map(s => String(s).trim()).filter(Boolean)
+    : String(tokens).split(',').map(s => s.trim()).filter(Boolean);
+
+  const unique: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of list) {
+    const lower = item.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      unique.push(item);
+    }
+  }
+
+  return unique.join(separator);
+}
 
 /**
  * Builds a dynamic mapped manifest list from a shipment JSON and a target format schema.
@@ -33,7 +86,7 @@ export function buildMappedManifest(
       const rawVal = shipment[field.mappedShipmentKey];
 
       if (Array.isArray(rawVal)) {
-        resolvedValue = rawVal.filter(Boolean).join(', ');
+        resolvedValue = deduplicateTokens(rawVal.map(String));
       } else if (typeof rawVal === 'boolean') {
         resolvedValue = rawVal ? 'YES' : 'NO';
       } else if (typeof rawVal === 'number') {
@@ -185,14 +238,14 @@ export function buildMappedManifest(
       labelLower.includes('export references');
 
     if (isShipperRefBox) {
-      const invStr = shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0
-        ? shipment.invoiceNumbers.join(', ')
-        : '';
-      const refStr = shipment.shipperReference ? shipment.shipperReference.trim() : '';
+      const uniqueInvoices = Array.from(new Set((shipment.invoiceNumbers || []).map(s => s.trim()).filter(Boolean)));
+      const invStr = uniqueInvoices.join(', ');
+      const refStr = (shipment.shipperReference || '').trim();
 
       if (refStr && invStr) {
-        if (!refStr.toLowerCase().includes(invStr.toLowerCase())) {
-          resolvedValue = `${refStr}\nINV: ${invStr}`;
+        const missingInvs = uniqueInvoices.filter(inv => !refStr.toLowerCase().includes(inv.toLowerCase()));
+        if (missingInvs.length > 0) {
+          resolvedValue = `${refStr}\nINV: ${missingInvs.join(', ')}`;
         } else {
           resolvedValue = refStr;
         }
@@ -201,6 +254,7 @@ export function buildMappedManifest(
       } else if (refStr) {
         resolvedValue = refStr;
       }
+      resolvedValue = deduplicateMultiLineText(resolvedValue);
     }
 
     // 6. Composite Package Count & Type (e.g. "12 PALLETS (2880 BOXES)")
@@ -250,10 +304,10 @@ export function buildMappedManifest(
       );
 
     if (isPureShippingMarksField && customOverrides[field.fieldId] === undefined) {
-      resolvedValue = shipment.shippingMarks || '';
+      resolvedValue = deduplicateMultiLineText(shipment.shippingMarks || '');
     } else if (isCombinedDgCargoBox && customOverrides[field.fieldId] === undefined) {
       const includeMarks = !hasSeparateMarksField || labelLower.includes('shipping marks') || labelLower.includes('marks & nos');
-      resolvedValue = buildCombinedDgCargoBlock(shipment, includeMarks);
+      resolvedValue = deduplicateMultiLineText(buildCombinedDgCargoBlock(shipment, includeMarks));
     }
 
     // 8. Strict Proper Shipping Name field (Box 15b): strictly official IMDG PSN, never the long commercial description
@@ -316,29 +370,50 @@ export function buildMappedManifest(
         descLines.push(`BRAND: ${shipment.brandName.trim()}`);
       }
       if (shipment.hsnCode && shipment.hsnCode.trim()) {
-        descLines.push(`H.S. CODE NO. ${shipment.hsnCode.trim()}`);
+        const hsnClean = shipment.hsnCode.trim();
+        const hasHsnMention = /h\.?s\.?\s*code/i.test(existingText);
+        if (!hasHsnMention && !existingText.toLowerCase().includes(hsnClean.toLowerCase())) {
+          descLines.push(`H.S. CODE NO. ${hsnClean}`);
+        }
       }
       if (shipment.shippingBillNumbers && shipment.shippingBillNumbers.trim()) {
-        descLines.push(`SHIPPING BILL NO(S): ${shipment.shippingBillNumbers.trim()}`);
+        const sbClean = shipment.shippingBillNumbers.trim();
+        const hasSbMention = /shipping\s*bill/i.test(existingText);
+        if (!hasSbMention && !existingText.toLowerCase().includes(sbClean.toLowerCase())) {
+          descLines.push(`SHIPPING BILL NO(S): ${sbClean}`);
+        }
       }
       if (shipment.isDangerousGoods || shipment.unNumber) {
         const dgInfoParts: string[] = [];
-        if (shipment.unNumber) dgInfoParts.push(`UN NO. ${shipment.unNumber.replace(/^UN\s*/i, '')}`);
-        if (shipment.imoClass) dgInfoParts.push(`IMCO CLASS: ${shipment.imoClass}`);
-        if (shipment.packingGroup) dgInfoParts.push(`PG: ${shipment.packingGroup}`);
+        const unDigits = (shipment.unNumber || '').replace(/\D/g, '');
+        if (unDigits && !existingText.includes(unDigits)) {
+          dgInfoParts.push(`UN NO. ${unDigits}`);
+        }
+        if (shipment.imoClass && !existingText.includes(`CLASS: ${shipment.imoClass}`) && !existingText.includes(`CLASS ${shipment.imoClass}`)) {
+          dgInfoParts.push(`IMCO CLASS: ${shipment.imoClass}`);
+        }
+        if (shipment.packingGroup && !existingText.includes(`PG: ${shipment.packingGroup}`) && !existingText.includes(`PG ${shipment.packingGroup}`)) {
+          dgInfoParts.push(`PG: ${shipment.packingGroup}`);
+        }
         if (dgInfoParts.length > 0) {
           descLines.push(dgInfoParts.join(' | '));
         }
       }
       if (shipment.freightTerms && shipment.freightTerms.trim()) {
-        descLines.push(shipment.freightTerms.trim().toUpperCase());
+        const ftStr = shipment.freightTerms.trim().toUpperCase();
+        if (!existingText.toUpperCase().includes(ftStr)) {
+          descLines.push(ftStr);
+        }
       }
       if (shipment.freeTimeClause && shipment.freeTimeClause.trim()) {
-        descLines.push(`"${shipment.freeTimeClause.trim()}"`);
+        const ftc = shipment.freeTimeClause.trim();
+        if (!existingText.toLowerCase().includes(ftc.toLowerCase())) {
+          descLines.push(`"${ftc}"`);
+        }
       }
 
       if (descLines.length > 0) {
-        resolvedValue = descLines.join('\n');
+        resolvedValue = deduplicateMultiLineText(descLines.join('\n'));
       }
     }
 
@@ -361,6 +436,7 @@ export function buildMappedManifest(
           resolvedValue = resolvedValue.trim() ? `${resolvedValue.trim()}\n${palletStr}` : palletStr;
         }
       }
+      resolvedValue = deduplicateMultiLineText(resolvedValue);
     }
 
     // 10. Container & Seal combined box
@@ -368,10 +444,16 @@ export function buildMappedManifest(
       (fieldIdLower.includes('container_seal') || (labelLower.includes('container') && labelLower.includes('seal'))) &&
       field.fieldType !== 'table'
     ) {
-      if (shipment.containerNumber && shipment.sealNumber) {
-        resolvedValue = `${shipment.containerNumber} / SEAL: ${shipment.sealNumber}`;
-      } else if (shipment.containerNumber) {
-        resolvedValue = shipment.containerNumber;
+      const cleanCont = deduplicateTokens(shipment.containerNumber || '');
+      const cleanSeal = deduplicateTokens(shipment.sealNumber || '');
+      if (cleanCont && cleanSeal) {
+        if (cleanCont.toLowerCase().includes('seal:')) {
+          resolvedValue = cleanCont;
+        } else {
+          resolvedValue = `${cleanCont} / SEAL: ${cleanSeal}`;
+        }
+      } else if (cleanCont) {
+        resolvedValue = cleanCont;
       }
     }
 
@@ -380,9 +462,15 @@ export function buildMappedManifest(
       (fieldIdLower.includes('vessel_voyage') || (labelLower.includes('vessel') && labelLower.includes('voyage'))) &&
       shipment.vesselName
     ) {
-      resolvedValue = shipment.voyageNumber
-        ? `${shipment.vesselName} / ${shipment.voyageNumber}`
-        : shipment.vesselName;
+      const vName = shipment.vesselName.trim();
+      const voyNum = (shipment.voyageNumber || '').trim();
+      if (voyNum) {
+        resolvedValue = vName.toLowerCase().includes(voyNum.toLowerCase())
+          ? vName
+          : `${vName} / ${voyNum}`;
+      } else {
+        resolvedValue = vName;
+      }
     }
 
     // 11. Global Keyword Reference & Cascading Fallback Engine
@@ -439,7 +527,7 @@ export function buildMappedManifest(
       } else if (isTransportDocOrRefField) {
         // Fallback 1: Commercial invoice numbers joined
         if (shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0) {
-          resolvedValue = shipment.invoiceNumbers.join(', ');
+          resolvedValue = deduplicateTokens(shipment.invoiceNumbers);
         }
         // Fallback 2: Shipper reference
         else if (shipment.shipperReference && shipment.shipperReference.trim()) {

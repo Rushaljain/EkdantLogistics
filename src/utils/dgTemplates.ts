@@ -10,6 +10,7 @@ import type {
   FormatSchemaJSON
 } from '../types/index.ts';
 import { IMDG_UN_LOOKUP } from './manifestKeywordReference.ts';
+import { deduplicateMultiLineText } from './manifestMatcher.ts';
 
 export type { DgTemplateId, DgTemplateDefinition, DgCargoItemLine };
 
@@ -192,8 +193,8 @@ export function buildDgCargoItems(shipment: ExtractedShipmentJSON): DgCargoItemL
       properShippingName: shipment.properShippingName || imdg?.properShippingName || 'BATTERIES, WET, FILLED WITH ACID',
       palletCount: grp.pallets.length,
       boxCount: bCount,
-      grossWeightKg: Math.round(gw * 100) / 100,
-      netWeightKg: Math.round(nw * 100) / 100,
+      grossWeightKg: Number(gw.toFixed(3)),
+      netWeightKg: Number(nw.toFixed(3)),
       palletIndices: grp.palletIndices,
       palletNumbers: pNums,
       palletRange
@@ -232,9 +233,9 @@ export function filterShipmentByDgCargoItems(
   const netWeight = filteredPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0);
 
   // Recalculate pallet range in shipping marks
-  const palletNumbers = filteredPallets.map((p) => p.palletNumber).filter(Boolean);
+  const palletNumbers = Array.from(new Set(filteredPallets.map((p) => p.palletNumber).filter(Boolean)));
   const synthesizedRange = palletNumbers.length > 0
-    ? `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`
+    ? (palletNumbers.length === 1 ? palletNumbers[0] : `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`)
     : '';
 
   let updatedMarks = shipment.shippingMarks
@@ -252,8 +253,8 @@ export function filterShipmentByDgCargoItems(
     totalPackages: totalBoxes,
     outerPackagingCount: filteredPallets.length,
     innerPackageCount: totalBoxes,
-    grossWeightKg: Math.round(grossWeight * 100) / 100,
-    netWeightKg: Math.round(netWeight * 100) / 100,
+    grossWeightKg: Number(grossWeight.toFixed(3)),
+    netWeightKg: Number(netWeight.toFixed(3)),
     shippingMarks: updatedMarks
   };
 }
@@ -270,7 +271,8 @@ export function buildTemplateCargoBlock(
 
   const unNo = (shipment.unNumber || '2794').trim();
   const psn = (shipment.properShippingName || imdg?.properShippingName || 'BATTERIES, WET, FILLED WITH ACID').trim();
-  const techName = (shipment.productDescription || 'LEAD ACID STORAGE BATTERIES').trim();
+  const rawTech = (shipment.productDescription || '').trim();
+  const techName = rawTech && rawTech.toLowerCase() !== psn.toLowerCase() ? rawTech : 'LEAD ACID STORAGE BATTERIES';
   const imoClass = (shipment.imoClass || imdg?.imoClass || '8').trim();
   const pg = (shipment.packingGroup || imdg?.packingGroup || 'III').trim();
   const ems = (shipment.emsNumber || imdg?.emsNumber || 'F-A, S-B').trim();
@@ -282,12 +284,13 @@ export function buildTemplateCargoBlock(
   const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
 
   // Extract clean pallet range from shipping marks or pallets
-  const palletNumbers = (shipment.pallets || []).map((p) => p.palletNumber).filter(Boolean);
+  const palletNumbers = Array.from(new Set((shipment.pallets || []).map((p) => p.palletNumber).filter(Boolean)));
   const palletRange = palletNumbers.length > 0
     ? (palletNumbers.length === 1 ? palletNumbers[0] : `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`)
     : '';
 
-  switch (templateId) {
+  const blockText = (() => {
+    switch (templateId) {
     case 'NOMINATION_DG': {
       // Nomination DG (modeled on NOMINATION DG.doc)
       const lines: string[] = [
@@ -494,6 +497,9 @@ export function buildTemplateCargoBlock(
       return lines.join('\n');
     }
   }
+  })();
+
+  return deduplicateMultiLineText(blockText);
 }
 
 /**

@@ -71,27 +71,37 @@ export function BlDocumentCanvas({
 
     updatedPallets[index] = target;
 
+    const updateMarksWithPalletRange = (currentMarks: string, pallets: ExtractedPallet[]): string => {
+      const palletNumbers = Array.from(new Set(pallets.map((p) => p.palletNumber).filter(Boolean)));
+      const synthesizedRange = palletNumbers.length > 0
+        ? (palletNumbers.length === 1 ? palletNumbers[0] : `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`)
+        : '';
+
+      let marks = currentMarks
+        .replace(/(?:^|\n)\s*PALLET\s*NOS?:?\s*.*$/gim, '')
+        .replace(/(?:^|\n)\s*\d+\s+TO\s+\d+\s*$/gim, '')
+        .trim();
+      if (synthesizedRange) {
+        marks = marks ? `${marks}\nPALLET NOS: ${synthesizedRange}` : `PALLET NOS: ${synthesizedRange}`;
+      }
+      return marks;
+    };
+
     const totalBoxes = updatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
     const grossWeight = updatedPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
     const netWeight = updatedPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
+    const exactGross = Number(grossWeight.toFixed(3));
+    const exactNet = Number(netWeight.toFixed(3));
 
-    const palletNumbers = updatedPallets.map((p) => p.palletNumber).filter(Boolean);
-    const synthesizedRange = palletNumbers.length > 0
-      ? `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`
-      : '';
-
-    let updatedMarks = shipmentJson.shippingMarks;
-    if (synthesizedRange && !updatedMarks.includes(synthesizedRange)) {
-      updatedMarks = `${updatedMarks}\n${synthesizedRange}`.trim();
-    }
+    const updatedMarks = updateMarksWithPalletRange(shipmentJson.shippingMarks || '', updatedPallets);
 
     onUpdateShipment({
       ...shipmentJson,
       pallets: updatedPallets,
       totalBoxes: totalBoxes > 0 ? totalBoxes : shipmentJson.totalBoxes,
       totalPackages: totalBoxes > 0 ? totalBoxes : shipmentJson.totalPackages,
-      grossWeightKg: grossWeight > 0 ? grossWeight : shipmentJson.grossWeightKg,
-      netWeightKg: netWeight > 0 ? netWeight : shipmentJson.netWeightKg,
+      grossWeightKg: exactGross > 0 ? exactGross : shipmentJson.grossWeightKg,
+      netWeightKg: exactNet > 0 ? exactNet : shipmentJson.netWeightKg,
       shippingMarks: updatedMarks
     });
   };
@@ -113,6 +123,20 @@ export function BlDocumentCanvas({
     const totalBoxes = updatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
     const grossWeight = updatedPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
     const netWeight = updatedPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
+    const exactGross = Number(grossWeight.toFixed(3));
+    const exactNet = Number(netWeight.toFixed(3));
+
+    const palletNumbers = Array.from(new Set(updatedPallets.map((p) => p.palletNumber).filter(Boolean)));
+    const synthesizedRange = palletNumbers.length > 0
+      ? (palletNumbers.length === 1 ? palletNumbers[0] : `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`)
+      : '';
+    let marks = (shipmentJson.shippingMarks || '')
+      .replace(/(?:^|\n)\s*PALLET\s*NOS?:?\s*.*$/gim, '')
+      .replace(/(?:^|\n)\s*\d+\s+TO\s+\d+\s*$/gim, '')
+      .trim();
+    if (synthesizedRange) {
+      marks = marks ? `${marks}\nPALLET NOS: ${synthesizedRange}` : `PALLET NOS: ${synthesizedRange}`;
+    }
 
     onUpdateShipment({
       ...shipmentJson,
@@ -120,8 +144,9 @@ export function BlDocumentCanvas({
       totalPallets: updatedPallets.length,
       totalBoxes,
       totalPackages: totalBoxes,
-      grossWeightKg: grossWeight,
-      netWeightKg: netWeight
+      grossWeightKg: exactGross > 0 ? exactGross : shipmentJson.grossWeightKg,
+      netWeightKg: exactNet > 0 ? exactNet : shipmentJson.netWeightKg,
+      shippingMarks: marks
     });
   };
 
@@ -130,6 +155,20 @@ export function BlDocumentCanvas({
     const totalBoxes = updatedPallets.reduce((sum, p) => sum + (p.boxCount || 0), 0);
     const grossWeight = updatedPallets.reduce((sum, p) => sum + (p.grossWeightKg || 0), 0);
     const netWeight = updatedPallets.reduce((sum, p) => sum + (p.netWeightKg || 0), 0);
+    const exactGross = Number(grossWeight.toFixed(3));
+    const exactNet = Number(netWeight.toFixed(3));
+
+    const palletNumbers = Array.from(new Set(updatedPallets.map((p) => p.palletNumber).filter(Boolean)));
+    const synthesizedRange = palletNumbers.length > 0
+      ? (palletNumbers.length === 1 ? palletNumbers[0] : `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`)
+      : '';
+    let marks = (shipmentJson.shippingMarks || '')
+      .replace(/(?:^|\n)\s*PALLET\s*NOS?:?\s*.*$/gim, '')
+      .replace(/(?:^|\n)\s*\d+\s+TO\s+\d+\s*$/gim, '')
+      .trim();
+    if (synthesizedRange) {
+      marks = marks ? `${marks}\nPALLET NOS: ${synthesizedRange}` : `PALLET NOS: ${synthesizedRange}`;
+    }
 
     onUpdateShipment({
       ...shipmentJson,
@@ -137,8 +176,9 @@ export function BlDocumentCanvas({
       totalPallets: updatedPallets.length,
       totalBoxes,
       totalPackages: totalBoxes,
-      grossWeightKg: grossWeight,
-      netWeightKg: netWeight
+      grossWeightKg: exactGross > 0 ? exactGross : shipmentJson.grossWeightKg,
+      netWeightKg: exactNet > 0 ? exactNet : shipmentJson.netWeightKg,
+      shippingMarks: marks
     });
   };
 

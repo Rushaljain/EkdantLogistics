@@ -3,7 +3,16 @@
 
 export type UploadMode = 'SINGLE_INVOICE' | 'MULTI_INVOICE';
 
+export interface MergedTransfer {
+  fromPalletId: string;
+  fromPalletNumber: string | number;
+  units: number;
+  grossWeightKg: number;
+  netWeightKg: number;
+}
+
 export interface ExtractedPallet {
+  id?: string;
   palletNumber: string;
   modelCode: string;
   brand?: string;
@@ -12,6 +21,11 @@ export interface ExtractedPallet {
   netWeightKg: number;
   grossWeightKg: number;
   sourceFile: string;
+  parentPalletNumber?: string | number;
+  isSplitPiece?: boolean;
+  allocatedUnits?: number;
+  remainingUnits?: number;
+  mergedTransfers?: MergedTransfer[];
 }
 
 export type PalletItem = ExtractedPallet;
@@ -596,6 +610,33 @@ export interface MappedManifestField {
 
 export type PalletStockStatus = 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'STUFFED_DISPATCHED';
 
+export type ReceiptMode = 'RECEIVED_FULL' | 'SHORT_FALL' | 'SHORT_FILL';
+export type ShortfallMode = 'PALLET' | 'UNITS';
+
+export interface LinkedShortFill {
+  shortFillInvoiceNo: string;
+  shortFillLedgerId?: string;
+  palletNumber?: string | number;
+  unitsFilled: number;
+  filledDate: string;
+  filledMonth: string;
+}
+
+export interface ShortfallRecord {
+  id: string;
+  mode: ShortfallMode;
+  palletNumber: string | number;
+  billedUnits: number;
+  shortfallUnits: number;
+  remainingShortfallUnits: number;
+  openedDate: string;
+  openedMonth: string;
+  clearedDate?: string;
+  clearedMonth?: string;
+  status: 'OPEN' | 'PARTIAL_FILL' | 'CLEARED';
+  linkedShortFills: LinkedShortFill[];
+}
+
 export interface PalletStockUnit {
   id: string;
   palletNumber: number | string;
@@ -609,6 +650,12 @@ export interface PalletStockUnit {
   invoiceNumber?: string;
   containerNo?: string;
   stuffedDate?: string;
+  // Sprint 7.1 Split Piece & Unit Allocation Metadata
+  parentPalletNumber?: string | number;
+  isSplitPiece?: boolean;
+  allocatedUnits?: number;
+  remainingUnits?: number;
+  mergedTransfers?: MergedTransfer[];
 }
 
 export interface CFSLedgerEntry {
@@ -627,14 +674,24 @@ export interface CFSLedgerEntry {
   invoicedPallets: number;
   invoicedBatteries: number;
   invoicedGrossWeightKg: number;
+  invoicedNetWeightKg?: number;
 
   // Actual Received from Factory (Stock-In)
   actualReceivedPallets: number;
   actualReceivedBatteries: number;
+  actualGrossWeightKg?: number;
+  actualNetWeightKg?: number;
 
-  // Short fall / Pending
+  // Short fall / Pending & Multi-Short-Fill
   shortfallPallets: number;
   shortfallBatteries: number;
+  receiptMode?: ReceiptMode;
+  shortfalls?: ShortfallRecord[];
+  shortFillLinks?: { priorShortfallInvoiceNo: string; priorShortfallLedgerId: string; palletNumber?: string | number; unitsFilled: number }[];
+
+  // Gate-In & DG/BL Flags
+  dgCreated?: boolean;
+  blCreated?: boolean;
 
   // Carting & Gate-In Logistics
   truckReportingDate?: string;
