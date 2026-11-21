@@ -2124,7 +2124,9 @@ export interface ManualInwardShortFillInput {
   priorShortfallInvoiceNo: string;
   priorShortfallLedgerId?: string;
   palletNumber?: string | number;
+  arrivedPalletNumber?: string | number;
   unitsFilled: number;
+  regularUnits?: number;
 }
 
 export interface RecordManualInwardParams {
@@ -2353,11 +2355,11 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
       }
     });
   } else if (params.receiptMode === 'SHORT_FILL') {
-    // Process short fill links against prior shortfall entries
+    // Process short fill links against prior shortfall entries (multi-row sequential safe)
     const shortFillInputs = params.shortFillInputs || [];
-    const allLedger = getCFSLedgerEntries();
 
     shortFillInputs.forEach((sfi) => {
+      const allLedger = getCFSLedgerEntries();
       const priorEntry = allLedger.find(
         (e) => (sfi.priorShortfallLedgerId && e.id === sfi.priorShortfallLedgerId) ||
                (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === sfi.priorShortfallInvoiceNo.trim().toUpperCase())
@@ -2379,6 +2381,7 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
             shortFillInvoiceNo: params.customInvoiceNo,
             shortFillLedgerId: entryId,
             palletNumber: sf.palletNumber,
+            arrivedPalletNumber: sfi.arrivedPalletNumber,
             unitsFilled: fillAmt,
             filledDate: today,
             filledMonth: entryMonth
@@ -2459,6 +2462,7 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
       priorShortfallInvoiceNo: sfi.priorShortfallInvoiceNo,
       priorShortfallLedgerId: sfi.priorShortfallLedgerId || '',
       palletNumber: sfi.palletNumber,
+      arrivedPalletNumber: sfi.arrivedPalletNumber,
       unitsFilled: sfi.unitsFilled
     })),
     dgCreated: false,

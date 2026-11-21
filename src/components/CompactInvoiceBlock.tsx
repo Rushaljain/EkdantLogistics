@@ -442,7 +442,7 @@ export function CompactInvoiceBlock({
                 >
                   <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                   <span>
-                    Short Fill Reconciled: Fulfills <strong>{link.unitsFilled} units</strong> on prior Inv <strong>#{link.priorShortfallInvoiceNo}</strong> (Pallet {link.palletNumber || '—'}).
+                    Short Fill Reconciled: Fulfills <strong>{link.unitsFilled} units</strong> on prior Inv <strong>#{link.priorShortfallInvoiceNo}</strong> (Pallet {link.palletNumber || '—'}{link.arrivedPalletNumber && String(link.arrivedPalletNumber) !== String(link.palletNumber) ? ` → Arrived as PLT #${link.arrivedPalletNumber}` : ''}).
                   </span>
                 </div>
               ))}

@@ -42,6 +42,15 @@ export interface InwardPalletRow {
   qty: number | '';
 }
 
+export interface ShortFillPalletRow {
+  id: string;
+  shortfallPalletNumber: string;
+  palletNumberChanged: boolean;
+  arrivedPalletNumber: string;
+  unitsFilled: number | '';
+  regularUnits: number | '';
+}
+
 interface ShortfallRowState {
   id: string;
   mode: ShortfallMode;
@@ -54,8 +63,11 @@ export function ManualInwardModal({
   onClose,
   onSuccess
 }: ManualInwardModalProps): React.JSX.Element | null {
-  // Existing entries for autocompleting customers and discovering open shortfalls
-  const existingEntries = useMemo(() => getCFSLedgerEntries(), []);
+  // Fresh entries fetched whenever modal opens
+  const existingEntries = useMemo(() => {
+    if (!isOpen) return [];
+    return getCFSLedgerEntries();
+  }, [isOpen]);
 
   // Distinct known customers
   const knownCustomers = useMemo(() => {
@@ -66,12 +78,23 @@ export function ManualInwardModal({
     return Array.from(set).sort();
   }, [existingEntries]);
 
-  // Existing entries that currently have open shortfalls
+  // Helper to compute remaining shortfall units for any ledger entry
+  const getEntryRemainingShortfallUnits = (e: CFSLedgerEntry): number => {
+    if (e.shortfalls && e.shortfalls.length > 0) {
+      return e.shortfalls.reduce(
+        (sum, sf) => sum + (sf.status !== 'CLEARED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0 ? (sf.remainingShortfallUnits ?? sf.shortfallUnits) : 0),
+        0
+      );
+    }
+    return e.shortfallBatteries || 0;
+  };
+
+  // Existing entries that currently have open unresolved shortfalls
   const openShortfallEntries = useMemo(() => {
     return existingEntries.filter((e) => {
-      const hasOpenRecord = e.shortfalls && e.shortfalls.some((sf) => sf.status !== 'CLEARED' && sf.remainingShortfallUnits > 0);
-      const hasPendingQty = (e.shortfallBatteries || 0) > 0 || (e.shortfallPallets || 0) > 0;
-      return hasOpenRecord || hasPendingQty;
+      const rem = getEntryRemainingShortfallUnits(e);
+      const hasOpenRecord = e.shortfalls && e.shortfalls.some((sf) => sf.status !== 'CLEARED');
+      return rem > 0 || hasOpenRecord;
     });
   }, [existingEntries]);
 
@@ -104,10 +127,9 @@ export function ManualInwardModal({
   // Shortfall Entry Rows (when mode === 'SHORT_FALL')
   const [shortfallRows, setShortfallRows] = useState<ShortfallRowState[]>([]);
 
-  // Short Fill Selection (when mode === 'SHORT_FILL')
+  // Multi-Row Short Fill Pallet Builder (when mode === 'SHORT_FILL')
   const [selectedPriorInvoiceNo, setSelectedPriorInvoiceNo] = useState<string>('');
-  const [shortFillPalletNumber, setShortFillPalletNumber] = useState<string>('');
-  const [shortFillUnitsStr, setShortFillUnitsStr] = useState<string>('');
+  const [shortFillRows, setShortFillRows] = useState<ShortFillPalletRow[]>([]);
 
   // Validation Error State
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -136,8 +158,7 @@ export function ManualInwardModal({
     setReceiptMode('RECEIVED_FULL');
     setShortfallRows([]);
     setSelectedPriorInvoiceNo('');
-    setShortFillPalletNumber('');
-    setShortFillUnitsStr('');
+    setShortFillRows([]);
     setIsMinimised(false);
     setErrorMsg(null);
   };
@@ -265,14 +286,132 @@ export function ManualInwardModal({
     return openShortfallEntries.find((e) => e.customInvoiceNo.trim().toUpperCase() === selectedPriorInvoiceNo.trim().toUpperCase()) || null;
   }, [selectedPriorInvoiceNo, openShortfallEntries]);
 
+  // Open shortfall pallets in selected prior invoice
+  const openShortfallPallets = useMemo(() => {
+    if (!priorEntry) return [];
+    if (priorEntry.shortfalls && priorEntry.shortfalls.length > 0) {
+      return priorEntry.shortfalls.filter((sf) => sf.status !== 'CLEARED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0);
+    }
+    if ((priorEntry.shortfallBatteries || 0) > 0) {
+      return [
+        {
+          id: `sf_synth_${priorEntry.id}`,
+          mode: 'UNITS' as const,
+          palletNumber: '1',
+          billedUnits: priorEntry.shortfallBatteries || 0,
+          shortfallUnits: priorEntry.shortfallBatteries || 0,
+          remainingShortfallUnits: priorEntry.shortfallBatteries || 0,
+          openedDate: priorEntry.invoiceDate || '',
+          openedMonth: priorEntry.month || '',
+          status: 'OPEN' as const,
+          linkedShortFills: []
+        }
+      ];
+    }
+    return [];
+  }, [priorEntry]);
+
   // Remaining shortfall units in selected prior invoice
   const priorRemainingShortfallUnits = useMemo(() => {
     if (!priorEntry) return 0;
-    if (priorEntry.shortfalls && priorEntry.shortfalls.length > 0) {
-      return priorEntry.shortfalls.reduce((sum, sf) => sum + (sf.status !== 'CLEARED' ? sf.remainingShortfallUnits : 0), 0);
-    }
-    return priorEntry.shortfallBatteries || 0;
+    return getEntryRemainingShortfallUnits(priorEntry);
   }, [priorEntry]);
+
+  // Multi-row Short Fill Handlers
+  const handleSelectPriorInvoice = (invNo: string) => {
+    setSelectedPriorInvoiceNo(invNo);
+    const found = openShortfallEntries.find((ent) => ent.customInvoiceNo.trim().toUpperCase() === invNo.trim().toUpperCase());
+    if (!found) {
+      setShortFillRows([]);
+      return;
+    }
+
+    const openPallets = (found.shortfalls || []).filter((sf) => sf.status !== 'CLEARED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0);
+    if (openPallets.length > 0) {
+      const firstSf = openPallets[0];
+      setShortFillRows([
+        {
+          id: `sfr_${Date.now()}_1`,
+          shortfallPalletNumber: String(firstSf.palletNumber),
+          palletNumberChanged: false,
+          arrivedPalletNumber: '',
+          unitsFilled: firstSf.remainingShortfallUnits ?? firstSf.shortfallUnits,
+          regularUnits: 0
+        }
+      ]);
+    } else if ((found.shortfallBatteries || 0) > 0) {
+      setShortFillRows([
+        {
+          id: `sfr_${Date.now()}_1`,
+          shortfallPalletNumber: '1',
+          palletNumberChanged: false,
+          arrivedPalletNumber: '',
+          unitsFilled: found.shortfallBatteries || 0,
+          regularUnits: 0
+        }
+      ]);
+    } else {
+      setShortFillRows([]);
+    }
+  };
+
+  const handleAddShortFillRow = () => {
+    const usedPallets = new Set(shortFillRows.map((r) => String(r.shortfallPalletNumber)));
+    const nextPallet = openShortfallPallets.find((sf) => !usedPallets.has(String(sf.palletNumber))) || openShortfallPallets[0];
+
+    setShortFillRows((prev) => [
+      ...prev,
+      {
+        id: `sfr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        shortfallPalletNumber: nextPallet ? String(nextPallet.palletNumber) : '',
+        palletNumberChanged: false,
+        arrivedPalletNumber: '',
+        unitsFilled: nextPallet ? (nextPallet.remainingShortfallUnits ?? nextPallet.shortfallUnits) : '',
+        regularUnits: 0
+      }
+    ]);
+  };
+
+  const handleRemoveShortFillRow = (rowId: string) => {
+    setShortFillRows((prev) => prev.filter((r) => r.id !== rowId));
+  };
+
+  const handleUpdateShortFillRow = (rowId: string, updates: Partial<ShortFillPalletRow>) => {
+    setShortFillRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const updated = { ...r, ...updates };
+        if (updates.shortfallPalletNumber && updates.shortfallPalletNumber !== r.shortfallPalletNumber) {
+          const targetSf = openShortfallPallets.find((sf) => String(sf.palletNumber).trim() === String(updates.shortfallPalletNumber).trim());
+          if (targetSf) {
+            updated.unitsFilled = targetSf.remainingShortfallUnits ?? targetSf.shortfallUnits;
+          }
+        }
+        return updated;
+      })
+    );
+  };
+
+  // Summary Metrics for Short Fill Mode
+  const shortFillSummary = useMemo(() => {
+    let totalShortFillUnits = 0;
+    let totalRegularUnits = 0;
+
+    shortFillRows.forEach((r) => {
+      totalShortFillUnits += typeof r.unitsFilled === 'number' ? r.unitsFilled : 0;
+      totalRegularUnits += typeof r.regularUnits === 'number' ? r.regularUnits : 0;
+    });
+
+    const totalEnteringUnits = totalShortFillUnits + totalRegularUnits;
+    const distinctPalletsCount = shortFillRows.length;
+
+    return {
+      totalShortFillUnits,
+      totalRegularUnits,
+      totalEnteringUnits,
+      distinctPalletsCount
+    };
+  }, [shortFillRows]);
 
   // Form Submission
   const handleSubmit = (e: React.FormEvent) => {
@@ -290,11 +429,15 @@ export function ManualInwardModal({
       setErrorMsg('Customer name is required.');
       return;
     }
-    if (invPallets <= 0) {
+
+    const effectiveUnits = invBatteries > 0 ? invBatteries : (receiptMode === 'SHORT_FILL' ? shortFillSummary.totalEnteringUnits : 0);
+    const effectivePallets = invPallets > 0 ? invPallets : (receiptMode === 'SHORT_FILL' ? shortFillSummary.distinctPalletsCount : 0);
+
+    if (effectivePallets <= 0) {
       setErrorMsg('Received Pallets must be greater than 0.');
       return;
     }
-    if (invBatteries <= 0) {
+    if (effectiveUnits <= 0) {
       setErrorMsg('Received Units/Batteries must be greater than 0.');
       return;
     }
@@ -325,6 +468,19 @@ export function ManualInwardModal({
           invoicedBatteries: Number(r.qty) || 0,
           receivedBatteries: Number(r.qty) || 0
         }))
+      : receiptMode === 'SHORT_FILL' && shortFillRows.length > 0
+      ? shortFillRows.map((r, idx) => {
+          const pNum = r.palletNumberChanged && r.arrivedPalletNumber.trim()
+            ? r.arrivedPalletNumber.trim()
+            : (r.shortfallPalletNumber.trim() || String(idx + 1));
+          const totalUnits = (Number(r.unitsFilled) || 0) + (Number(r.regularUnits) || 0);
+          return {
+            palletNumber: pNum,
+            model: 'STANDARD',
+            invoicedBatteries: totalUnits,
+            receivedBatteries: totalUnits
+          };
+        })
       : undefined;
 
     // Shortfall specific validation - Uses exact shortfallUnits entered on each row
@@ -360,23 +516,43 @@ export function ManualInwardModal({
         setErrorMsg('Short Fill mode selected: Please select a prior shortfall invoice to reconcile.');
         return;
       }
-      const filledUnits = parseInt(shortFillUnitsStr, 10) || 0;
-      if (filledUnits <= 0) {
-        setErrorMsg('Please specify a positive number of units to fill against the prior shortfall.');
+      if (shortFillRows.length === 0) {
+        setErrorMsg('Short Fill mode selected: Please add at least one short-fill pallet row.');
         return;
       }
-      if (filledUnits > priorRemainingShortfallUnits) {
-        setErrorMsg(`Units to fill (${filledUnits}) cannot exceed the prior invoice's remaining shortfall (${priorRemainingShortfallUnits} units).`);
-        return;
-      }
-      mappedShortFillInputs = [
-        {
-          priorShortfallInvoiceNo: selectedPriorInvoiceNo,
-          priorShortfallLedgerId: priorEntry?.id,
-          palletNumber: shortFillPalletNumber.trim() || undefined,
-          unitsFilled: filledUnits
+
+      for (let i = 0; i < shortFillRows.length; i++) {
+        const row = shortFillRows[i];
+        if (!row.shortfallPalletNumber) {
+          setErrorMsg(`Short-fill row #${i + 1}: Please select a shortfall pallet.`);
+          return;
         }
-      ];
+        if (row.palletNumberChanged && !row.arrivedPalletNumber.trim()) {
+          setErrorMsg(`Short-fill row #${i + 1}: Arrived Pallet No. is required when "Pallet number changed" is toggled on.`);
+          return;
+        }
+        const filled = typeof row.unitsFilled === 'number' ? row.unitsFilled : 0;
+        if (filled <= 0) {
+          setErrorMsg(`Short-fill row #${i + 1}: Please enter positive Short-Fill Units greater than 0.`);
+          return;
+        }
+
+        const targetSf = openShortfallPallets.find((sf) => String(sf.palletNumber).trim() === String(row.shortfallPalletNumber).trim());
+        const maxAllowed = targetSf ? (targetSf.remainingShortfallUnits ?? targetSf.shortfallUnits) : priorRemainingShortfallUnits;
+        if (filled > maxAllowed) {
+          setErrorMsg(`Short-fill row #${i + 1} (Pallet ${row.shortfallPalletNumber}): Units filled (${filled}) cannot exceed remaining shortfall (${maxAllowed} units).`);
+          return;
+        }
+      }
+
+      mappedShortFillInputs = shortFillRows.map((r) => ({
+        priorShortfallInvoiceNo: selectedPriorInvoiceNo,
+        priorShortfallLedgerId: priorEntry?.id,
+        palletNumber: r.shortfallPalletNumber,
+        arrivedPalletNumber: r.palletNumberChanged && r.arrivedPalletNumber.trim() ? r.arrivedPalletNumber.trim() : undefined,
+        unitsFilled: typeof r.unitsFilled === 'number' ? r.unitsFilled : 0,
+        regularUnits: typeof r.regularUnits === 'number' ? r.regularUnits : 0
+      }));
     }
 
     setIsSubmitting(true);
@@ -388,8 +564,8 @@ export function ManualInwardModal({
         invoiceDate: invoiceDate.trim(),
         pod: pod.trim(),
         receiptMode,
-        invoicedPallets: mappedPallets ? Math.max(invPallets, mappedPallets.length) : invPallets,
-        invoicedBatteries: invBatteries,
+        invoicedPallets: mappedPallets ? Math.max(effectivePallets, mappedPallets.length) : effectivePallets,
+        invoicedBatteries: effectiveUnits,
         invoicedGrossWeightKg: grossKg,
         invoicedNetWeightKg: netKg,
         actualGrossWeightKg: grossKg,
@@ -1072,73 +1248,231 @@ export function ManualInwardModal({
 
             {/* MODE: SHORT_FILL */}
             {receiptMode === 'SHORT_FILL' && (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 text-xs flex items-start space-x-2 text-blue-700">
                   <LinkIcon className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>
-                    Short Fill links this incoming shipment to reconcile a prior shortfall invoice. You can clear part or all of the pending shortfall units.
+                    Short Fill links this incoming shipment to reconcile open shortfall pallets from a prior invoice. You can reconcile multiple pallets at once, note changed pallet numbers, and specify additional regular stock arriving on the same pallet.
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div>
-                    <label className="block text-content-secondary font-medium mb-1">
-                      Prior Shortfall Invoice <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={selectedPriorInvoiceNo}
-                      onChange={(e) => {
-                        const inv = e.target.value;
-                        setSelectedPriorInvoiceNo(inv);
-                        const found = openShortfallEntries.find((ent) => ent.customInvoiceNo === inv);
-                        const firstOpen = found?.shortfalls?.find((sf) => sf.status !== 'CLEARED');
-                        setShortFillPalletNumber(firstOpen ? String(firstOpen.palletNumber) : '');
-                        const remUnits = found?.shortfallBatteries || firstOpen?.remainingShortfallUnits || 0;
-                        setShortFillUnitsStr(String(remUnits));
-                      }}
-                      className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono outline-none cursor-pointer"
-                    >
-                      <option value="">-- Select Prior Shortfall Invoice --</option>
-                      {openShortfallEntries.map((ent) => (
-                        <option key={ent.id} value={ent.customInvoiceNo}>
-                          {ent.customInvoiceNo} — {ent.customer} ({ent.shortfallBatteries || 0} units pending)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-content-secondary font-medium mb-1">
-                      Shortfall Pallet Reference
-                    </label>
-                    <input
-                      type="text"
-                      value={shortFillPalletNumber}
-                      onChange={(e) => setShortFillPalletNumber(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-content-secondary font-medium mb-1">
-                      Units to Fill <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max={priorRemainingShortfallUnits || undefined}
-                      value={shortFillUnitsStr}
-                      onChange={(e) => setShortFillUnitsStr(e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                      className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold text-blue-600 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    {priorRemainingShortfallUnits > 0 && (
-                      <span className="text-[10px] text-content-muted mt-0.5 block">
-                        Max available to fill: {priorRemainingShortfallUnits} units
-                      </span>
-                    )}
-                  </div>
+                {/* 1. Prior Shortfall Invoice Dropdown */}
+                <div className="bg-surface-secondary/50 border border-divider/80 rounded-xl p-3.5 space-y-1.5">
+                  <label className="block text-xs font-semibold text-content-primary">
+                    1. Select Prior Shortfall Invoice <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={selectedPriorInvoiceNo}
+                    onChange={(e) => handleSelectPriorInvoice(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono text-xs outline-none cursor-pointer focus:border-brand-primary"
+                  >
+                    <option value="">-- Select Prior Shortfall Invoice --</option>
+                    {openShortfallEntries.map((ent) => (
+                      <option key={ent.id} value={ent.customInvoiceNo}>
+                        {ent.customInvoiceNo} — {ent.customer} ({getEntryRemainingShortfallUnits(ent)} units pending shortfall)
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
+                {/* 2. Multi-Row Short-Fill Pallet Builder */}
+                {selectedPriorInvoiceNo && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-content-primary uppercase tracking-wider">
+                          2. Reconcile Shortfall Pallets
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                          {shortFillRows.length} Pallet Row{shortFillRows.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddShortFillRow}
+                        className="px-2.5 py-1 rounded-lg bg-surface border border-divider hover:bg-surface-secondary text-brand-primary text-xs font-semibold flex items-center space-x-1 cursor-pointer transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Short-Fill Pallet Row</span>
+                      </button>
+                    </div>
+
+                    {shortFillRows.length === 0 ? (
+                      <div className="py-4 px-4 rounded-xl bg-surface-secondary/40 border border-dashed border-divider text-center text-xs text-content-muted">
+                        No shortfall pallet rows added. Click <strong className="text-content-primary">"+ Add Short-Fill Pallet Row"</strong> to begin allocating arriving units.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {shortFillRows.map((row, idx) => {
+                          const targetSf = openShortfallPallets.find((sf) => String(sf.palletNumber).trim() === String(row.shortfallPalletNumber).trim());
+                          const maxRemaining = targetSf ? (targetSf.remainingShortfallUnits ?? targetSf.shortfallUnits) : priorRemainingShortfallUnits;
+                          const totalPalletUnits = (Number(row.unitsFilled) || 0) + (Number(row.regularUnits) || 0);
+
+                          return (
+                            <div
+                              key={row.id}
+                              className="p-3.5 rounded-xl bg-surface-secondary/40 border border-divider space-y-3 text-xs"
+                            >
+                              <div className="flex items-center justify-between border-b border-divider/50 pb-2">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-mono font-bold text-brand-primary">Row #{idx + 1}</span>
+                                  <span className="text-content-muted">•</span>
+                                  <span className="text-[11px] text-content-secondary">
+                                    Total Entering on Pallet: <strong className="text-content-primary font-mono">{totalPalletUnits} u</strong>
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveShortFillRow(row.id)}
+                                  className="p-1 text-content-muted hover:text-red-600 transition-colors cursor-pointer"
+                                  title="Remove short-fill row"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                                {/* Shortfall Pallet Dropdown */}
+                                <div className="sm:col-span-4">
+                                  <label className="block text-[10px] text-content-secondary font-medium mb-1">
+                                    Shortfall Pallet <span className="text-red-500">*</span>
+                                  </label>
+                                  <select
+                                    value={row.shortfallPalletNumber}
+                                    onChange={(e) =>
+                                      handleUpdateShortFillRow(row.id, {
+                                        shortfallPalletNumber: e.target.value
+                                      })
+                                    }
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono text-xs outline-none cursor-pointer focus:border-brand-primary"
+                                  >
+                                    <option value="">-- Select Shortfall Pallet --</option>
+                                    {openShortfallPallets.map((sf) => (
+                                      <option key={sf.id} value={String(sf.palletNumber)}>
+                                        PLT #{sf.palletNumber} ({sf.mode === 'PALLET' ? 'Full Pallet' : 'Partial'} · {sf.remainingShortfallUnits ?? sf.shortfallUnits} u remaining)
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {targetSf && (
+                                    <span className="text-[10px] text-amber-700 mt-0.5 block font-medium">
+                                      Remaining: {maxRemaining} u short ({targetSf.mode === 'PALLET' ? 'Full Pallet' : 'Partial'})
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Short-Fill Units Input */}
+                                <div className="sm:col-span-3">
+                                  <label className="block text-[10px] text-content-secondary font-medium mb-1">
+                                    Short-Fill Units <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={maxRemaining || undefined}
+                                    required
+                                    value={row.unitsFilled}
+                                    onChange={(e) =>
+                                      handleUpdateShortFillRow(row.id, {
+                                        unitsFilled: e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 0)
+                                      })
+                                    }
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                    className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-blue-300 text-blue-700 outline-none focus:ring-1 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  />
+                                  <span className="text-[10px] text-content-muted mt-0.5 block">
+                                    Max fill: {maxRemaining} u
+                                  </span>
+                                </div>
+
+                                {/* Additional / Regular Units Input */}
+                                <div className="sm:col-span-3">
+                                  <label className="block text-[10px] text-content-secondary font-medium mb-1">
+                                    Additional / Regular Units
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={row.regularUnits}
+                                    onChange={(e) =>
+                                      handleUpdateShortFillRow(row.id, {
+                                        regularUnits: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0)
+                                      })
+                                    }
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                    className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-medium bg-surface border-divider text-content-primary outline-none focus:border-brand-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  />
+                                  <span className="text-[10px] text-content-muted mt-0.5 block">
+                                    Regular stock (default 0)
+                                  </span>
+                                </div>
+
+                                {/* Pallet Changed Toggle & Arrived Pallet Input */}
+                                <div className="sm:col-span-2">
+                                  <label className="flex items-center space-x-1.5 text-[10px] text-content-secondary font-medium mb-1 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={row.palletNumberChanged}
+                                      onChange={(e) =>
+                                        handleUpdateShortFillRow(row.id, {
+                                          palletNumberChanged: e.target.checked,
+                                          arrivedPalletNumber: e.target.checked ? row.arrivedPalletNumber : ''
+                                        })
+                                      }
+                                      className="rounded border-divider text-brand-primary focus:ring-brand-primary cursor-pointer"
+                                    />
+                                    <span>Pallet No. Changed</span>
+                                  </label>
+                                  {row.palletNumberChanged ? (
+                                    <input
+                                      type="text"
+                                      required
+                                      value={row.arrivedPalletNumber}
+                                      onChange={(e) =>
+                                        handleUpdateShortFillRow(row.id, {
+                                          arrivedPalletNumber: e.target.value
+                                        })
+                                      }
+                                      placeholder="New Plt No."
+                                      className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-amber-300 text-amber-800 font-mono text-xs outline-none focus:ring-1 focus:ring-amber-500"
+                                    />
+                                  ) : (
+                                    <span className="text-[10px] text-content-muted block py-1.5">
+                                      Keeps PLT #{row.shortfallPalletNumber || '—'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* 3. Short Fill Live Summary Strip */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs">
+                        <span className="text-[10px] text-blue-700 uppercase font-semibold block">Short-Fill Units Applied</span>
+                        <span className="font-mono font-bold text-blue-800">
+                          {shortFillSummary.totalShortFillUnits} Units
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-surface-secondary border border-divider text-xs">
+                        <span className="text-[10px] text-content-secondary uppercase font-semibold block">Regular Units Added</span>
+                        <span className="font-mono font-bold text-content-primary">
+                          {shortFillSummary.totalRegularUnits} Units
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs">
+                        <span className="text-[10px] text-emerald-700 uppercase font-semibold block">Total Units Entering Floor Stock</span>
+                        <span className="font-mono font-bold text-emerald-800">
+                          {shortFillSummary.totalEnteringUnits} Units ({shortFillSummary.distinctPalletsCount} Pallets)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
