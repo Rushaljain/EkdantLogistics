@@ -612,7 +612,7 @@ export function ManualInwardModal({
           >
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold text-content-primary truncate">
-                {customInvoiceNo.trim() ? customInvoiceNo.trim() : 'Stock-In Entry'}
+                Inward: {customInvoiceNo.trim() ? customInvoiceNo.trim() : 'New Entry'}
               </span>
               <span className="text-[10px] px-1.5 py-0.2 rounded font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Minimised
