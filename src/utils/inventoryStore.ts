@@ -2532,10 +2532,14 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     : undefined;
 
   const computedInvoicedPallets = params.receiptMode === 'SHORT_FALL'
-    ? (actualRecPallets + totalShortfallPallets)
+    ? (params.invoicedPallets && params.invoicedPallets >= (actualRecPallets + totalShortfallPallets)
+        ? params.invoicedPallets
+        : (actualRecPallets + totalShortfallPallets))
     : params.invoicedPallets;
   const computedInvoicedBatteries = params.receiptMode === 'SHORT_FALL'
-    ? (actualRecBatteries + totalShortfallBatteries)
+    ? (params.invoicedBatteries && params.invoicedBatteries >= (actualRecBatteries + totalShortfallBatteries)
+        ? params.invoicedBatteries
+        : (actualRecBatteries + totalShortfallBatteries))
     : params.invoicedBatteries;
 
   const newEntry: CFSLedgerEntry = recomputeCFSDerivedFields({

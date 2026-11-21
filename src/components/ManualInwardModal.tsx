@@ -55,7 +55,8 @@ interface ShortfallRowState {
   id: string;
   mode: ShortfallMode;
   palletNumber: string;
-  shortfallUnits: number;
+  billedUnits: number | '';
+  shortfallUnits: number | '';
 }
 
 export function ManualInwardModal({
@@ -131,6 +132,8 @@ export function ManualInwardModal({
 
   // Shortfall Entry Rows (when mode === 'SHORT_FALL')
   const [shortfallRows, setShortfallRows] = useState<ShortfallRowState[]>([]);
+  const [invoicedStockPalletsStr, setInvoicedStockPalletsStr] = useState<string>('');
+  const [invoicedStockBatteriesStr, setInvoicedStockBatteriesStr] = useState<string>('');
 
   // Multi-Row Short Fill Pallet Builder (when mode === 'SHORT_FILL')
   const [selectedPriorInvoiceNo, setSelectedPriorInvoiceNo] = useState<string>('');
@@ -162,6 +165,8 @@ export function ManualInwardModal({
     setPalletRows([]);
     setReceiptMode('RECEIVED_FULL');
     setShortfallRows([]);
+    setInvoicedStockPalletsStr('');
+    setInvoicedStockBatteriesStr('');
     setSelectedPriorInvoiceNo('');
     setShortFillRows([]);
     setIsMinimised(false);
@@ -236,13 +241,15 @@ export function ManualInwardModal({
   // Add a new shortfall row
   const handleAddShortfallRow = () => {
     const nextPalletNum = shortfallRows.length + 1;
+    const defaultUnits = invPallets > 0 && invBatteries > 0 ? Math.floor(invBatteries / invPallets) : '';
     setShortfallRows((prev) => [
       ...prev,
       {
         id: `sf_row_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         mode: 'PALLET',
         palletNumber: String(nextPalletNum),
-        shortfallUnits: 0
+        billedUnits: defaultUnits,
+        shortfallUnits: defaultUnits
       }
     ]);
   };
@@ -257,12 +264,21 @@ export function ManualInwardModal({
     setShortfallRows((prev) =>
       prev.map((r) => {
         if (r.id !== rowId) return r;
-        return { ...r, ...updates };
+        const updated = { ...r, ...updates };
+        if (updated.mode === 'PALLET') {
+          // Full pallet missing: shortfallUnits equals billedUnits
+          if (updates.billedUnits !== undefined) {
+            updated.shortfallUnits = updates.billedUnits;
+          } else if (updates.mode !== undefined) {
+            updated.shortfallUnits = updated.billedUnits;
+          }
+        }
+        return updated;
       })
     );
   };
 
-  // Summary Metrics for Shortfall Mode - Uses exact shortfallUnits entered on rows (zero hardcoded defaults)
+  // Summary Metrics for Shortfall Mode - Uses exact shortfallUnits entered on rows
   const shortfallSummary = useMemo(() => {
     let sfPallets = 0;
     let sfBatteries = 0;
@@ -270,8 +286,11 @@ export function ManualInwardModal({
     shortfallRows.forEach((r) => {
       if (r.mode === 'PALLET') {
         sfPallets += 1;
+        const b = typeof r.billedUnits === 'number' ? r.billedUnits : (typeof r.shortfallUnits === 'number' ? r.shortfallUnits : 0);
+        sfBatteries += b;
+      } else {
+        sfBatteries += typeof r.shortfallUnits === 'number' ? r.shortfallUnits : 0;
       }
-      sfBatteries += r.shortfallUnits || 0;
     });
 
     const enteringPallets = Math.max(0, invPallets - sfPallets);
@@ -529,30 +548,45 @@ export function ManualInwardModal({
         })
       : undefined;
 
-    // Shortfall specific validation - Uses exact shortfallUnits entered on each row
+    // Shortfall specific validation - Includes Invoiced Units and Shortfall Units
     let mappedShortfallInputs: ManualInwardShortfallInput[] | undefined = undefined;
     if (receiptMode === 'SHORT_FALL') {
       if (shortfallRows.length === 0) {
         setErrorMsg('Short Fall mode selected: Please add at least one shortfall row, or switch to Received Full.');
         return;
       }
-      for (const row of shortfallRows) {
+      for (let i = 0; i < shortfallRows.length; i++) {
+        const row = shortfallRows[i];
         if (!row.palletNumber.trim()) {
-          setErrorMsg('Pallet Number is required for all shortfall rows.');
+          setErrorMsg(`Shortfall row #${i + 1}: Pallet Number is required.`);
           return;
         }
-        if (!row.shortfallUnits || row.shortfallUnits <= 0) {
-          setErrorMsg(`Pallet ${row.palletNumber}: Please enter a valid number of shortfall units greater than 0.`);
+        const bUnits = typeof row.billedUnits === 'number' ? row.billedUnits : 0;
+        const sfUnits = typeof row.shortfallUnits === 'number' ? row.shortfallUnits : 0;
+        if (bUnits <= 0) {
+          setErrorMsg(`Pallet ${row.palletNumber}: Please enter a valid number of Invoiced Units greater than 0.`);
+          return;
+        }
+        if (sfUnits <= 0) {
+          setErrorMsg(`Pallet ${row.palletNumber}: Please enter a valid number of Shortfall Units greater than 0.`);
+          return;
+        }
+        if (row.mode === 'UNITS' && sfUnits >= bUnits) {
+          setErrorMsg(`Pallet ${row.palletNumber}: For a partial units shortfall, shortfall units (${sfUnits}) must be less than invoiced units (${bUnits}). For a full pallet shortfall, choose "Pallet" mode.`);
           return;
         }
       }
 
-      mappedShortfallInputs = shortfallRows.map((r) => ({
-        mode: r.mode,
-        palletNumber: r.palletNumber.trim(),
-        billedUnits: r.shortfallUnits,
-        shortfallUnits: r.shortfallUnits
-      }));
+      mappedShortfallInputs = shortfallRows.map((r) => {
+        const bUnits = typeof r.billedUnits === 'number' ? r.billedUnits : (typeof r.shortfallUnits === 'number' ? r.shortfallUnits : 0);
+        const sfUnits = typeof r.shortfallUnits === 'number' ? r.shortfallUnits : bUnits;
+        return {
+          mode: r.mode,
+          palletNumber: r.palletNumber.trim(),
+          billedUnits: bUnits,
+          shortfallUnits: sfUnits
+        };
+      });
     }
 
     // Short Fill specific validation
@@ -603,6 +637,22 @@ export function ManualInwardModal({
 
     setIsSubmitting(true);
     try {
+      const computedShortfallInvoicedPallets = invoicedStockPalletsStr.trim()
+        ? (parseInt(invoicedStockPalletsStr, 10) || 0)
+        : (invPallets + shortfallSummary.sfPallets);
+
+      const computedShortfallInvoicedBatteries = invoicedStockBatteriesStr.trim()
+        ? (parseInt(invoicedStockBatteriesStr, 10) || 0)
+        : (invBatteries + shortfallSummary.sfBatteries);
+
+      const finalInvoicedPallets = receiptMode === 'SHORT_FALL'
+        ? computedShortfallInvoicedPallets
+        : (mappedPallets ? Math.max(effectivePallets, mappedPallets.length) : effectivePallets);
+
+      const finalInvoicedBatteries = receiptMode === 'SHORT_FALL'
+        ? computedShortfallInvoicedBatteries
+        : effectiveUnits;
+
       const inwardParams: RecordManualInwardParams = {
         customer: trimmedCustomer,
         exporterShipper: exporterShipper.trim(),
@@ -610,8 +660,8 @@ export function ManualInwardModal({
         invoiceDate: invoiceDate.trim(),
         pod: pod.trim(),
         receiptMode,
-        invoicedPallets: mappedPallets ? Math.max(effectivePallets, mappedPallets.length) : effectivePallets,
-        invoicedBatteries: effectiveUnits,
+        invoicedPallets: finalInvoicedPallets,
+        invoicedBatteries: finalInvoicedBatteries,
         invoicedGrossWeightKg: grossKg,
         invoicedNetWeightKg: netKg,
         actualGrossWeightKg: grossKg,
@@ -1170,6 +1220,56 @@ export function ManualInwardModal({
             {/* MODE: SHORT_FALL */}
             {receiptMode === 'SHORT_FALL' && (
               <div className="space-y-3">
+                {/* FACTORY INVOICED STOCK & QUANTITIES PANEL */}
+                <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-blue-900 dark:text-blue-300 uppercase tracking-wider">
+                      Factory Invoiced Stock &amp; Quantities
+                    </span>
+                    <span className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">
+                      Physically Inwarded: {invPallets} Plts • {invBatteries} Units
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[10px] text-blue-800 dark:text-blue-300 font-medium mb-1">
+                        Invoiced Pallets <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        value={invoicedStockPalletsStr}
+                        onChange={(e) => setInvoicedStockPalletsStr(e.target.value)}
+                        placeholder={String(invPallets + shortfallSummary.sfPallets)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold outline-none focus:border-brand-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-[10px] text-content-muted mt-0.5 block">
+                        Received ({invPallets}) + Shortfall ({shortfallSummary.sfPallets}) = {invPallets + shortfallSummary.sfPallets} Plts
+                      </span>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-blue-800 dark:text-blue-300 font-medium mb-1">
+                        Invoiced Units / Batteries <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        required
+                        value={invoicedStockBatteriesStr}
+                        onChange={(e) => setInvoicedStockBatteriesStr(e.target.value)}
+                        placeholder={String(invBatteries + shortfallSummary.sfBatteries)}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold outline-none focus:border-brand-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-[10px] text-content-muted mt-0.5 block">
+                        Received ({invBatteries}) + Shortfall ({shortfallSummary.sfBatteries}) = {invBatteries + shortfallSummary.sfBatteries} Units
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-content-secondary">
                     Specify which pallet(s) or unit quantities fell short from the factory. Only physically received units will enter available floor stock.
@@ -1189,13 +1289,13 @@ export function ManualInwardModal({
                   {shortfallRows.map((row, idx) => (
                     <div
                       key={row.id}
-                      className="p-3 rounded-xl bg-surface-secondary/50 border border-divider/80 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center text-xs"
+                      className="p-3 rounded-xl bg-surface-secondary/50 border border-divider/80 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center text-xs"
                     >
                       <div className="sm:col-span-1 text-content-muted font-mono font-medium">
                         #{idx + 1}
                       </div>
 
-                      <div className="sm:col-span-4">
+                      <div className="sm:col-span-3">
                         <label className="block text-[10px] text-content-secondary font-medium mb-0.5">
                           Shortfall Type
                         </label>
@@ -1213,7 +1313,7 @@ export function ManualInwardModal({
                         </select>
                       </div>
 
-                      <div className="sm:col-span-3">
+                      <div className="sm:col-span-2">
                         <label className="block text-[10px] text-content-secondary font-medium mb-0.5">
                           Pallet No. <span className="text-red-500">*</span>
                         </label>
@@ -1226,7 +1326,30 @@ export function ManualInwardModal({
                         />
                       </div>
 
-                      <div className="sm:col-span-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] text-content-secondary font-medium mb-0.5">
+                          Invoiced Units <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          required
+                          value={row.billedUnits !== undefined ? row.billedUnits : ''}
+                          onChange={(e) => {
+                            const val = e.target.value.trim() ? Math.max(1, parseInt(e.target.value, 10) || 1) : '';
+                            handleUpdateShortfallRow(row.id, {
+                              billedUnits: val,
+                              ...(row.mode === 'PALLET' ? { shortfallUnits: val } : {})
+                            });
+                          }}
+                          onWheel={(e) => e.currentTarget.blur()}
+                          placeholder="e.g. 100"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono font-medium outline-none focus:border-brand-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
                         <label className="block text-[10px] text-content-secondary font-medium mb-0.5">
                           Shortfall Units <span className="text-red-500">*</span>
                         </label>
@@ -1235,21 +1358,30 @@ export function ManualInwardModal({
                           min="1"
                           step="1"
                           required
-                          value={row.shortfallUnits || ''}
-                          onChange={(e) =>
-                            handleUpdateShortfallRow(row.id, {
-                              shortfallUnits: Math.max(0, parseInt(e.target.value, 10) || 0)
-                            })
-                          }
+                          disabled={row.mode === 'PALLET'}
+                          value={row.mode === 'PALLET' ? (row.billedUnits !== undefined ? row.billedUnits : (row.shortfallUnits || '')) : (row.shortfallUnits !== undefined ? row.shortfallUnits : '')}
+                          onChange={(e) => {
+                            const val = e.target.value.trim() ? Math.max(1, parseInt(e.target.value, 10) || 1) : '';
+                            handleUpdateShortfallRow(row.id, { shortfallUnits: val });
+                          }}
                           onWheel={(e) => e.currentTarget.blur()}
-                          className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-amber-300 text-amber-700 outline-none focus:ring-1 focus:ring-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className={`w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                            row.mode === 'PALLET'
+                              ? 'bg-surface-secondary text-content-muted border-divider/60 cursor-not-allowed'
+                              : 'bg-surface border-amber-300 text-amber-700 focus:ring-1 focus:ring-amber-500'
+                          }`}
                         />
-                        {row.mode === 'PALLET' && (
-                          <div className="mt-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 font-medium text-[10px] flex items-center justify-between">
-                            <span>Full Pallet Short</span>
-                            <span className="font-mono font-bold">0 Recd</span>
-                          </div>
-                        )}
+                      </div>
+
+                      <div className="sm:col-span-1 text-center">
+                        <label className="block text-[10px] text-content-muted font-medium mb-0.5 uppercase">
+                          Recd
+                        </label>
+                        <div className={`px-1.5 py-1 rounded font-mono font-bold text-xs ${row.mode === 'PALLET' ? 'bg-amber-500/10 text-amber-700' : 'bg-emerald-500/10 text-emerald-700'}`}>
+                          {row.mode === 'PALLET'
+                            ? '0 u'
+                            : `${Math.max(0, (Number(row.billedUnits) || 0) - (Number(row.shortfallUnits) || 0))} u`}
+                        </div>
                       </div>
 
                       <div className="sm:col-span-1 text-right">
