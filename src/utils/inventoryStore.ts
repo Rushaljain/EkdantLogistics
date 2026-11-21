@@ -2192,22 +2192,65 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     }
   }
 
+  // Pre-resolve proportional decimal weights across raw pallets with exact remainder balancing (0.00 kg drift)
+  const totalPalletUnits = rawPallets.reduce((sum, p) => sum + (p.invoicedBatteries || 0), 0);
+  let accumulatedGross = 0;
+  let accumulatedNet = 0;
+
+  const resolvedRawPallets = rawPallets.map((p, idx) => {
+    const isLast = idx === rawPallets.length - 1;
+    let palletGross: number;
+    let palletNet: number;
+
+    if (p.grossWeightKg !== undefined) {
+      palletGross = toExactWeight(p.grossWeightKg);
+    } else {
+      if (isLast) {
+        palletGross = toExactWeight(Math.max(0, invoicedGrossKg - accumulatedGross));
+      } else {
+        const ratio = totalPalletUnits > 0 ? (p.invoicedBatteries || 0) / totalPalletUnits : (1 / (rawPallets.length || 1));
+        palletGross = toExactWeight(invoicedGrossKg * ratio);
+        accumulatedGross = toExactWeight(accumulatedGross + palletGross);
+      }
+    }
+
+    if (p.netWeightKg !== undefined) {
+      palletNet = toExactWeight(p.netWeightKg);
+    } else if (invoicedNetKg !== undefined) {
+      if (isLast) {
+        palletNet = toExactWeight(Math.max(0, invoicedNetKg - accumulatedNet));
+      } else {
+        const ratio = totalPalletUnits > 0 ? (p.invoicedBatteries || 0) / totalPalletUnits : (1 / (rawPallets.length || 1));
+        palletNet = toExactWeight(invoicedNetKg * ratio);
+        accumulatedNet = toExactWeight(accumulatedNet + palletNet);
+      }
+    } else {
+      palletNet = 0;
+    }
+
+    return {
+      ...p,
+      grossWeightKg: palletGross,
+      netWeightKg: palletNet
+    };
+  });
+
   let finalPalletUnits: PalletStockUnit[] = [];
   const shortfallRecords: ShortfallRecord[] = [];
   let totalShortfallPallets = 0;
   let totalShortfallBatteries = 0;
 
   if (params.receiptMode === 'RECEIVED_FULL') {
-    finalPalletUnits = rawPallets.map((p, idx) => ({
+    finalPalletUnits = resolvedRawPallets.map((p, idx) => ({
       id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
       palletNumber: p.palletNumber || idx + 1,
       model: p.model || 'STANDARD',
       brand: p.brand || '',
       invoicedBatteries: p.invoicedBatteries,
-      receivedBatteries: p.invoicedBatteries,
-      remainingUnits: p.invoicedBatteries,
-      grossWeightKg: toExactWeight(p.grossWeightKg ?? (invoicedGrossKg / (rawPallets.length || 1))),
-      netWeightKg: toExactWeight(p.netWeightKg ?? ((invoicedNetKg || 0) / (rawPallets.length || 1))),
+      receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
+      remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
+      grossWeightKg: p.grossWeightKg,
+      netWeightKg: p.netWeightKg,
       status: 'IN_WAREHOUSE' as const,
       invoiceNumber: params.customInvoiceNo
     }));
@@ -2216,12 +2259,12 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     const shortfallByPallet = new Map<string, ManualInwardShortfallInput>();
     shortfallInputs.forEach((sf) => shortfallByPallet.set(String(sf.palletNumber).trim(), sf));
 
-    finalPalletUnits = rawPallets.map((p, idx) => {
+    finalPalletUnits = resolvedRawPallets.map((p, idx) => {
       const pNumStr = String(p.palletNumber || idx + 1).trim();
       const sf = shortfallByPallet.get(pNumStr);
       const palletId = `plt-${params.customInvoiceNo}-${pNumStr}-${Date.now()}-${idx}`;
-      const origGross = toExactWeight(p.grossWeightKg ?? (invoicedGrossKg / (rawPallets.length || 1)));
-      const origNet = toExactWeight(p.netWeightKg ?? ((invoicedNetKg || 0) / (rawPallets.length || 1)));
+      const origGross = p.grossWeightKg;
+      const origNet = p.netWeightKg;
 
       if (!sf) {
         // Pallet arrived in full
@@ -2242,15 +2285,17 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
 
       if (sf.mode === 'PALLET') {
         // Entire pallet missing: 0 units, 0 weight on floor
+        // Use exact shortfallUnits entered on the row (zero hardcoded defaults)
+        const sfUnits = sf.shortfallUnits || sf.billedUnits || p.invoicedBatteries;
         totalShortfallPallets += 1;
-        totalShortfallBatteries += sf.billedUnits || p.invoicedBatteries;
+        totalShortfallBatteries += sfUnits;
         shortfallRecords.push({
           id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}`,
           mode: 'PALLET',
           palletNumber: p.palletNumber || idx + 1,
-          billedUnits: sf.billedUnits || p.invoicedBatteries,
-          shortfallUnits: sf.billedUnits || p.invoicedBatteries,
-          remainingShortfallUnits: sf.billedUnits || p.invoicedBatteries,
+          billedUnits: sfUnits,
+          shortfallUnits: sfUnits,
+          remainingShortfallUnits: sfUnits,
           openedDate: today,
           openedMonth: entryMonth,
           status: 'OPEN',
@@ -2262,7 +2307,7 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
           palletNumber: p.palletNumber || idx + 1,
           model: p.model || 'STANDARD',
           brand: p.brand || '',
-          invoicedBatteries: p.invoicedBatteries,
+          invoicedBatteries: sfUnits,
           receivedBatteries: 0,
           remainingUnits: 0,
           grossWeightKg: 0,
@@ -2276,8 +2321,8 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
         const recUnits = Math.max(0, p.invoicedBatteries - sfUnits);
         totalShortfallBatteries += sfUnits;
 
-        const pGross = recUnits > 0 ? toExactWeight((origGross / p.invoicedBatteries) * recUnits) : 0;
-        const pNet = recUnits > 0 ? toExactWeight((origNet / p.invoicedBatteries) * recUnits) : 0;
+        const pGross = recUnits > 0 && p.invoicedBatteries > 0 ? toExactWeight((origGross / p.invoicedBatteries) * recUnits) : 0;
+        const pNet = recUnits > 0 && p.invoicedBatteries > 0 ? toExactWeight((origNet / p.invoicedBatteries) * recUnits) : 0;
 
         shortfallRecords.push({
           id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}`,
@@ -2364,16 +2409,16 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
       }
     });
 
-    finalPalletUnits = rawPallets.map((p, idx) => ({
+    finalPalletUnits = resolvedRawPallets.map((p, idx) => ({
       id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
       palletNumber: p.palletNumber || idx + 1,
       model: p.model || 'STANDARD',
       brand: p.brand || '',
       invoicedBatteries: p.invoicedBatteries,
-      receivedBatteries: p.invoicedBatteries,
-      remainingUnits: p.invoicedBatteries,
-      grossWeightKg: toExactWeight(p.grossWeightKg ?? (invoicedGrossKg / (rawPallets.length || 1))),
-      netWeightKg: toExactWeight(p.netWeightKg ?? ((invoicedNetKg || 0) / (rawPallets.length || 1))),
+      receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
+      remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
+      grossWeightKg: p.grossWeightKg,
+      netWeightKg: p.netWeightKg,
       status: 'IN_WAREHOUSE' as const,
       invoiceNumber: params.customInvoiceNo
     }));
@@ -2381,6 +2426,12 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
 
   const actualRecPallets = finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').length;
   const actualRecBatteries = finalPalletUnits.reduce((sum, p) => sum + (p.receivedBatteries || 0), 0);
+  const actualRecGross = toExactWeight(
+    finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').reduce((sum, p) => sum + p.grossWeightKg, 0)
+  );
+  const actualRecNet = invoicedNetKg !== undefined
+    ? toExactWeight(finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').reduce((sum, p) => sum + p.netWeightKg, 0))
+    : undefined;
 
   const newEntry: CFSLedgerEntry = recomputeCFSDerivedFields({
     id: entryId,
@@ -2396,8 +2447,8 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     invoicedBatteries: params.invoicedBatteries,
     invoicedGrossWeightKg: invoicedGrossKg,
     invoicedNetWeightKg: invoicedNetKg,
-    actualGrossWeightKg: actualGrossKg,
-    actualNetWeightKg: actualNetKg,
+    actualGrossWeightKg: params.receiptMode === 'SHORT_FALL' ? actualRecGross : actualGrossKg,
+    actualNetWeightKg: params.receiptMode === 'SHORT_FALL' ? actualRecNet : actualNetKg,
     actualReceivedPallets: actualRecPallets,
     actualReceivedBatteries: actualRecBatteries,
     shortfallPallets: totalShortfallPallets,
