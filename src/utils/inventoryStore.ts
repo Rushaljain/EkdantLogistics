@@ -237,8 +237,15 @@ export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry
   const stfPallets = Number(entry.actualStuffedPallets) || 0;
   const stfBatteries = Number(entry.actualStuffedBatteries) || 0;
 
-  const shortfallPallets = Math.max(0, invPallets - recPallets);
-  const shortfallBatteries = Math.max(0, invBatteries - recBatteries);
+  let shortfallPallets = Math.max(0, invPallets - recPallets);
+  let shortfallBatteries = Math.max(0, invBatteries - recBatteries);
+
+  if (entry.shortfalls && entry.shortfalls.length > 0) {
+    const remUnits = entry.shortfalls.reduce((sum, sf) => sum + (sf.remainingShortfallUnits ?? sf.shortfallUnits), 0);
+    const remPlts = entry.shortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0).length;
+    shortfallBatteries = remUnits;
+    shortfallPallets = remPlts;
+  }
   const balancePallets = Math.max(0, recPallets - stfPallets);
   const balanceBatteries = Math.max(0, recBatteries - stfBatteries);
 
@@ -2364,158 +2371,140 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     }));
   } else if (params.receiptMode === 'SHORT_FALL') {
     const shortfallInputs = params.shortfallInputs || [];
-    const shortfallByPallet = new Map<string, ManualInwardShortfallInput>();
-    shortfallInputs.forEach((sf) => shortfallByPallet.set(String(sf.palletNumber).trim(), sf));
 
-    finalPalletUnits = resolvedRawPallets.map((p, idx) => {
-      const pNumStr = String(p.palletNumber || idx + 1).trim();
-      const sf = shortfallByPallet.get(pNumStr);
-      const palletId = `plt-${params.customInvoiceNo}-${pNumStr}-${Date.now()}-${idx}`;
-      const origGross = p.grossWeightKg;
-      const origNet = p.netWeightKg;
+    // 1. Physically received stock enters active floor stock (IN_WAREHOUSE)
+    finalPalletUnits = resolvedRawPallets.map((p, idx) => ({
+      id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
+      palletNumber: p.palletNumber || idx + 1,
+      model: p.model || 'STANDARD',
+      brand: p.brand || '',
+      invoicedBatteries: p.invoicedBatteries,
+      receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
+      remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
+      grossWeightKg: p.grossWeightKg,
+      netWeightKg: p.netWeightKg,
+      status: 'IN_WAREHOUSE' as const,
+      invoiceNumber: params.customInvoiceNo
+    }));
 
-      if (!sf) {
-        // Pallet arrived in full
-        return {
-          id: palletId,
-          palletNumber: p.palletNumber || idx + 1,
-          model: p.model || 'STANDARD',
-          brand: p.brand || '',
-          invoicedBatteries: p.invoicedBatteries,
-          receivedBatteries: p.invoicedBatteries,
-          remainingUnits: p.invoicedBatteries,
-          grossWeightKg: origGross,
-          netWeightKg: origNet,
-          status: 'IN_WAREHOUSE' as const,
-          invoiceNumber: params.customInvoiceNo
-        };
-      }
+    // 2. Shortfall inputs are recorded strictly in the shortfall backlog (never on floor)
+    shortfallInputs.forEach((sf, sfIdx) => {
+      const pNumStr = String(sf.palletNumber).trim();
+      const sfUnits = sf.shortfallUnits || sf.billedUnits || 0;
+      if (sfUnits <= 0) return;
 
       if (sf.mode === 'PALLET') {
-        // Entire pallet missing: 0 units, 0 weight on floor
-        // Use exact shortfallUnits entered on the row (zero hardcoded defaults)
-        const sfUnits = sf.shortfallUnits || sf.billedUnits || p.invoicedBatteries;
         totalShortfallPallets += 1;
-        totalShortfallBatteries += sfUnits;
-        shortfallRecords.push({
-          id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}`,
-          mode: 'PALLET',
-          palletNumber: p.palletNumber || idx + 1,
-          billedUnits: sfUnits,
-          shortfallUnits: sfUnits,
-          remainingShortfallUnits: sfUnits,
-          openedDate: today,
-          openedMonth: entryMonth,
-          status: 'OPEN',
-          linkedShortFills: []
-        });
-
-        return {
-          id: palletId,
-          palletNumber: p.palletNumber || idx + 1,
-          model: p.model || 'STANDARD',
-          brand: p.brand || '',
-          invoicedBatteries: sfUnits,
-          receivedBatteries: 0,
-          remainingUnits: 0,
-          grossWeightKg: 0,
-          netWeightKg: 0,
-          status: 'PENDING_GATE_IN' as const,
-          invoiceNumber: params.customInvoiceNo
-        };
-      } else {
-        // UNITS shortfall: partial units arrived
-        const sfUnits = Math.min(sf.shortfallUnits, p.invoicedBatteries);
-        const recUnits = Math.max(0, p.invoicedBatteries - sfUnits);
-        totalShortfallBatteries += sfUnits;
-
-        const pGross = recUnits > 0 && p.invoicedBatteries > 0 ? toExactWeight((origGross / p.invoicedBatteries) * recUnits) : 0;
-        const pNet = recUnits > 0 && p.invoicedBatteries > 0 ? toExactWeight((origNet / p.invoicedBatteries) * recUnits) : 0;
-
-        shortfallRecords.push({
-          id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}`,
-          mode: 'UNITS',
-          palletNumber: p.palletNumber || idx + 1,
-          billedUnits: sf.billedUnits || p.invoicedBatteries,
-          shortfallUnits: sfUnits,
-          remainingShortfallUnits: sfUnits,
-          openedDate: today,
-          openedMonth: entryMonth,
-          status: 'OPEN',
-          linkedShortFills: []
-        });
-
-        return {
-          id: palletId,
-          palletNumber: p.palletNumber || idx + 1,
-          model: p.model || 'STANDARD',
-          brand: p.brand || '',
-          invoicedBatteries: p.invoicedBatteries,
-          receivedBatteries: recUnits,
-          remainingUnits: recUnits,
-          grossWeightKg: pGross,
-          netWeightKg: pNet,
-          status: recUnits > 0 ? ('IN_WAREHOUSE' as const) : ('PENDING_GATE_IN' as const),
-          invoiceNumber: params.customInvoiceNo
-        };
       }
+      totalShortfallBatteries += sfUnits;
+
+      shortfallRecords.push({
+        id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}_${sfIdx}`,
+        mode: sf.mode,
+        palletNumber: sf.palletNumber,
+        billedUnits: sfUnits,
+        shortfallUnits: sfUnits,
+        remainingShortfallUnits: sfUnits,
+        openedDate: today,
+        openedMonth: entryMonth,
+        status: 'OPEN',
+        linkedShortFills: []
+      });
     });
   } else if (params.receiptMode === 'SHORT_FILL') {
     // Process short fill links against prior shortfall entries (multi-row sequential safe)
     const shortFillInputs = params.shortFillInputs || [];
 
+    // Group short fill inputs by prior invoice so all rows update prior invoice atomically
+    const inputsByPriorInvoice = new Map<string, ManualInwardShortFillInput[]>();
     shortFillInputs.forEach((sfi) => {
+      const key = (sfi.priorShortfallLedgerId || sfi.priorShortfallInvoiceNo || '').trim().toUpperCase();
+      if (!key) return;
+      const list = inputsByPriorInvoice.get(key) || [];
+      list.push(sfi);
+      inputsByPriorInvoice.set(key, list);
+    });
+
+    inputsByPriorInvoice.forEach((sfInputs) => {
       const allLedger = getCFSLedgerEntries();
+      const firstInput = sfInputs[0];
       const priorEntry = allLedger.find(
-        (e) => (sfi.priorShortfallLedgerId && e.id === sfi.priorShortfallLedgerId) ||
-               (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === sfi.priorShortfallInvoiceNo.trim().toUpperCase())
+        (e) => (firstInput.priorShortfallLedgerId && e.id === firstInput.priorShortfallLedgerId) ||
+               (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === firstInput.priorShortfallInvoiceNo.trim().toUpperCase())
       );
 
-      if (priorEntry && priorEntry.shortfalls && priorEntry.shortfalls.length > 0) {
+      if (!priorEntry) return;
+
+      let totalUnitsAllocated = 0;
+      let totalPalletsAllocated = 0;
+      let currentShortfalls = priorEntry.shortfalls ? [...priorEntry.shortfalls] : [];
+
+      sfInputs.forEach((sfi) => {
         let unitsToAllocate = sfi.unitsFilled;
-        const updatedShortfalls = priorEntry.shortfalls.map((sf) => {
-          if (unitsToAllocate <= 0 || sf.status === 'CLEARED') return sf;
-          const matchPallet = !sfi.palletNumber || String(sf.palletNumber).trim() === String(sfi.palletNumber).trim();
-          if (!matchPallet) return sf;
+        totalUnitsAllocated += unitsToAllocate;
 
-          const fillAmt = Math.min(unitsToAllocate, sf.remainingShortfallUnits);
-          unitsToAllocate -= fillAmt;
-          const newRemaining = Math.max(0, sf.remainingShortfallUnits - fillAmt);
-          const isCleared = newRemaining === 0;
+        if (currentShortfalls.length > 0) {
+          currentShortfalls = currentShortfalls.map((sf) => {
+            if (unitsToAllocate <= 0 || sf.status === 'CLEARED' || sf.status === 'FULFILLED') return sf;
+            const matchPallet = !sfi.palletNumber || String(sf.palletNumber).trim() === String(sfi.palletNumber).trim();
+            if (!matchPallet) return sf;
 
-          const linked: LinkedShortFill = {
-            shortFillInvoiceNo: params.customInvoiceNo,
-            shortFillLedgerId: entryId,
-            palletNumber: sf.palletNumber,
-            arrivedPalletNumber: sfi.arrivedPalletNumber,
-            unitsFilled: fillAmt,
-            filledDate: today,
-            filledMonth: entryMonth
-          };
+            const fillAmt = Math.min(unitsToAllocate, sf.remainingShortfallUnits);
+            unitsToAllocate -= fillAmt;
+            const newRemaining = Math.max(0, sf.remainingShortfallUnits - fillAmt);
+            const isCleared = newRemaining === 0;
+            if (sf.mode === 'PALLET' && isCleared) {
+              totalPalletsAllocated += 1;
+            }
 
-          return {
-            ...sf,
-            remainingShortfallUnits: newRemaining,
-            status: isCleared ? ('CLEARED' as const) : ('PARTIAL_FILL' as const),
-            clearedDate: isCleared ? today : sf.clearedDate,
-            clearedMonth: isCleared ? entryMonth : sf.clearedMonth,
-            linkedShortFills: [...(sf.linkedShortFills || []), linked]
-          };
-        });
+            const linked: LinkedShortFill = {
+              shortFillInvoiceNo: params.customInvoiceNo,
+              shortFillLedgerId: entryId,
+              palletNumber: sf.palletNumber,
+              arrivedPalletNumber: sfi.arrivedPalletNumber,
+              unitsFilled: fillAmt,
+              filledDate: today,
+              filledMonth: entryMonth
+            };
 
-        const remainingShortfallBatteries = updatedShortfalls.reduce((sum, sf) => sum + sf.remainingShortfallUnits, 0);
-        const remainingShortfallPallets = updatedShortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED').length;
+            return {
+              ...sf,
+              remainingShortfallUnits: newRemaining,
+              status: isCleared ? ('CLEARED' as const) : ('PARTIAL_FILL' as const),
+              clearedDate: isCleared ? today : sf.clearedDate,
+              clearedMonth: isCleared ? entryMonth : sf.clearedMonth,
+              linkedShortFills: [...(sf.linkedShortFills || []), linked]
+            };
+          });
+        } else {
+          // Fallback for legacy records without shortfalls array
+          if (sfi.palletNumber || (priorEntry.shortfallPallets || 0) > 0) {
+            totalPalletsAllocated += 1;
+          }
+        }
+      });
 
-        const updatedPriorEntry = recomputeCFSDerivedFields({
-          ...priorEntry,
-          shortfalls: updatedShortfalls,
-          shortfallBatteries: remainingShortfallBatteries,
-          shortfallPallets: remainingShortfallPallets,
-          updatedAt: new Date().toISOString()
-        });
+      const remainingShortfallBatteries = currentShortfalls.length > 0
+        ? currentShortfalls.reduce((sum, sf) => sum + sf.remainingShortfallUnits, 0)
+        : Math.max(0, (priorEntry.shortfallBatteries || 0) - totalUnitsAllocated);
+      const remainingShortfallPallets = currentShortfalls.length > 0
+        ? currentShortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED').length
+        : Math.max(0, (priorEntry.shortfallPallets || 0) - totalPalletsAllocated);
 
-        addOrUpdateCFSEntry(updatedPriorEntry);
-      }
+      // Cleanly update prior entry's recd plt and recd bat in monthly live reports
+      const updatedPriorEntry = recomputeCFSDerivedFields({
+        ...priorEntry,
+        actualReceivedPallets: (priorEntry.actualReceivedPallets || 0) + totalPalletsAllocated,
+        actualReceivedBatteries: (priorEntry.actualReceivedBatteries || 0) + totalUnitsAllocated,
+        balancePallets: (priorEntry.balancePallets || 0) + totalPalletsAllocated,
+        balanceBatteries: (priorEntry.balanceBatteries || 0) + totalUnitsAllocated,
+        shortfalls: currentShortfalls,
+        shortfallBatteries: remainingShortfallBatteries,
+        shortfallPallets: remainingShortfallPallets,
+        updatedAt: new Date().toISOString()
+      });
+
+      addOrUpdateCFSEntry(updatedPriorEntry);
     });
 
     finalPalletUnits = resolvedRawPallets.map((p, idx) => ({
@@ -2542,6 +2531,13 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     ? toExactWeight(finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').reduce((sum, p) => sum + p.netWeightKg, 0))
     : undefined;
 
+  const computedInvoicedPallets = params.receiptMode === 'SHORT_FALL'
+    ? (actualRecPallets + totalShortfallPallets)
+    : params.invoicedPallets;
+  const computedInvoicedBatteries = params.receiptMode === 'SHORT_FALL'
+    ? (actualRecBatteries + totalShortfallBatteries)
+    : params.invoicedBatteries;
+
   const newEntry: CFSLedgerEntry = recomputeCFSDerivedFields({
     id: entryId,
     createdAt: new Date().toISOString(),
@@ -2552,8 +2548,8 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     customInvoiceNo: params.customInvoiceNo,
     invoiceDate: params.invoiceDate || today,
     pod: params.pod || '',
-    invoicedPallets: params.invoicedPallets,
-    invoicedBatteries: params.invoicedBatteries,
+    invoicedPallets: computedInvoicedPallets,
+    invoicedBatteries: computedInvoicedBatteries,
     invoicedGrossWeightKg: invoicedGrossKg,
     invoicedNetWeightKg: invoicedNetKg,
     actualGrossWeightKg: params.receiptMode === 'SHORT_FALL' ? actualRecGross : actualGrossKg,
@@ -2576,7 +2572,7 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     cartingInDate: params.cartingInDate || today,
     vehicleNo: params.vehicleNo || '',
     truckReportingDate: params.truckReportingDate || today,
-    lastPltRecdDate: actualRecPallets === params.invoicedPallets ? today : '',
+    lastPltRecdDate: actualRecPallets === computedInvoicedPallets ? today : '',
     actualStuffedPallets: 0,
     actualStuffedBatteries: 0,
     balancePallets: actualRecPallets,

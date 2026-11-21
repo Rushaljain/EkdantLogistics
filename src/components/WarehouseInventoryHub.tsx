@@ -163,11 +163,13 @@ function getEntryShortfallStats(entry: CFSLedgerEntry, targetMonth?: string) {
     });
 
     const shortPlt = list.filter((sf) => sf.mode === 'PALLET').length;
+    const remainingPlt = list.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0).length;
     const shortBat = list.reduce((sum, sf) => sum + (sf.shortfallUnits || 0), 0);
     const remainingBat = list.reduce((sum, sf) => sum + (sf.remainingShortfallUnits ?? sf.shortfallUnits), 0);
 
     return {
       shortPlt,
+      remainingPlt,
       shortBat,
       remainingBat,
       records: list
@@ -179,6 +181,7 @@ function getEntryShortfallStats(entry: CFSLedgerEntry, targetMonth?: string) {
   const legacyBat = entry.shortfallBatteries || 0;
   return {
     shortPlt: legacyPlt,
+    remainingPlt: legacyPlt,
     shortBat: legacyBat,
     remainingBat: legacyBat,
     records: []
@@ -428,8 +431,8 @@ export function WarehouseInventoryHub({
       return (palletDiff > 0 || batteryDiff > 0 || sfStats.shortPlt > 0 || sfStats.shortBat > 0);
     });
 
-    const totalShortfallPallets = entries.reduce((s, e) => s + getEntryShortfallStats(e).shortPlt, 0);
-    const totalShortfallBatteries = entries.reduce((s, e) => s + getEntryShortfallStats(e).shortBat, 0);
+    const totalShortfallPallets = entries.reduce((s, e) => s + getEntryShortfallStats(e).remainingPlt, 0);
+    const totalShortfallBatteries = entries.reduce((s, e) => s + getEntryShortfallStats(e).remainingBat, 0);
 
     // Low Stock (< 22 Pallets or < 100 Units) and Nil Stock (0 Balance)
     const lowStockEntries = entries.filter((e) => (e.balancePallets || 0) > 0 && (e.balancePallets || 0) < 22);

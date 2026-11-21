@@ -1265,30 +1265,6 @@ export function ManualInwardModal({
                     </div>
                   ))}
                 </div>
-
-                {/* Shortfall Live Summary Strip */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                  <div className="p-2.5 rounded-lg bg-surface-secondary/60 border border-divider text-xs">
-                    <span className="text-[10px] text-content-muted uppercase block">Total Invoiced</span>
-                    <span className="font-mono font-bold text-content-primary">
-                      {invPallets} Pallets • {invBatteries} Units
-                    </span>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs">
-                    <span className="text-[10px] text-emerald-700 uppercase font-semibold block">Entering Floor Stock</span>
-                    <span className="font-mono font-bold text-emerald-700">
-                      {shortfallSummary.enteringPallets} Pallets • {shortfallSummary.enteringBatteries} Units
-                    </span>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
-                    <span className="text-[10px] text-amber-700 uppercase font-semibold block">Total Shortfall Recorded</span>
-                    <span className="font-mono font-bold text-amber-700">
-                      {shortfallSummary.sfPallets} Pallets • {shortfallSummary.sfBatteries} Units
-                    </span>
-                  </div>
-                </div>
               </div>
             )}
 
