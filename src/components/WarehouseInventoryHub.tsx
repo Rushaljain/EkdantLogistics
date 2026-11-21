@@ -147,6 +147,44 @@ function parseDateStrToTime(str?: string): number | null {
   return isNaN(d.getTime()) ? null : d.getTime();
 }
 
+/**
+ * Computes exact shortfall metrics directly from entry.shortfalls (created in SHORT_FALL mode),
+ * evaluated via getShortfallStatusForMonth when a targetMonth is active.
+ * Falls back to legacy entry.shortfallPallets / entry.shortfallBatteries if shortfalls array is missing.
+ */
+function getEntryShortfallStats(entry: CFSLedgerEntry, targetMonth?: string) {
+  if (entry.shortfalls && entry.shortfalls.length > 0) {
+    const list = entry.shortfalls.filter((sf) => {
+      if (targetMonth && targetMonth !== 'ALL') {
+        const monthStatus = getShortfallStatusForMonth(sf, targetMonth);
+        return monthStatus !== 'NOT_OPEN';
+      }
+      return true;
+    });
+
+    const shortPlt = list.filter((sf) => sf.mode === 'PALLET').length;
+    const shortBat = list.reduce((sum, sf) => sum + (sf.shortfallUnits || 0), 0);
+    const remainingBat = list.reduce((sum, sf) => sum + (sf.remainingShortfallUnits ?? sf.shortfallUnits), 0);
+
+    return {
+      shortPlt,
+      shortBat,
+      remainingBat,
+      records: list
+    };
+  }
+
+  // Fallback for legacy records without `shortfalls` array
+  const legacyPlt = entry.shortfallPallets || 0;
+  const legacyBat = entry.shortfallBatteries || 0;
+  return {
+    shortPlt: legacyPlt,
+    shortBat: legacyBat,
+    remainingBat: legacyBat,
+    records: []
+  };
+}
+
 export function WarehouseInventoryHub({
   onLoadShipmentIntoWorkspace,
   onNavigateToWorkspace,
@@ -382,15 +420,16 @@ export function WarehouseInventoryHub({
     });
     const dispatchedContainersCount = containerSet.size;
 
-    // Invoices with variance between Invoiced vs Actual Received Quantity
+    // Invoices with variance between Invoiced vs Actual Received Quantity or recorded shortfalls
     const varianceEntries = entries.filter((e) => {
       const palletDiff = Math.abs((e.invoicedPallets || 0) - (e.actualReceivedPallets || 0));
       const batteryDiff = Math.abs((e.invoicedBatteries || 0) - (e.actualReceivedBatteries || 0));
-      return (palletDiff > 0 || batteryDiff > 0 || e.shortfallPallets > 0 || e.shortfallBatteries > 0);
+      const sfStats = getEntryShortfallStats(e);
+      return (palletDiff > 0 || batteryDiff > 0 || sfStats.shortPlt > 0 || sfStats.shortBat > 0);
     });
 
-    const totalShortfallPallets = entries.reduce((s, e) => s + (e.shortfallPallets || 0), 0);
-    const totalShortfallBatteries = entries.reduce((s, e) => s + (e.shortfallBatteries || 0), 0);
+    const totalShortfallPallets = entries.reduce((s, e) => s + getEntryShortfallStats(e).shortPlt, 0);
+    const totalShortfallBatteries = entries.reduce((s, e) => s + getEntryShortfallStats(e).shortBat, 0);
 
     // Low Stock (< 22 Pallets or < 100 Units) and Nil Stock (0 Balance)
     const lowStockEntries = entries.filter((e) => (e.balancePallets || 0) > 0 && (e.balancePallets || 0) < 22);
@@ -476,11 +515,12 @@ export function WarehouseInventoryHub({
         return (e.actualStuffedPallets || 0) > 0 || (e.pallets || []).some((p) => p.status === 'STUFFED_DISPATCHED');
       }
       if (inventoryStatusFilter === 'SHORTFALL') {
-        return e.shortfallPallets > 0 || e.shortfallBatteries > 0;
+        const sfStats = getEntryShortfallStats(e, selectedMonth);
+        return sfStats.shortPlt > 0 || sfStats.shortBat > 0;
       }
       return true;
     });
-  }, [filteredEntries, inventoryStatusFilter]);
+  }, [filteredEntries, inventoryStatusFilter, selectedMonth]);
 
   // Available Pallet Units for Picking
   const availablePalletUnits = useMemo(() => {
@@ -1708,6 +1748,7 @@ export function WarehouseInventoryHub({
                           const slipNo = e.cartingSlipNo || e.gateInStatus || '';
                           const sbSummary = [e.shippingBillNo, e.shippingBillDate].filter(Boolean).join(' / ') || '-';
                           const combinedRemarks = [e.remarks, e.unloadingRemarks].filter(Boolean).join(' | ');
+                          const sfStats = getEntryShortfallStats(e, selectedMonth);
 
                           return (
                             <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1850,17 +1891,24 @@ export function WarehouseInventoryHub({
 
                               {/* 14. Shortfall Pallets */}
                               <td className="p-2 border-r border-divider text-right bg-rose-50/10 font-bold text-rose-700">
-                                {e.shortfallPallets || 0}
+                                {sfStats.shortPlt}
                               </td>
 
                               {/* 15. Shortfall Batteries & Monthly Carryover Status */}
                               <td className="p-2 border-r border-divider text-right bg-rose-50/10 font-bold text-rose-700">
-                                {e.shortfalls && e.shortfalls.length > 0 ? (
+                                {sfStats.records.length > 0 ? (
                                   <div className="flex flex-col items-end space-y-0.5">
-                                    <span>{e.shortfallBatteries || 0}</span>
+                                    <div className="flex items-center space-x-1">
+                                      <span>{sfStats.shortBat}</span>
+                                      {sfStats.remainingBat < sfStats.shortBat && (
+                                        <span className="text-[10px] text-content-muted font-normal">
+                                          (Rem: {sfStats.remainingBat})
+                                        </span>
+                                      )}
+                                    </div>
                                     {selectedMonth !== 'ALL' && (
                                       <div className="flex flex-wrap gap-0.5 justify-end">
-                                        {e.shortfalls.map((sf) => {
+                                        {sfStats.records.map((sf) => {
                                           const monthStatus = getShortfallStatusForMonth(sf, selectedMonth);
                                           return (
                                             <span
@@ -1874,9 +1922,9 @@ export function WarehouseInventoryHub({
                                                   ? 'bg-rose-100 text-rose-800'
                                                   : 'bg-slate-100 text-slate-500'
                                               }`}
-                                              title={`PLT #${sf.palletNumber}: ${monthStatus} in ${selectedMonth}`}
+                                              title={`PLT #${sf.palletNumber}: ${monthStatus} in ${selectedMonth} (${sf.remainingShortfallUnits} rem of ${sf.shortfallUnits} u)`}
                                             >
-                                              {monthStatus === 'CLEARED' ? 'Cleared' : monthStatus === 'PARTIAL_FILL' ? 'Partial' : monthStatus === 'OPEN' ? 'Open' : '—'}
+                                              {monthStatus === 'CLEARED' ? 'Cleared' : monthStatus === 'PARTIAL_FILL' ? `Partial (${sf.remainingShortfallUnits}u)` : monthStatus === 'OPEN' ? 'Open' : '—'}
                                             </span>
                                           );
                                         })}
@@ -1884,7 +1932,7 @@ export function WarehouseInventoryHub({
                                     )}
                                   </div>
                                 ) : (
-                                  e.shortfallBatteries || 0
+                                  sfStats.shortBat
                                 )}
                               </td>
 
@@ -2329,8 +2377,11 @@ export function WarehouseInventoryHub({
                       </thead>
                       <tbody className="divide-y divide-divider font-mono">
                         {kpis.varianceEntries.map((e) => {
-                          const pltDiff = (e.actualReceivedPallets || 0) - (e.invoicedPallets || 0);
-                          const unitDiff = (e.actualReceivedBatteries || 0) - (e.invoicedBatteries || 0);
+                          const sfStats = getEntryShortfallStats(e);
+                          const rawPltDiff = (e.actualReceivedPallets || 0) - (e.invoicedPallets || 0);
+                          const rawUnitDiff = (e.actualReceivedBatteries || 0) - (e.invoicedBatteries || 0);
+                          const pltDiff = rawPltDiff !== 0 ? rawPltDiff : (sfStats.shortPlt > 0 ? -sfStats.shortPlt : 0);
+                          const unitDiff = rawUnitDiff !== 0 ? rawUnitDiff : (sfStats.shortBat > 0 ? -sfStats.shortBat : 0);
                           return (
                             <tr key={e.id} className="hover:bg-surface-secondary/40 transition-colors">
                               <td className="py-2.5 px-3 border-r border-divider font-sans font-semibold text-content-primary">
