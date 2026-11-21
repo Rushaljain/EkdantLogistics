@@ -89,13 +89,18 @@ export function ManualInwardModal({
     return e.shortfallBatteries || 0;
   };
 
-  // Existing entries that currently have open unresolved shortfalls
-  const openShortfallEntries = useMemo(() => {
-    return existingEntries.filter((e) => {
-      const rem = getEntryRemainingShortfallUnits(e);
-      const hasOpenRecord = e.shortfalls && e.shortfalls.some((sf) => sf.status !== 'CLEARED');
-      return rem > 0 || hasOpenRecord;
-    });
+  // All prior invoices (both dispatched and yet to be dispatched) available for selection
+  const allPriorInvoices = useMemo(() => {
+    return existingEntries
+      .filter((e) => e.customInvoiceNo && e.customInvoiceNo.trim())
+      .sort((a, b) => {
+        // Prioritize invoices with open/pending shortfalls at top
+        const remA = getEntryRemainingShortfallUnits(a);
+        const remB = getEntryRemainingShortfallUnits(b);
+        if (remA > 0 && remB === 0) return -1;
+        if (remB > 0 && remA === 0) return 1;
+        return a.customInvoiceNo.localeCompare(b.customInvoiceNo);
+      });
   }, [existingEntries]);
 
   // Form State: Identity & Party (Clean blank defaults)
@@ -283,14 +288,15 @@ export function ManualInwardModal({
   // Target Prior Entry for Short Fill Mode
   const priorEntry = useMemo(() => {
     if (!selectedPriorInvoiceNo) return null;
-    return openShortfallEntries.find((e) => e.customInvoiceNo.trim().toUpperCase() === selectedPriorInvoiceNo.trim().toUpperCase()) || null;
-  }, [selectedPriorInvoiceNo, openShortfallEntries]);
+    return allPriorInvoices.find((e) => e.customInvoiceNo.trim().toUpperCase() === selectedPriorInvoiceNo.trim().toUpperCase()) || null;
+  }, [selectedPriorInvoiceNo, allPriorInvoices]);
 
-  // Open shortfall pallets in selected prior invoice
+  // Open shortfall pallets in selected prior invoice (with fallback to all pallets on that invoice)
   const openShortfallPallets = useMemo(() => {
     if (!priorEntry) return [];
     if (priorEntry.shortfalls && priorEntry.shortfalls.length > 0) {
-      return priorEntry.shortfalls.filter((sf) => sf.status !== 'CLEARED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0);
+      const openSfs = priorEntry.shortfalls.filter((sf) => sf.status !== 'CLEARED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0);
+      if (openSfs.length > 0) return openSfs;
     }
     if ((priorEntry.shortfallBatteries || 0) > 0) {
       return [
@@ -308,7 +314,36 @@ export function ManualInwardModal({
         }
       ];
     }
-    return [];
+    // Fallback: If prior invoice had no explicit shortfalls, list all its pallets so any pallet can be reconciled
+    if (priorEntry.pallets && priorEntry.pallets.length > 0) {
+      return priorEntry.pallets.map((p, idx) => ({
+        id: `sf_plt_${priorEntry.id}_${p.palletNumber || idx + 1}`,
+        mode: 'UNITS' as const,
+        palletNumber: p.palletNumber || idx + 1,
+        billedUnits: p.invoicedBatteries || p.remainingUnits || 0,
+        shortfallUnits: p.invoicedBatteries || p.remainingUnits || 0,
+        remainingShortfallUnits: p.invoicedBatteries || p.remainingUnits || 0,
+        openedDate: priorEntry.invoiceDate || '',
+        openedMonth: priorEntry.month || '',
+        status: 'OPEN' as const,
+        linkedShortFills: []
+      }));
+    }
+    // Final fallback: synthesize pallet rows up to invoicedPallets
+    const numPlts = Math.max(1, priorEntry.invoicedPallets || 1);
+    const avgUnits = Math.round((priorEntry.invoicedBatteries || 0) / numPlts);
+    return Array.from({ length: numPlts }, (_, i) => ({
+      id: `sf_synth_${priorEntry.id}_${i + 1}`,
+      mode: 'UNITS' as const,
+      palletNumber: String(i + 1),
+      billedUnits: avgUnits,
+      shortfallUnits: avgUnits,
+      remainingShortfallUnits: avgUnits,
+      openedDate: priorEntry.invoiceDate || '',
+      openedMonth: priorEntry.month || '',
+      status: 'OPEN' as const,
+      linkedShortFills: []
+    }));
   }, [priorEntry]);
 
   // Remaining shortfall units in selected prior invoice
@@ -320,7 +355,7 @@ export function ManualInwardModal({
   // Multi-row Short Fill Handlers
   const handleSelectPriorInvoice = (invNo: string) => {
     setSelectedPriorInvoiceNo(invNo);
-    const found = openShortfallEntries.find((ent) => ent.customInvoiceNo.trim().toUpperCase() === invNo.trim().toUpperCase());
+    const found = allPriorInvoices.find((ent) => ent.customInvoiceNo.trim().toUpperCase() === invNo.trim().toUpperCase());
     if (!found) {
       setShortFillRows([]);
       return;
@@ -351,7 +386,18 @@ export function ManualInwardModal({
         }
       ]);
     } else {
-      setShortFillRows([]);
+      // Prior invoice without pre-existing shortfall records: allow reconciling against any pallet
+      const firstPltNum = found.pallets?.[0]?.palletNumber ? String(found.pallets[0].palletNumber) : '1';
+      setShortFillRows([
+        {
+          id: `sfr_${Date.now()}_1`,
+          shortfallPalletNumber: firstPltNum,
+          palletNumberChanged: false,
+          arrivedPalletNumber: '',
+          unitsFilled: '',
+          regularUnits: 0
+        }
+      ]);
     }
   };
 
@@ -539,7 +585,7 @@ export function ManualInwardModal({
 
         const targetSf = openShortfallPallets.find((sf) => String(sf.palletNumber).trim() === String(row.shortfallPalletNumber).trim());
         const maxAllowed = targetSf ? (targetSf.remainingShortfallUnits ?? targetSf.shortfallUnits) : priorRemainingShortfallUnits;
-        if (filled > maxAllowed) {
+        if (maxAllowed > 0 && filled > maxAllowed) {
           setErrorMsg(`Short-fill row #${i + 1} (Pallet ${row.shortfallPalletNumber}): Units filled (${filled}) cannot exceed remaining shortfall (${maxAllowed} units).`);
           return;
         }
@@ -1266,12 +1312,18 @@ export function ManualInwardModal({
                     onChange={(e) => handleSelectPriorInvoice(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono text-xs outline-none cursor-pointer focus:border-brand-primary"
                   >
-                    <option value="">-- Select Prior Shortfall Invoice --</option>
-                    {openShortfallEntries.map((ent) => (
-                      <option key={ent.id} value={ent.customInvoiceNo}>
-                        {ent.customInvoiceNo} — {ent.customer} ({getEntryRemainingShortfallUnits(ent)} units pending shortfall)
-                      </option>
-                    ))}
+                    <option value="">-- Select Prior Invoice ({allPriorInvoices.length} Available) --</option>
+                    {allPriorInvoices.map((ent) => {
+                      const rem = getEntryRemainingShortfallUnits(ent);
+                      const isDispatched = (ent.actualStuffedPallets || 0) > 0 || (ent.balancePallets || 0) === 0;
+                      const statusTag = isDispatched ? 'Dispatched' : 'In Warehouse';
+                      const sfTag = rem > 0 ? ` • ${rem} u shortfall` : '';
+                      return (
+                        <option key={ent.id} value={ent.customInvoiceNo}>
+                          {ent.customInvoiceNo} — {ent.customer || 'No Customer'} ({statusTag}{sfTag})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
