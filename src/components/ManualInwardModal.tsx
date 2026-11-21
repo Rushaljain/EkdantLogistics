@@ -285,11 +285,11 @@ export function ManualInwardModal({
       return;
     }
     if (invPallets <= 0) {
-      setErrorMsg('Invoiced Pallets must be greater than 0.');
+      setErrorMsg('Received Pallets must be greater than 0.');
       return;
     }
     if (invBatteries <= 0) {
-      setErrorMsg('Invoiced Units/Batteries must be greater than 0.');
+      setErrorMsg('Received Units/Batteries must be greater than 0.');
       return;
     }
     if (grossKg <= 0) {
@@ -527,14 +527,14 @@ export function ManualInwardModal({
           <div className="bg-surface border border-divider rounded-xl p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between pb-2 border-b border-divider/60">
               <span className="text-xs font-bold text-content-primary uppercase tracking-wider">
-                2. Invoiced Quantities & Exact Weights
+                2. Received Quantities & Exact Weights
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
               <div>
                 <label className="block text-content-secondary font-medium mb-1">
-                  Invoiced Pallets <span className="text-red-500">*</span>
+                  Received Pallets <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -549,7 +549,7 @@ export function ManualInwardModal({
 
               <div>
                 <label className="block text-content-secondary font-medium mb-1">
-                  Invoiced Units / Batteries <span className="text-red-500">*</span>
+                  Received Units / Batteries <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -609,7 +609,7 @@ export function ManualInwardModal({
                     type="button"
                     onClick={handleAutoPopulatePalletRows}
                     className="px-2.5 py-1 rounded-lg bg-surface border border-divider hover:bg-surface-secondary text-content-secondary hover:text-content-primary text-xs font-medium flex items-center space-x-1 cursor-pointer transition-colors"
-                    title={`Auto-generate ${invPallets} pallet rows matching Invoiced Pallets`}
+                    title={`Auto-generate ${invPallets} pallet rows matching Received Pallets`}
                   >
                     <RefreshCw className="w-3 h-3" />
                     <span>Auto-Fill Rows ({invPallets})</span>
@@ -633,7 +633,7 @@ export function ManualInwardModal({
                 <span>•</span>
                 <span>Rows Total: <strong className="text-content-primary font-mono">{totalPalletRowsQty} u</strong></span>
                 <span>•</span>
-                <span>Invoiced: <strong className="text-content-primary font-mono">{invBatteries} u</strong></span>
+                <span>Received: <strong className="text-content-primary font-mono">{invBatteries} u</strong></span>
               </div>
 
               <div>
@@ -644,7 +644,7 @@ export function ManualInwardModal({
                 ) : receiptMode === 'SHORT_FALL' ? (
                   totalPalletRowsQty === invBatteries ? (
                     <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 font-semibold text-[11px] border border-emerald-500/20">
-                      ✓ Matches Invoiced ({invBatteries} u) — {shortfallSummary.sfBatteries} u short
+                      ✓ Matches Received ({invBatteries} u) — {shortfallSummary.sfBatteries} u short
                     </span>
                   ) : totalPalletRowsQty === shortfallSummary.enteringBatteries ? (
                     <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 font-semibold text-[11px] border border-emerald-500/20">
@@ -652,12 +652,12 @@ export function ManualInwardModal({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 font-semibold text-[11px] border border-amber-500/20">
-                      ⚠️ Rows ({totalPalletRowsQty} u) vs Invoiced ({invBatteries} u) | Shortfall: {shortfallSummary.sfBatteries} u
+                      ⚠️ Rows ({totalPalletRowsQty} u) vs Received ({invBatteries} u) | Shortfall: {shortfallSummary.sfBatteries} u
                     </span>
                   )
                 ) : totalPalletRowsQty === invBatteries ? (
                   <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 font-semibold text-[11px] border border-emerald-500/20">
-                    ✓ Matches Invoiced ({invBatteries} u)
+                    ✓ Matches Received ({invBatteries} u)
                   </span>
                 ) : totalPalletRowsQty < invBatteries ? (
                   <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 font-semibold text-[11px] border border-amber-500/20">
@@ -665,7 +665,7 @@ export function ManualInwardModal({
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-700 font-semibold text-[11px] border border-rose-500/20">
-                    ⚠️ +{totalPalletRowsQty - invBatteries} u over invoiced
+                    ⚠️ +{totalPalletRowsQty - invBatteries} u over received
                   </span>
                 )}
               </div>
