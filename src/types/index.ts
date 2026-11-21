@@ -621,6 +621,9 @@ export interface LinkedShortFill {
   unitsFilled: number;
   filledDate: string;
   filledMonth: string;
+  dispatched?: boolean;
+  dispatchedDate?: string;
+  dispatchContainerNo?: string;
 }
 
 export interface ShortfallRecord {
@@ -634,7 +637,10 @@ export interface ShortfallRecord {
   openedMonth: string;
   clearedDate?: string;
   clearedMonth?: string;
-  status: 'OPEN' | 'PARTIAL_FILL' | 'CLEARED';
+  fulfilledDate?: string;
+  fulfilledMonth?: string;
+  fulfilledContainerNo?: string;
+  status: 'OPEN' | 'PARTIAL_FILL' | 'CLEARED' | 'FULFILLED';
   linkedShortFills: LinkedShortFill[];
 }
 

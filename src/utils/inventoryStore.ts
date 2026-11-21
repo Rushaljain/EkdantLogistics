@@ -741,6 +741,59 @@ export function confirmStuffingDispatch(
     return updated;
   });
 
+  // Closed-loop shortfall lifecycle fulfillment:
+  // If any newly dispatched entry arrived as a SHORT_FILL, mark the corresponding prior shortfall as FULFILLED
+  affectedEntries.forEach((entry) => {
+    if (entry.shortFillLinks && entry.shortFillLinks.length > 0) {
+      entry.shortFillLinks.forEach((link) => {
+        const priorIdx = updatedEntries.findIndex(
+          (e) => (link.priorShortfallLedgerId && e.id === link.priorShortfallLedgerId) ||
+                 (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === link.priorShortfallInvoiceNo.trim().toUpperCase())
+        );
+
+        if (priorIdx !== -1) {
+          const prior = updatedEntries[priorIdx];
+          const updatedShortfalls = (prior.shortfalls || []).map((sf) => {
+            const matchesPallet = !link.palletNumber || String(sf.palletNumber).trim() === String(link.palletNumber).trim();
+            if (matchesPallet) {
+              const updatedLinks = (sf.linkedShortFills || []).map((lsf) => {
+                if (lsf.shortFillInvoiceNo.trim().toUpperCase() === entry.customInvoiceNo.trim().toUpperCase()) {
+                  return {
+                    ...lsf,
+                    dispatched: true,
+                    dispatchedDate: dispatchDetails.stuffingDate || today,
+                    dispatchContainerNo: dispatchDetails.containerNo
+                  };
+                }
+                return lsf;
+              });
+
+              return {
+                ...sf,
+                status: 'FULFILLED' as const,
+                fulfilledDate: dispatchDetails.stuffingDate || today,
+                fulfilledMonth: entry.month || today,
+                fulfilledContainerNo: dispatchDetails.containerNo,
+                linkedShortFills: updatedLinks
+              };
+            }
+            return sf;
+          });
+
+          const priorUpdated = {
+            ...prior,
+            shortfalls: updatedShortfalls,
+            updatedAt: new Date().toISOString()
+          };
+          updatedEntries[priorIdx] = priorUpdated;
+          if (!affectedEntries.some((e) => e.id === priorUpdated.id)) {
+            affectedEntries.push(priorUpdated);
+          }
+        }
+      });
+    }
+  });
+
   saveCFSLedgerEntries(updatedEntries);
   affectedEntries.forEach((e) => syncEntryToCloud(e));
   return { updatedEntries: affectedEntries, stuffedCount: totalStuffedCount };
@@ -1129,6 +1182,59 @@ export function executeWorkspaceDispatch(
 
     affectedEntries.push(updated);
     return updated;
+  });
+
+  // Closed-loop shortfall lifecycle fulfillment:
+  // If any newly dispatched entry arrived as a SHORT_FILL, mark the corresponding prior shortfall as FULFILLED
+  affectedEntries.forEach((entry) => {
+    if (entry.shortFillLinks && entry.shortFillLinks.length > 0) {
+      entry.shortFillLinks.forEach((link) => {
+        const priorIdx = updatedEntries.findIndex(
+          (e) => (link.priorShortfallLedgerId && e.id === link.priorShortfallLedgerId) ||
+                 (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === link.priorShortfallInvoiceNo.trim().toUpperCase())
+        );
+
+        if (priorIdx !== -1) {
+          const prior = updatedEntries[priorIdx];
+          const updatedShortfalls = (prior.shortfalls || []).map((sf) => {
+            const matchesPallet = !link.palletNumber || String(sf.palletNumber).trim() === String(link.palletNumber).trim();
+            if (matchesPallet) {
+              const updatedLinks = (sf.linkedShortFills || []).map((lsf) => {
+                if (lsf.shortFillInvoiceNo.trim().toUpperCase() === entry.customInvoiceNo.trim().toUpperCase()) {
+                  return {
+                    ...lsf,
+                    dispatched: true,
+                    dispatchedDate: dispatchDetails.stuffingDate || today,
+                    dispatchContainerNo: dispatchDetails.containerNo
+                  };
+                }
+                return lsf;
+              });
+
+              return {
+                ...sf,
+                status: 'FULFILLED' as const,
+                fulfilledDate: dispatchDetails.stuffingDate || today,
+                fulfilledMonth: entry.month || today,
+                fulfilledContainerNo: dispatchDetails.containerNo,
+                linkedShortFills: updatedLinks
+              };
+            }
+            return sf;
+          });
+
+          const priorUpdated = {
+            ...prior,
+            shortfalls: updatedShortfalls,
+            updatedAt: new Date().toISOString()
+          };
+          updatedEntries[priorIdx] = priorUpdated;
+          if (!affectedEntries.some((e) => e.id === priorUpdated.id)) {
+            affectedEntries.push(priorUpdated);
+          }
+        }
+      });
+    }
   });
 
   saveCFSLedgerEntries(updatedEntries);
@@ -2824,6 +2930,45 @@ export function restoreDispatchedRecord(dispatchOrLogId: string): {
   saveCFSLedgerEntries(existingEntries);
   syncEntryToCloud(updatedEntry);
 
+  // Revert prior shortfall status from FULFILLED back to CLEARED if this was a short-fill entry
+  if (entry.shortFillLinks && entry.shortFillLinks.length > 0) {
+    entry.shortFillLinks.forEach((link) => {
+      const priorIdx = existingEntries.findIndex(
+        (e) => (link.priorShortfallLedgerId && e.id === link.priorShortfallLedgerId) ||
+               (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === link.priorShortfallInvoiceNo.trim().toUpperCase())
+      );
+      if (priorIdx !== -1) {
+        const prior = existingEntries[priorIdx];
+        const updatedShortfalls = (prior.shortfalls || []).map((sf) => {
+          if (!link.palletNumber || String(sf.palletNumber).trim() === String(link.palletNumber).trim()) {
+            return {
+              ...sf,
+              status: 'CLEARED' as const,
+              fulfilledDate: undefined,
+              fulfilledMonth: undefined,
+              fulfilledContainerNo: undefined,
+              linkedShortFills: (sf.linkedShortFills || []).map((lsf) =>
+                lsf.shortFillInvoiceNo.trim().toUpperCase() === entry.customInvoiceNo.trim().toUpperCase()
+                  ? { ...lsf, dispatched: false, dispatchedDate: undefined, dispatchContainerNo: undefined }
+                  : lsf
+              )
+            };
+          }
+          return sf;
+        });
+
+        const updatedPrior = {
+          ...prior,
+          shortfalls: updatedShortfalls,
+          updatedAt: new Date().toISOString()
+        };
+        existingEntries[priorIdx] = updatedPrior;
+        saveCFSLedgerEntries(existingEntries);
+        syncEntryToCloud(updatedPrior);
+      }
+    });
+  }
+
   // Remove movement log locally and in cloud
   deleteMovementLog(targetLog.id);
 
@@ -2847,7 +2992,7 @@ const FY_MONTH_ORDER = ['APR', 'MAY', 'JUNE', 'JULY', 'AUG', 'SEP', 'OCT', 'NOV'
 export function getShortfallStatusForMonth(
   shortfall: ShortfallRecord,
   targetMonth: string
-): 'OPEN' | 'PARTIAL_FILL' | 'CLEARED' | 'NOT_OPEN' {
+): 'OPEN' | 'PARTIAL_FILL' | 'CLEARED' | 'FULFILLED' | 'NOT_OPEN' {
   if (!targetMonth || targetMonth === 'ALL') {
     return shortfall.status;
   }
@@ -2855,18 +3000,28 @@ export function getShortfallStatusForMonth(
   const upperTarget = targetMonth.toUpperCase();
   const openedMonthUpper = (shortfall.openedMonth || '').toUpperCase();
   const clearedMonthUpper = (shortfall.clearedMonth || '').toUpperCase();
+  const fulfilledMonthUpper = (shortfall.fulfilledMonth || '').toUpperCase();
 
   const targetIdx = FY_MONTH_ORDER.indexOf(upperTarget);
   const openedIdx = FY_MONTH_ORDER.indexOf(openedMonthUpper);
   const clearedIdx = clearedMonthUpper ? FY_MONTH_ORDER.indexOf(clearedMonthUpper) : -1;
+  const fulfilledIdx = fulfilledMonthUpper ? FY_MONTH_ORDER.indexOf(fulfilledMonthUpper) : -1;
 
   // If targetMonth is prior to openedMonth in financial year cycle
   if (openedIdx !== -1 && targetIdx !== -1 && targetIdx < openedIdx) {
     return 'NOT_OPEN';
   }
 
+  // If fulfilled in or before targetMonth
+  if (fulfilledIdx !== -1 && targetIdx !== -1 && targetIdx >= fulfilledIdx) {
+    return 'FULFILLED';
+  }
+
   // If already cleared in or before targetMonth
   if (clearedIdx !== -1 && targetIdx !== -1 && targetIdx >= clearedIdx) {
+    if (shortfall.status === 'FULFILLED') {
+      return 'FULFILLED';
+    }
     return 'CLEARED';
   }
 
@@ -2879,6 +3034,10 @@ export function getShortfallStatusForMonth(
 
     const unitsFilledUpToMonth = fillsUpToMonth.reduce((sum, f) => sum + (f.unitsFilled || 0), 0);
     if (unitsFilledUpToMonth >= shortfall.shortfallUnits) {
+      const allDispatched = fillsUpToMonth.every((f) => f.dispatched);
+      if (allDispatched || shortfall.status === 'FULFILLED') {
+        return 'FULFILLED';
+      }
       return 'CLEARED';
     }
     if (unitsFilledUpToMonth > 0) {

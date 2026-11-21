@@ -1539,10 +1539,20 @@ export function WarehouseInventoryHub({
                             </td>
                             <td className="p-3 border-r border-divider text-[11px] text-content-secondary">
                               {(sf.linkedShortFills || []).length > 0 ? (
-                                <div className="space-y-0.5">
+                                <div className="space-y-1">
                                   {sf.linkedShortFills.map((lsf, i) => (
-                                    <div key={i} className="text-emerald-700">
-                                      +{lsf.unitsFilled} u via #{lsf.shortFillInvoiceNo}
+                                    <div key={i} className="text-emerald-700 flex flex-wrap items-center gap-1">
+                                      <span>+{lsf.unitsFilled} u via #{lsf.shortFillInvoiceNo}</span>
+                                      {lsf.arrivedPalletNumber && String(lsf.arrivedPalletNumber) !== String(sf.palletNumber) && (
+                                        <span className="text-[10px] text-amber-700 font-mono">
+                                          (as PLT #{lsf.arrivedPalletNumber})
+                                        </span>
+                                      )}
+                                      {lsf.dispatched && (
+                                        <span className="text-[9px] px-1 py-0.2 rounded bg-purple-100 text-purple-800 font-semibold uppercase">
+                                          Fulfilled
+                                        </span>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
@@ -1552,7 +1562,13 @@ export function WarehouseInventoryHub({
                             </td>
                             <td className="p-3 border-r border-divider text-center whitespace-nowrap">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                sf.status === 'PARTIAL_FILL' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                                sf.status === 'FULFILLED'
+                                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                  : sf.status === 'CLEARED'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : sf.status === 'PARTIAL_FILL'
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                  : 'bg-rose-100 text-rose-800 border border-rose-200'
                               }`}>
                                 {sf.status}
                               </span>
@@ -1914,7 +1930,9 @@ export function WarehouseInventoryHub({
                                             <span
                                               key={sf.id}
                                               className={`text-[9px] px-1 py-0.2 rounded font-semibold uppercase ${
-                                                monthStatus === 'CLEARED'
+                                                monthStatus === 'FULFILLED'
+                                                  ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                                  : monthStatus === 'CLEARED'
                                                   ? 'bg-emerald-100 text-emerald-800'
                                                   : monthStatus === 'PARTIAL_FILL'
                                                   ? 'bg-amber-100 text-amber-800'
@@ -1922,9 +1940,9 @@ export function WarehouseInventoryHub({
                                                   ? 'bg-rose-100 text-rose-800'
                                                   : 'bg-slate-100 text-slate-500'
                                               }`}
-                                              title={`PLT #${sf.palletNumber}: ${monthStatus} in ${selectedMonth} (${sf.remainingShortfallUnits} rem of ${sf.shortfallUnits} u)`}
+                                              title={`PLT #${sf.palletNumber}: ${monthStatus} in ${selectedMonth} (${sf.remainingShortfallUnits} rem of ${sf.shortfallUnits} u)${sf.fulfilledContainerNo ? ` • Dispatched in Cntr ${sf.fulfilledContainerNo}` : ''}`}
                                             >
-                                              {monthStatus === 'CLEARED' ? 'Cleared' : monthStatus === 'PARTIAL_FILL' ? `Partial (${sf.remainingShortfallUnits}u)` : monthStatus === 'OPEN' ? 'Open' : '—'}
+                                              {monthStatus === 'FULFILLED' ? 'Fulfilled' : monthStatus === 'CLEARED' ? 'Cleared' : monthStatus === 'PARTIAL_FILL' ? `Partial (${sf.remainingShortfallUnits}u)` : monthStatus === 'OPEN' ? 'Open' : '—'}
                                             </span>
                                           );
                                         })}
@@ -2128,7 +2146,24 @@ export function WarehouseInventoryHub({
 
                             {/* Invoice No */}
                             <td className="p-2.5 border-r border-divider whitespace-nowrap font-bold text-brand-primary">
-                              {r.customInvoiceNo}
+                              <div>{r.customInvoiceNo}</div>
+                              {(() => {
+                                const matchedEntry = entries.find((ent) => ent.customInvoiceNo.trim().toUpperCase() === r.customInvoiceNo.trim().toUpperCase());
+                                const links = matchedEntry?.shortFillLinks || [];
+                                if (links.length > 0 && isDispatched) {
+                                  return (
+                                    <div className="mt-0.5">
+                                      <span
+                                        className="inline-block text-[9px] font-semibold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 font-sans"
+                                        title={`Fulfilled shortfall on prior Invoice(s): ${links.map((l) => `#${l.priorShortfallInvoiceNo}`).join(', ')}`}
+                                      >
+                                        Fulfilled #{links.map((l) => l.priorShortfallInvoiceNo).join(', #')}
+                                      </span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </td>
 
                             {/* Battery / Model */}

@@ -179,8 +179,8 @@ export function ManualInwardModal({
   const grossKg = parseFloat(manualGrossWeightKgStr) || 0;
   const netKg = manualNetWeightKgStr.trim() ? parseFloat(manualNetWeightKgStr) : undefined;
 
-  // Average units per pallet for quick defaulting
-  const defaultUnitsPerPallet = invPallets > 0 && invBatteries > 0 ? Math.floor(invBatteries / invPallets) : 32;
+  // Average units per pallet for pallet rows
+  const defaultUnitsPerPallet = invPallets > 0 && invBatteries > 0 ? Math.floor(invBatteries / invPallets) : '';
 
   // Actual Received Pallet Row Handlers
   const handleAddPalletRow = () => {
@@ -242,7 +242,7 @@ export function ManualInwardModal({
         id: `sf_row_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         mode: 'PALLET',
         palletNumber: String(nextPalletNum),
-        shortfallUnits: defaultUnitsPerPallet || 0
+        shortfallUnits: 0
       }
     ]);
   };
