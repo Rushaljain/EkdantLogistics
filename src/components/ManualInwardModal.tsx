@@ -21,7 +21,6 @@ import type {
 import {
   getCFSLedgerEntries,
   recordManualInward,
-  formatToDDMMYYYY,
   type ManualInwardShortfallInput,
   type ManualInwardShortFillInput,
   type RecordManualInwardParams
@@ -46,8 +45,6 @@ export function ManualInwardModal({
   onClose,
   onSuccess
 }: ManualInwardModalProps): React.JSX.Element | null {
-  const [todayStr] = useState(() => formatToDDMMYYYY(new Date()));
-
   // Existing entries for autocompleting customers and discovering open shortfalls
   const existingEntries = useMemo(() => getCFSLedgerEntries(), []);
 
@@ -69,22 +66,22 @@ export function ManualInwardModal({
     });
   }, [existingEntries]);
 
-  // Form State: Identity & Party
+  // Form State: Identity & Party (Clean blank defaults)
   const [customInvoiceNo, setCustomInvoiceNo] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState(todayStr);
+  const [invoiceDate, setInvoiceDate] = useState('');
   const [customer, setCustomer] = useState('');
-  const [exporterShipper, setExporterShipper] = useState('EXIDE INDUSTRIES LIMITED');
+  const [exporterShipper, setExporterShipper] = useState('');
   const [pod, setPod] = useState('');
 
   // Quantities & Exact Weights (Point X manual inputs)
-  const [invoicedPalletsStr, setInvoicedPalletsStr] = useState('1');
+  const [invoicedPalletsStr, setInvoicedPalletsStr] = useState('');
   const [invoicedBatteriesStr, setInvoicedBatteriesStr] = useState('');
   const [manualGrossWeightKgStr, setManualGrossWeightKgStr] = useState('');
   const [manualNetWeightKgStr, setManualNetWeightKgStr] = useState('');
 
   // Gate-In & Transport Logistics
-  const [truckReportingDate, setTruckReportingDate] = useState(todayStr);
-  const [cartingInDate, setCartingInDate] = useState(todayStr);
+  const [truckReportingDate, setTruckReportingDate] = useState('');
+  const [cartingInDate, setCartingInDate] = useState('');
   const [vehicleNo, setVehicleNo] = useState('');
   const [cartingSlipNo, setCartingSlipNo] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -104,9 +101,38 @@ export function ManualInwardModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Clean reset form state
+  const resetForm = () => {
+    setCustomInvoiceNo('');
+    setInvoiceDate('');
+    setCustomer('');
+    setExporterShipper('');
+    setPod('');
+    setInvoicedPalletsStr('');
+    setInvoicedBatteriesStr('');
+    setManualGrossWeightKgStr('');
+    setManualNetWeightKgStr('');
+    setTruckReportingDate('');
+    setCartingInDate('');
+    setVehicleNo('');
+    setCartingSlipNo('');
+    setRemarks('');
+    setReceiptMode('RECEIVED_FULL');
+    setShortfallRows([]);
+    setSelectedPriorInvoiceNo('');
+    setShortFillPalletNumber('');
+    setShortFillUnitsStr('');
+    setErrorMsg(null);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
   // Auto-calculated numbers
-  const invPallets = Math.max(1, parseInt(invoicedPalletsStr, 10) || 1);
-  const invBatteries = Math.max(0, parseInt(invoicedBatteriesStr, 10) || 0);
+  const invPallets = parseInt(invoicedPalletsStr, 10) || 0;
+  const invBatteries = parseInt(invoicedBatteriesStr, 10) || 0;
   const grossKg = parseFloat(manualGrossWeightKgStr) || 0;
   const netKg = manualNetWeightKgStr.trim() ? parseFloat(manualNetWeightKgStr) : undefined;
 
@@ -301,6 +327,7 @@ export function ManualInwardModal({
       };
 
       const newEntry = recordManualInward(inwardParams);
+      resetForm();
       onSuccess(newEntry);
       onClose();
     } catch (err: any) {
@@ -325,13 +352,10 @@ export function ManualInwardModal({
               <h2 className="text-sm sm:text-base font-bold text-content-primary tracking-tight">
                 Stock-In / Manual Inward Entry
               </h2>
-              <p className="text-xs text-content-secondary">
-                Direct structured entry with exact decimal weights, shortfall tracking, and short-fill linking.
-              </p>
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
             title="Close"
           >
@@ -365,7 +389,6 @@ export function ManualInwardModal({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. TAL008172A"
                   value={customInvoiceNo}
                   onChange={(e) => setCustomInvoiceNo(e.target.value.toUpperCase())}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary focus:ring-1 focus:ring-brand-primary text-content-primary font-mono font-medium outline-none transition-colors"
@@ -378,7 +401,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="DD.MM.YYYY"
                   value={invoiceDate}
                   onChange={(e) => setInvoiceDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono outline-none transition-colors"
@@ -393,7 +415,6 @@ export function ManualInwardModal({
                   type="text"
                   required
                   list="known-customers-list"
-                  placeholder="e.g. NICKEL GLASS & BATTERIES"
                   value={customer}
                   onChange={(e) => setCustomer(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary outline-none transition-colors"
@@ -411,7 +432,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="EXIDE INDUSTRIES LIMITED"
                   value={exporterShipper}
                   onChange={(e) => setExporterShipper(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary outline-none transition-colors"
@@ -424,7 +444,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. JEDDAH PORT, KSA"
                   value={pod}
                   onChange={(e) => setPod(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary outline-none transition-colors"
@@ -439,9 +458,6 @@ export function ManualInwardModal({
               <span className="text-xs font-bold text-content-primary uppercase tracking-wider">
                 2. Invoiced Quantities & Exact Weights
               </span>
-              <span className="text-[11px] text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                Point X: Exact Decimal Weights
-              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
@@ -454,7 +470,6 @@ export function ManualInwardModal({
                   min="1"
                   step="1"
                   required
-                  placeholder="e.g. 7"
                   value={invoicedPalletsStr}
                   onChange={(e) => setInvoicedPalletsStr(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-medium outline-none transition-colors"
@@ -470,7 +485,6 @@ export function ManualInwardModal({
                   min="1"
                   step="1"
                   required
-                  placeholder="e.g. 215"
                   value={invoicedBatteriesStr}
                   onChange={(e) => setInvoicedBatteriesStr(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-medium outline-none transition-colors"
@@ -485,7 +499,6 @@ export function ManualInwardModal({
                   type="number"
                   step="any"
                   required
-                  placeholder="e.g. 8657.35"
                   value={manualGrossWeightKgStr}
                   onChange={(e) => setManualGrossWeightKgStr(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono font-bold outline-none transition-colors"
@@ -499,7 +512,6 @@ export function ManualInwardModal({
                 <input
                   type="number"
                   step="any"
-                  placeholder="e.g. 8447.35"
                   value={manualNetWeightKgStr}
                   onChange={(e) => setManualNetWeightKgStr(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono outline-none transition-colors"
@@ -523,7 +535,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="DD.MM.YYYY"
                   value={truckReportingDate}
                   onChange={(e) => setTruckReportingDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono outline-none transition-colors"
@@ -536,7 +547,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="DD.MM.YYYY"
                   value={cartingInDate}
                   onChange={(e) => setCartingInDate(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono outline-none transition-colors"
@@ -549,7 +559,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. MH-46-AR-1234"
                   value={vehicleNo}
                   onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary font-mono outline-none transition-colors"
@@ -562,7 +571,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="Slip No."
                   value={cartingSlipNo}
                   onChange={(e) => setCartingSlipNo(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary outline-none transition-colors"
@@ -575,7 +583,6 @@ export function ManualInwardModal({
                 </label>
                 <input
                   type="text"
-                  placeholder="Optional remarks"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-surface border border-divider focus:border-brand-primary text-content-primary outline-none transition-colors"
@@ -839,7 +846,6 @@ export function ManualInwardModal({
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Pallet 1"
                       value={shortFillPalletNumber}
                       onChange={(e) => setShortFillPalletNumber(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg bg-surface border border-divider text-content-primary font-mono outline-none"
@@ -873,7 +879,7 @@ export function ManualInwardModal({
           <div className="pt-3 border-t border-divider flex items-center justify-end space-x-2.5">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={isSubmitting}
               className="px-4 py-2 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary hover:text-content-primary text-xs font-semibold transition-colors cursor-pointer"
             >
