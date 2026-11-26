@@ -15,7 +15,8 @@ import type {
   ShortfallMode,
   ShortfallRecord,
   LinkedShortFill,
-  MergedTransfer
+  MergedTransfer,
+  TrashBinItem
 } from '../types/index.ts';
 import { createEmptyShipmentJSON } from '../types/index.ts';
 import { autoAllocate20GPContainers } from './manifestKeywordReference.ts';
@@ -32,6 +33,7 @@ export function toExactWeight(val?: number | null): number {
 export const CFS_LEDGER_STORAGE_KEY = 'ekdant_cha_cfs_ledger_v1';
 export const CFS_MOVEMENT_LOGS_STORAGE_KEY = 'ekdant_cha_cfs_movement_logs_v1';
 export const LEGACY_CFS_MOVEMENT_LOGS_KEY = 'ekdant_cha_movement_logs_v1';
+export const CFS_TRASH_BIN_STORAGE_KEY = 'ekdant_cha_cfs_trash_bin_v1';
 
 // =========================================================================
 // Sprint 7: Supabase Cloud Persistence & Cache Synchronization Engine
@@ -206,18 +208,39 @@ export function getMonthFromDate(dateInput?: string | Date | null): string {
 
 /**
  * Safe day difference calculation avoiding negative serial-date bugs
+ * Accurately parses DD.MM.YYYY, YYYY-MM-DD, or ISO date strings
  */
 export function safeDiffDays(startDateStr?: string, endDateStr?: string): number {
   if (!startDateStr || !startDateStr.trim()) return 0;
-  const start = new Date(startDateStr);
-  if (isNaN(start.getTime())) return 0;
 
-  const end = endDateStr && endDateStr.trim() ? new Date(endDateStr) : new Date();
-  if (isNaN(end.getTime())) return 0;
+  function parseDateSafe(s: string): Date | null {
+    const trimmed = s.trim();
+    const parts = trimmed.split(/[./-]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        return isNaN(d.getTime()) ? null : d;
+      } else if (parts[2].length === 4 || parts[2].length === 2) {
+        // DD.MM.YYYY
+        const yr = parts[2].length === 2 ? 2000 + parseInt(parts[2], 10) : parseInt(parts[2], 10);
+        const d = new Date(yr, parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+        return isNaN(d.getTime()) ? null : d;
+      }
+    }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const start = parseDateSafe(startDateStr);
+  if (!start) return 0;
+
+  const end = endDateStr && endDateStr.trim() ? parseDateSafe(endDateStr) : new Date();
+  if (!end) return 0;
 
   const diffMs = end.getTime() - start.getTime();
   if (diffMs < 0) return 0;
-  return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 }
 
 /**
@@ -293,7 +316,292 @@ export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry
 }
 
 /**
- * Reads all CFS Ledger entries from localStorage
+ * Reads all deleted CFS Ledger entries from localStorage Trash Bin
+ */
+export function getCFSTrashBinEntries(): TrashBinItem[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(CFS_TRASH_BIN_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('[CFSTrashBin] Failed to read from localStorage:', err);
+    return [];
+  }
+}
+
+/**
+ * Saves deleted CFS Ledger entries to localStorage Trash Bin
+ */
+export function saveCFSTrashBinEntries(items: TrashBinItem[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CFS_TRASH_BIN_STORAGE_KEY, JSON.stringify(items));
+  } catch (err) {
+    console.warn('[CFSTrashBin] Failed to save to localStorage:', err);
+  }
+}
+
+/**
+ * Self-healing validator: Scans active entries for shortfall fulfillments linked to
+ * inward entries that no longer exist in the ledger. Reverts those ghost fulfillments
+ * back to OPEN/PARTIAL_FILL shortfall status so inventory remains 100% accurate.
+ */
+export function reconcileShortfallsWithActiveInwards(entries: CFSLedgerEntry[]): {
+  reconciled: CFSLedgerEntry[];
+  changed: boolean;
+} {
+  const activeIds = new Set(entries.map((e) => e.id));
+  const activeInvoices = new Set(
+    entries
+      .map((e) => (e.customInvoiceNo || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+  let hasChanges = false;
+
+  const reconciled = entries.map((entry) => {
+    if (!entry.shortfalls || entry.shortfalls.length === 0) {
+      return entry;
+    }
+
+    let entryChanged = false;
+    let totalUnitsRestored = 0;
+    let totalPalletsRestored = 0;
+
+    const healedShortfalls = entry.shortfalls.map((sf) => {
+      if (!sf.linkedShortFills || sf.linkedShortFills.length === 0) {
+        return sf;
+      }
+
+      const validLinks: LinkedShortFill[] = [];
+      const deadLinks: LinkedShortFill[] = [];
+
+      sf.linkedShortFills.forEach((lsf) => {
+        const linkIdExists = lsf.shortFillLedgerId && activeIds.has(lsf.shortFillLedgerId);
+        const linkInvExists =
+          lsf.shortFillInvoiceNo &&
+          activeInvoices.has(lsf.shortFillInvoiceNo.trim().toUpperCase());
+
+        if (linkIdExists || linkInvExists) {
+          validLinks.push(lsf);
+        } else {
+          deadLinks.push(lsf);
+        }
+      });
+
+      if (deadLinks.length === 0) {
+        return sf;
+      }
+
+      entryChanged = true;
+      hasChanges = true;
+
+      const deadUnits = deadLinks.reduce((sum, d) => sum + (d.unitsFilled || 0), 0);
+      totalUnitsRestored += deadUnits;
+
+      const newRemaining = Math.min(sf.shortfallUnits, (sf.remainingShortfallUnits || 0) + deadUnits);
+      const wasCleared = sf.status === 'CLEARED' || sf.status === 'FULFILLED';
+      if (sf.mode === 'PALLET' && wasCleared && newRemaining > 0) {
+        totalPalletsRestored += 1;
+      }
+
+      const newStatus =
+        newRemaining === 0
+          ? 'CLEARED'
+          : newRemaining < sf.shortfallUnits
+          ? 'PARTIAL_FILL'
+          : 'OPEN';
+
+      return {
+        ...sf,
+        remainingShortfallUnits: newRemaining,
+        status: newStatus as 'OPEN' | 'PARTIAL_FILL' | 'CLEARED' | 'FULFILLED',
+        clearedDate: newStatus === 'CLEARED' ? sf.clearedDate : undefined,
+        clearedMonth: newStatus === 'CLEARED' ? sf.clearedMonth : undefined,
+        fulfilledDate: undefined,
+        fulfilledMonth: undefined,
+        fulfilledContainerNo: undefined,
+        linkedShortFills: validLinks
+      };
+    });
+
+    if (!entryChanged) {
+      return entry;
+    }
+
+    const newShortfallBatteries = healedShortfalls.reduce(
+      (sum, sf) => sum + sf.remainingShortfallUnits,
+      0
+    );
+    const newShortfallPallets = healedShortfalls.filter(
+      (sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED'
+    ).length;
+
+    const newRecdBatteries = Math.max(0, (entry.actualReceivedBatteries || 0) - totalUnitsRestored);
+    const newRecdPallets = Math.max(0, (entry.actualReceivedPallets || 0) - totalPalletsRestored);
+    const newBalBatteries = Math.max(0, (entry.balanceBatteries || 0) - totalUnitsRestored);
+    const newBalPallets = Math.max(0, (entry.balancePallets || 0) - totalPalletsRestored);
+
+    return recomputeCFSDerivedFields({
+      ...entry,
+      actualReceivedBatteries: newRecdBatteries,
+      actualReceivedPallets: newRecdPallets,
+      balanceBatteries: newBalBatteries,
+      balancePallets: newBalPallets,
+      shortfalls: healedShortfalls,
+      shortfallBatteries: newShortfallBatteries,
+      shortfallPallets: newShortfallPallets,
+      receiptMode: newShortfallBatteries > 0 ? 'SHORT_FALL' : entry.receiptMode,
+      updatedAt: new Date().toISOString()
+    });
+  });
+
+  return { reconciled, changed: hasChanges };
+}
+
+/**
+ * Cascading Rollback: When shortfill inward entries are deleted, locates the prior
+ * shortfall invoices that were fulfilled by those entries, rolls back the fulfilled
+ * quantities, clears the linked records, and restores the shortfall to OPEN status.
+ */
+export function rollbackShortfillsFromDeletedEntries(
+  entriesBeingDeleted: CFSLedgerEntry[],
+  activeEntries: CFSLedgerEntry[]
+): CFSLedgerEntry[] {
+  let updatedEntries = [...activeEntries];
+
+  entriesBeingDeleted.forEach((deletedEntry) => {
+    const directLinks = deletedEntry.shortFillLinks || [];
+    const deletedInvoiceNo = (deletedEntry.customInvoiceNo || '').trim().toUpperCase();
+    const deletedId = deletedEntry.id;
+
+    updatedEntries = updatedEntries.map((entry) => {
+      const hasMatchingLink = (entry.shortfalls || []).some((sf) =>
+        (sf.linkedShortFills || []).some(
+          (lsf) =>
+            lsf.shortFillLedgerId === deletedId ||
+            (deletedInvoiceNo && lsf.shortFillInvoiceNo.trim().toUpperCase() === deletedInvoiceNo)
+        )
+      );
+
+      const hasDirectLink = directLinks.some(
+        (dl) =>
+          (dl.priorShortfallLedgerId && dl.priorShortfallLedgerId === entry.id) ||
+          (dl.priorShortfallInvoiceNo &&
+            dl.priorShortfallInvoiceNo.trim().toUpperCase() ===
+              (entry.customInvoiceNo || '').trim().toUpperCase())
+      );
+
+      if (!hasMatchingLink && !hasDirectLink) {
+        return entry;
+      }
+
+      let totalUnitsReverted = 0;
+      let totalPalletsReverted = 0;
+
+      const updatedShortfalls = (entry.shortfalls || []).map((sf) => {
+        const removedLinks: LinkedShortFill[] = [];
+        const keptLinks: LinkedShortFill[] = [];
+
+        (sf.linkedShortFills || []).forEach((lsf) => {
+          const isFromDeleted =
+            lsf.shortFillLedgerId === deletedId ||
+            (deletedInvoiceNo &&
+              lsf.shortFillInvoiceNo.trim().toUpperCase() === deletedInvoiceNo);
+
+          if (isFromDeleted) {
+            removedLinks.push(lsf);
+          } else {
+            keptLinks.push(lsf);
+          }
+        });
+
+        if (removedLinks.length === 0) {
+          return sf;
+        }
+
+        const unitsLost = removedLinks.reduce((sum, l) => sum + (l.unitsFilled || 0), 0);
+        totalUnitsReverted += unitsLost;
+
+        const newRemaining = Math.min(sf.shortfallUnits, (sf.remainingShortfallUnits || 0) + unitsLost);
+        const wasCleared = sf.status === 'CLEARED' || sf.status === 'FULFILLED';
+        if (sf.mode === 'PALLET' && wasCleared && newRemaining > 0) {
+          totalPalletsReverted += 1;
+        }
+
+        const newStatus =
+          newRemaining === 0
+            ? 'CLEARED'
+            : newRemaining < sf.shortfallUnits
+            ? 'PARTIAL_FILL'
+            : 'OPEN';
+
+        return {
+          ...sf,
+          remainingShortfallUnits: newRemaining,
+          status: newStatus as 'OPEN' | 'PARTIAL_FILL' | 'CLEARED' | 'FULFILLED',
+          clearedDate: newStatus === 'CLEARED' ? sf.clearedDate : undefined,
+          clearedMonth: newStatus === 'CLEARED' ? sf.clearedMonth : undefined,
+          fulfilledDate: undefined,
+          fulfilledMonth: undefined,
+          fulfilledContainerNo: undefined,
+          linkedShortFills: keptLinks
+        };
+      });
+
+      if ((entry.shortfalls || []).length === 0 && hasDirectLink) {
+        const matchingLinks = directLinks.filter(
+          (dl) =>
+            (dl.priorShortfallLedgerId && dl.priorShortfallLedgerId === entry.id) ||
+            (dl.priorShortfallInvoiceNo &&
+              dl.priorShortfallInvoiceNo.trim().toUpperCase() ===
+                (entry.customInvoiceNo || '').trim().toUpperCase())
+        );
+        matchingLinks.forEach((ml) => {
+          totalUnitsReverted += ml.unitsFilled || 0;
+          if (ml.palletNumber) totalPalletsReverted += 1;
+        });
+      }
+
+      const newShortfallBatteries = updatedShortfalls.length > 0
+        ? updatedShortfalls.reduce((sum, sf) => sum + sf.remainingShortfallUnits, 0)
+        : (entry.shortfallBatteries || 0) + totalUnitsReverted;
+
+      const newShortfallPallets = updatedShortfalls.length > 0
+        ? updatedShortfalls.filter(
+            (sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED'
+          ).length
+        : (entry.shortfallPallets || 0) + totalPalletsReverted;
+
+      const newRecdBatteries = Math.max(0, (entry.actualReceivedBatteries || 0) - totalUnitsReverted);
+      const newRecdPallets = Math.max(0, (entry.actualReceivedPallets || 0) - totalPalletsReverted);
+      const newBalBatteries = Math.max(0, (entry.balanceBatteries || 0) - totalUnitsReverted);
+      const newBalPallets = Math.max(0, (entry.balancePallets || 0) - totalPalletsReverted);
+
+      const updated = recomputeCFSDerivedFields({
+        ...entry,
+        actualReceivedBatteries: newRecdBatteries,
+        actualReceivedPallets: newRecdPallets,
+        balanceBatteries: newBalBatteries,
+        balancePallets: newBalPallets,
+        shortfalls: updatedShortfalls,
+        shortfallBatteries: newShortfallBatteries,
+        shortfallPallets: newShortfallPallets,
+        receiptMode: newShortfallBatteries > 0 ? 'SHORT_FALL' : entry.receiptMode,
+        updatedAt: new Date().toISOString()
+      });
+
+      syncEntryToCloud(updated);
+      return updated;
+    });
+  });
+
+  return updatedEntries;
+}
+
+/**
+ * Reads all CFS Ledger entries from localStorage with automated self-healing
  */
 export function getCFSLedgerEntries(): CFSLedgerEntry[] {
   if (typeof window === 'undefined') return [];
@@ -301,7 +609,17 @@ export function getCFSLedgerEntries(): CFSLedgerEntry[] {
     const raw = window.localStorage.getItem(CFS_LEDGER_STORAGE_KEY);
     if (!raw) return [];
     const parsed: CFSLedgerEntry[] = JSON.parse(raw);
-    return parsed.map((e) => recomputeCFSDerivedFields(e));
+    const recomputed = parsed.map((e) => recomputeCFSDerivedFields(e));
+
+    // Self-healing check: automatically detect and restore orphaned shortfalls
+    const { reconciled, changed } = reconcileShortfallsWithActiveInwards(recomputed);
+    if (changed) {
+      console.info('[CFSLedger] Self-healed orphaned shortfall records');
+      saveCFSLedgerEntries(reconciled);
+      return reconciled;
+    }
+
+    return recomputed;
   } catch (err) {
     console.warn('[CFSLedger] Failed to read from localStorage:', err);
     return [];
@@ -342,24 +660,164 @@ export function addOrUpdateCFSEntry(entry: CFSLedgerEntry): CFSLedgerEntry {
 }
 
 /**
- * Deletes an entry by ID
+ * Deletes an entry by ID with soft-delete to Recycle Bin and cascading rollback of shortfills
  */
-export function deleteCFSEntry(id: string): void {
+export function deleteCFSEntry(id: string, reason?: string): void {
   const existing = getCFSLedgerEntries();
-  const filtered = existing.filter((e) => e.id !== id);
-  saveCFSLedgerEntries(filtered);
+  const entryToDelete = existing.find((e) => e.id === id);
+  if (!entryToDelete) return;
+
+  // 1. Move to Recycle Bin
+  const trashItems = getCFSTrashBinEntries();
+  const newTrashItem: TrashBinItem = {
+    id: entryToDelete.id,
+    deletedAt: new Date().toISOString(),
+    deletedReason: reason || 'Deleted from warehouse inventory',
+    entry: entryToDelete
+  };
+  saveCFSTrashBinEntries([newTrashItem, ...trashItems.filter((t) => t.id !== id)].slice(0, 100));
+
+  // 2. Cascade rollback on any prior shortfalls fulfilled by this inward
+  const remaining = existing.filter((e) => e.id !== id);
+  const updatedRemaining = rollbackShortfillsFromDeletedEntries([entryToDelete], remaining);
+
+  // 3. Save active ledger
+  saveCFSLedgerEntries(updatedRemaining);
   deleteEntryFromCloud(id);
 }
 
 /**
- * Deletes multiple entries by IDs
+ * Deletes multiple entries by IDs with soft-delete to Recycle Bin and cascading rollback
  */
-export function deleteCFSEntries(ids: string[]): void {
+export function deleteCFSEntries(ids: string[], reason?: string): void {
   const idSet = new Set(ids);
   const existing = getCFSLedgerEntries();
-  const filtered = existing.filter((e) => !idSet.has(e.id));
-  saveCFSLedgerEntries(filtered);
+  const entriesToDelete = existing.filter((e) => idSet.has(e.id));
+  if (entriesToDelete.length === 0) return;
+
+  // 1. Move to Recycle Bin
+  const trashItems = getCFSTrashBinEntries();
+  const now = new Date().toISOString();
+  const newTrashItems: TrashBinItem[] = entriesToDelete.map((entry) => ({
+    id: entry.id,
+    deletedAt: now,
+    deletedReason: reason || 'Batch deleted from warehouse inventory',
+    entry
+  }));
+  saveCFSTrashBinEntries([...newTrashItems, ...trashItems.filter((t) => !idSet.has(t.id))].slice(0, 100));
+
+  // 2. Cascade rollback
+  const remaining = existing.filter((e) => !idSet.has(e.id));
+  const updatedRemaining = rollbackShortfillsFromDeletedEntries(entriesToDelete, remaining);
+
+  // 3. Save active ledger
+  saveCFSLedgerEntries(updatedRemaining);
   ids.forEach((id) => deleteEntryFromCloud(id));
+}
+
+/**
+ * Restores a deleted entry from the Recycle Bin and re-applies shortfill fulfillment
+ */
+export function restoreDeletedCFSEntry(id: string): CFSLedgerEntry | null {
+  const trashItems = getCFSTrashBinEntries();
+  const target = trashItems.find((t) => t.id === id);
+  if (!target) return null;
+
+  // 1. Remove from trash
+  const updatedTrash = trashItems.filter((t) => t.id !== id);
+  saveCFSTrashBinEntries(updatedTrash);
+
+  // 2. Add back to active entries
+  const activeEntries = getCFSLedgerEntries();
+  const entryToRestore = target.entry;
+
+  // 3. If this inward was a shortfill, re-apply the shortfill reconciliation to the target shortfall invoice
+  if (entryToRestore.shortFillLinks && entryToRestore.shortFillLinks.length > 0) {
+    const today = new Date().toLocaleDateString('en-GB').replace(/\//g, '.');
+    entryToRestore.shortFillLinks.forEach((link) => {
+      const priorIdx = activeEntries.findIndex(
+        (e) =>
+          (link.priorShortfallLedgerId && e.id === link.priorShortfallLedgerId) ||
+          (link.priorShortfallInvoiceNo &&
+            e.customInvoiceNo.trim().toUpperCase() === link.priorShortfallInvoiceNo.trim().toUpperCase())
+      );
+
+      if (priorIdx !== -1) {
+        const prior = activeEntries[priorIdx];
+        let unitsToAllocate = link.unitsFilled;
+        let palletsAllocated = 0;
+
+        const updatedShortfalls = (prior.shortfalls || []).map((sf) => {
+          if (unitsToAllocate <= 0 || sf.status === 'CLEARED' || sf.status === 'FULFILLED') return sf;
+          const matchPallet = !link.palletNumber || String(sf.palletNumber).trim() === String(link.palletNumber).trim();
+          if (!matchPallet) return sf;
+
+          const fillAmt = Math.min(unitsToAllocate, sf.remainingShortfallUnits);
+          unitsToAllocate -= fillAmt;
+          const newRemaining = Math.max(0, sf.remainingShortfallUnits - fillAmt);
+          const isCleared = newRemaining === 0;
+          if (sf.mode === 'PALLET' && isCleared) palletsAllocated += 1;
+
+          const lsf: LinkedShortFill = {
+            shortFillInvoiceNo: entryToRestore.customInvoiceNo,
+            shortFillLedgerId: entryToRestore.id,
+            palletNumber: sf.palletNumber,
+            arrivedPalletNumber: link.arrivedPalletNumber,
+            unitsFilled: fillAmt,
+            filledDate: today,
+            filledMonth: entryToRestore.month
+          };
+
+          return {
+            ...sf,
+            remainingShortfallUnits: newRemaining,
+            status: isCleared ? ('CLEARED' as const) : ('PARTIAL_FILL' as const),
+            clearedDate: isCleared ? today : sf.clearedDate,
+            clearedMonth: isCleared ? entryToRestore.month : sf.clearedMonth,
+            linkedShortFills: [...(sf.linkedShortFills || []), lsf]
+          };
+        });
+
+        const remainingBatteries = updatedShortfalls.reduce((sum, sf) => sum + sf.remainingShortfallUnits, 0);
+        const remainingPallets = updatedShortfalls.filter(
+          (sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED'
+        ).length;
+
+        activeEntries[priorIdx] = recomputeCFSDerivedFields({
+          ...prior,
+          actualReceivedPallets: (prior.actualReceivedPallets || 0) + palletsAllocated,
+          actualReceivedBatteries: (prior.actualReceivedBatteries || 0) + link.unitsFilled,
+          balancePallets: (prior.balancePallets || 0) + palletsAllocated,
+          balanceBatteries: (prior.balanceBatteries || 0) + link.unitsFilled,
+          shortfalls: updatedShortfalls,
+          shortfallBatteries: remainingBatteries,
+          shortfallPallets: remainingPallets,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    });
+  }
+
+  activeEntries.push(entryToRestore);
+  saveCFSLedgerEntries(activeEntries);
+  syncEntryToCloud(entryToRestore);
+
+  return entryToRestore;
+}
+
+/**
+ * Permanently removes an entry from the Recycle Bin
+ */
+export function permanentlyDeleteCFSEntry(id: string): void {
+  const trashItems = getCFSTrashBinEntries();
+  saveCFSTrashBinEntries(trashItems.filter((t) => t.id !== id));
+}
+
+/**
+ * Clears all entries from the Recycle Bin
+ */
+export function emptyCFSTrashBin(): void {
+  saveCFSTrashBinEntries([]);
 }
 
 /**
@@ -694,7 +1152,8 @@ export function confirmStuffingDispatch(
     stuffingDate?: string;
     pickupDate?: string;
     portGateInDate?: string;
-  }
+  },
+  palletUnitMap?: Record<string, number>
 ): { updatedEntries: CFSLedgerEntry[]; stuffedCount: number } {
   if (selectedPalletIds.length === 0) return { updatedEntries: [], stuffedCount: 0 };
 
@@ -714,19 +1173,40 @@ export function confirmStuffingDispatch(
 
     const updatedPallets = (entry.pallets || []).map((p) => {
       if (selectedSet.has(p.id) && p.status !== 'STUFFED_DISPATCHED') {
-        newlyStuffedPallets += 1;
-        newlyStuffedBatteries += p.receivedBatteries || p.invoicedBatteries || 0;
-        return {
-          ...p,
-          status: 'STUFFED_DISPATCHED' as const,
-          containerNo: dispatchDetails.containerNo,
-          stuffedDate: dispatchDetails.stuffingDate || today
-        };
+        const availableUnits = p.receivedBatteries || p.invoicedBatteries || 0;
+        const requestedUnits = palletUnitMap?.[p.id] ?? p.allocatedUnits ?? availableUnits;
+        const unitsToDispatch = Math.min(availableUnits, Math.max(0, requestedUnits));
+        const isFullDispatch = unitsToDispatch >= availableUnits;
+
+        if (isFullDispatch) {
+          newlyStuffedPallets += 1;
+          newlyStuffedBatteries += availableUnits;
+          return {
+            ...p,
+            status: 'STUFFED_DISPATCHED' as const,
+            containerNo: dispatchDetails.containerNo,
+            stuffedDate: dispatchDetails.stuffingDate || today,
+            allocatedUnits: undefined
+          };
+        } else {
+          // Partial unit dispatch: keep pallet in warehouse with remaining units
+          const remainingUnits = availableUnits - unitsToDispatch;
+          const ratioRemaining = availableUnits > 0 ? remainingUnits / availableUnits : 1;
+          newlyStuffedBatteries += unitsToDispatch;
+          return {
+            ...p,
+            receivedBatteries: remainingUnits,
+            grossWeightKg: toExactWeight((p.grossWeightKg || 0) * ratioRemaining),
+            netWeightKg: p.netWeightKg !== undefined ? toExactWeight(p.netWeightKg * ratioRemaining) : 0,
+            status: 'IN_WAREHOUSE' as const,
+            allocatedUnits: undefined
+          };
+        }
       }
       return p;
     });
 
-    totalStuffedCount += newlyStuffedPallets;
+    totalStuffedCount += newlyStuffedPallets > 0 ? newlyStuffedPallets : 1;
 
     const updated = recomputeCFSDerivedFields({
       ...entry,
@@ -937,16 +1417,31 @@ export function buildShipmentFromStockPallets(
   destinationPort?: string,
   exporterShipper?: string
 ): ExtractedShipmentJSON {
-  const palletItems: PalletItem[] = selectedPallets.map((p, idx) => ({
-    palletNumber: String(p.palletNumber || idx + 1),
-    modelCode: p.model || 'STANDARD',
-    brand: p.brand || '',
-    invoiceNumber: p.invoiceNumber || '',
-    boxCount: p.receivedBatteries || p.invoicedBatteries || 0,
-    grossWeightKg: p.grossWeightKg || 0,
-    netWeightKg: p.netWeightKg || 0,
-    sourceFile: 'CFS_WAREHOUSE'
-  }));
+  const selectedPalletUnits: Record<string, number> = {};
+  selectedPallets.forEach((p) => {
+    if (p.allocatedUnits !== undefined && p.allocatedUnits > 0) {
+      selectedPalletUnits[p.id] = p.allocatedUnits;
+    }
+  });
+
+  const palletItems: PalletItem[] = selectedPallets.map((p, idx) => {
+    const fullUnits = p.receivedBatteries || p.invoicedBatteries || 0;
+    const actualUnits = p.allocatedUnits !== undefined && p.allocatedUnits > 0 ? p.allocatedUnits : fullUnits;
+    const ratio = fullUnits > 0 ? actualUnits / fullUnits : 1;
+    const grossKg = toExactWeight((p.grossWeightKg || 0) * ratio);
+    const netKg = p.netWeightKg ? toExactWeight(p.netWeightKg * ratio) : 0;
+
+    return {
+      palletNumber: String(p.palletNumber || idx + 1),
+      modelCode: p.model || 'STANDARD',
+      brand: p.brand || '',
+      invoiceNumber: p.invoiceNumber || '',
+      boxCount: actualUnits,
+      grossWeightKg: grossKg,
+      netWeightKg: netKg,
+      sourceFile: 'CFS_WAREHOUSE'
+    };
+  });
 
   const totalPallets = palletItems.length;
   const totalBoxes = palletItems.reduce((s, p) => s + (p.boxCount || 0), 0);
@@ -956,23 +1451,71 @@ export function buildShipmentFromStockPallets(
   const uniqueInvoices: string[] = Array.from(new Set(palletItems.map((p) => p.invoiceNumber).filter((inv): inv is string => Boolean(inv))));
   const primaryInvoice = uniqueInvoices[0] || 'DISPATCH-1';
 
+  // Retrieve source ledger metadata if available
+  const ledgerEntries = getCFSLedgerEntries();
+  const matchedEntries = ledgerEntries.filter((e) =>
+    uniqueInvoices.some((inv) => inv.toUpperCase() === e.customInvoiceNo?.trim().toUpperCase())
+  );
+  const firstEntry = matchedEntries[0];
+  const src = firstEntry?.sourceShipmentJson;
+
+  const matchedSbLines: string[] = [];
+  matchedEntries.forEach((entry) => {
+    if (entry.shippingBillNo) {
+      const dt = entry.shippingBillDate ? ` DT. ${entry.shippingBillDate}` : '';
+      matchedSbLines.push(`SB NO. ${entry.shippingBillNo}${dt}`);
+    }
+  });
+  const shippingBillNumbers = Array.from(new Set(matchedSbLines)).join('\n');
+
+  const palletNumbers = Array.from(new Set(palletItems.map((p) => p.palletNumber).filter(Boolean)));
+  const synthesizedRange = palletNumbers.length > 0
+    ? (palletNumbers.length === 1 ? palletNumbers[0] : `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`)
+    : '';
+  const marksLines = [customerName, destinationPort].filter(Boolean);
+  if (synthesizedRange) marksLines.push(synthesizedRange);
+  const shippingMarks = marksLines.join('\n');
+
   // Run deterministic 20' GP multi-container planner
   const allocatedContainers = autoAllocate20GPContainers(palletItems, [], '', '');
   const totalTare = allocatedContainers.reduce((sum, c) => sum + (c.tareWeightKg || 2150), 0);
 
   const base = createEmptyShipmentJSON(uniqueInvoices.length > 1 ? 'MULTI_INVOICE' : 'SINGLE_INVOICE');
 
+  let resolvedCustomerName = customerName || src?.consigneeName || firstEntry?.customer || '';
+  let resolvedCustomerAddress = src?.consigneeAddress || firstEntry?.consigneeAddress || '';
+  if (resolvedCustomerName.includes('\n') && !resolvedCustomerAddress) {
+    const lines = resolvedCustomerName.split('\n').map((l) => l.trim()).filter(Boolean);
+    resolvedCustomerName = lines[0];
+    resolvedCustomerAddress = lines.slice(1).join('\n');
+  }
+
   return {
     ...base,
-    shipperName: exporterShipper || '',
-    consigneeName: customerName || '',
+    shipperName: exporterShipper || src?.shipperName || '',
+    shipperAddress: src?.shipperAddress || '',
+    shipperIec: src?.shipperIec || '',
+    shipperGstin: src?.shipperGstin || '',
+    consigneeName: resolvedCustomerName,
+    consigneeAddress: resolvedCustomerAddress,
+    notifyPartyName: src?.notifyPartyName || 'SAME AS CONSIGNEE',
+    notifyPartyAddress: src?.notifyPartyAddress || '',
     invoiceNumbers: uniqueInvoices.length > 0 ? uniqueInvoices : [primaryInvoice],
     invoiceDates: [formatToDDMMYYYY(new Date())],
     shipperReference: primaryInvoice,
-    portOfDischarge: destinationPort || '',
-    placeOfDelivery: destinationPort || '',
-    finalDestination: destinationPort || '',
-    productDescription: 'LEAD ACID BATTERIES',
+    shippingBillNumbers: shippingBillNumbers || src?.shippingBillNumbers || '',
+    vesselName: src?.vesselName || '',
+    voyageNumber: src?.voyageNumber || '',
+    carrierName: src?.carrierName || '',
+    bookingNumber: src?.bookingNumber || '',
+    portOfLoading: src?.portOfLoading || 'NHAVA SHEVA, INDIA',
+    placeOfReceipt: src?.placeOfReceipt || 'NHAVA SHEVA',
+    portOfDischarge: destinationPort || src?.portOfDischarge || '',
+    placeOfDelivery: destinationPort || src?.placeOfDelivery || '',
+    finalDestination: destinationPort || src?.finalDestination || '',
+    productDescription: src?.productDescription || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
+    brandName: src?.brandName || (palletItems[0]?.brand || ''),
+    hsnCode: src?.hsnCode || '85071000',
     properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
     unNumber: '2794',
     imoClass: '8',
@@ -985,12 +1528,15 @@ export function buildShipmentFromStockPallets(
     volumeCbm: Number((totalPallets * 1.15).toFixed(2)),
     containerType: '20GP',
     tareWeightKg: totalTare || 2150,
-    containerNumber: allocatedContainers[0]?.containerNumber || '',
-    sealNumber: allocatedContainers[0]?.sealNumber || '',
+    containerNumber: allocatedContainers[0]?.containerNumber || firstEntry?.containerNo || '',
+    sealNumber: allocatedContainers[0]?.sealNumber || firstEntry?.sealNo || '',
     containers: allocatedContainers,
     pallets: palletItems,
-    shippingMarks: `CONSIGNEE: ${customerName}\nTOTAL PALLETS: ${totalPallets}`,
-    freeTimeClause: '14 DAYS DETENTION FREE TIME AT DESTINATION',
+    selectedPalletIds: selectedPallets.map((p) => p.id),
+    selectedPalletUnits,
+    shippingMarks,
+    freightTerms: src?.freightTerms || 'FREIGHT COLLECT',
+    freeTimeClause: src?.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION',
     sourceFiles: ['CFS_WAREHOUSE_LEDGER'],
     extractedAt: new Date().toISOString()
   };
@@ -1123,20 +1669,42 @@ export function executeWorkspaceDispatch(
         : p.status === 'IN_WAREHOUSE';
 
       if (isMatch && p.status !== 'STUFFED_DISPATCHED') {
-        newlyStuffedPallets += 1;
-        newlyStuffedBatteries += (p.receivedBatteries || p.invoicedBatteries || 0);
-        newlyStuffedPalletIds.push(p.id);
-        return {
-          ...p,
-          status: 'STUFFED_DISPATCHED' as const,
-          containerNo: dispatchDetails.containerNo,
-          stuffedDate: dispatchDetails.stuffingDate || today
-        };
+        const availableUnits = p.receivedBatteries || p.invoicedBatteries || 0;
+        const requestedUnits = shipment.selectedPalletUnits?.[p.id] ?? p.allocatedUnits ?? availableUnits;
+        const unitsToDispatch = Math.min(availableUnits, Math.max(0, requestedUnits));
+        const isFullDispatch = unitsToDispatch >= availableUnits;
+
+        if (isFullDispatch) {
+          newlyStuffedPallets += 1;
+          newlyStuffedBatteries += availableUnits;
+          newlyStuffedPalletIds.push(p.id);
+          return {
+            ...p,
+            status: 'STUFFED_DISPATCHED' as const,
+            containerNo: dispatchDetails.containerNo,
+            stuffedDate: dispatchDetails.stuffingDate || today,
+            allocatedUnits: undefined
+          };
+        } else {
+          // Partial Unit Dispatch: The pallet stays IN_WAREHOUSE with remaining units
+          const remainingUnits = availableUnits - unitsToDispatch;
+          const ratioRemaining = availableUnits > 0 ? remainingUnits / availableUnits : 1;
+          newlyStuffedBatteries += unitsToDispatch;
+          newlyStuffedPalletIds.push(p.id);
+          return {
+            ...p,
+            receivedBatteries: remainingUnits,
+            grossWeightKg: toExactWeight((p.grossWeightKg || 0) * ratioRemaining),
+            netWeightKg: p.netWeightKg !== undefined ? toExactWeight(p.netWeightKg * ratioRemaining) : 0,
+            status: 'IN_WAREHOUSE' as const,
+            allocatedUnits: undefined
+          };
+        }
       }
       return p;
     });
 
-    totalStuffedCount += newlyStuffedPallets;
+    totalStuffedCount += newlyStuffedPallets > 0 ? newlyStuffedPallets : (newlyStuffedPalletIds.length > 0 ? 1 : 0);
 
     const currentDispatched = new Set(entry.dispatchedPalletIds || []);
     newlyStuffedPalletIds.forEach((id) => currentDispatched.add(id));
@@ -1159,10 +1727,10 @@ export function executeWorkspaceDispatch(
     });
 
     // Record movement log
-    if (newlyStuffedPallets > 0) {
+    if (newlyStuffedPallets > 0 || newlyStuffedBatteries > 0) {
       const grossKg = newlyStuffedPalletIds.length > 0
         ? toExactWeight(updatedPallets.filter((p) => newlyStuffedPalletIds.includes(p.id)).reduce((s, p) => s + (p.grossWeightKg || 0), 0))
-        : (entry.invoicedPallets > 0 ? toExactWeight((entry.invoicedGrossWeightKg / entry.invoicedPallets) * newlyStuffedPallets) : 0);
+        : (entry.invoicedPallets > 0 ? toExactWeight((entry.invoicedGrossWeightKg / entry.invoicedPallets) * (newlyStuffedPallets || 1)) : 0);
 
       recordMovementLog({
         receivedDate: entry.cartingInDate || entry.truckReportingDate || entry.lastPltRecdDate || today,
@@ -2243,7 +2811,10 @@ export interface ManualInwardShortFillInput {
 }
 
 export interface RecordManualInwardParams {
+  existingEntryId?: string;
   customer: string;
+  consigneeAddress?: string;
+  sourceShipmentJson?: ExtractedShipmentJSON;
   exporterShipper?: string;
   customInvoiceNo: string;
   invoiceDate?: string;
@@ -2277,9 +2848,12 @@ export interface RecordManualInwardParams {
  * Records a manual stock-inward with exact weights, shortfall handling, or short-fill reconciliation.
  */
 export function recordManualInward(params: RecordManualInwardParams): CFSLedgerEntry {
+  const allExistingLedgers = getCFSLedgerEntries();
+  const existingEntry = params.existingEntryId ? allExistingLedgers.find((e) => e.id === params.existingEntryId) : null;
+
   const today = formatToDDMMYYYY(new Date());
-  const entryMonth = params.month || getMonthFromDate(params.cartingInDate || params.truckReportingDate || new Date());
-  const entryId = `cfs_inw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const entryMonth = params.month || (existingEntry?.month) || getMonthFromDate(params.cartingInDate || params.truckReportingDate || new Date());
+  const entryId = existingEntry ? existingEntry.id : `cfs_inw_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
   const invoicedGrossKg = toExactWeight(params.invoicedGrossWeightKg);
   const invoicedNetKg = params.invoicedNetWeightKg !== undefined ? toExactWeight(params.invoicedNetWeightKg) : undefined;
@@ -2309,6 +2883,11 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
 
   // Pre-resolve proportional decimal weights across raw pallets with exact remainder balancing (0.00 kg drift)
   const totalPalletUnits = rawPallets.reduce((sum, p) => sum + (p.invoicedBatteries || 0), 0);
+  const hasShortfallInputs = Boolean(params.shortfallInputs && params.shortfallInputs.length > 0);
+  const denominatorUnits = hasShortfallInputs && params.invoicedBatteries > 0
+    ? params.invoicedBatteries
+    : (totalPalletUnits > 0 ? totalPalletUnits : (rawPallets.length || 1));
+
   let accumulatedGross = 0;
   let accumulatedNet = 0;
 
@@ -2320,10 +2899,11 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     if (p.grossWeightKg !== undefined) {
       palletGross = toExactWeight(p.grossWeightKg);
     } else {
-      if (isLast) {
+      if (isLast && !hasShortfallInputs) {
         palletGross = toExactWeight(Math.max(0, invoicedGrossKg - accumulatedGross));
       } else {
-        const ratio = totalPalletUnits > 0 ? (p.invoicedBatteries || 0) / totalPalletUnits : (1 / (rawPallets.length || 1));
+        const units = p.receivedBatteries ?? p.invoicedBatteries ?? 0;
+        const ratio = denominatorUnits > 0 ? units / denominatorUnits : (1 / (rawPallets.length || 1));
         palletGross = toExactWeight(invoicedGrossKg * ratio);
         accumulatedGross = toExactWeight(accumulatedGross + palletGross);
       }
@@ -2332,10 +2912,11 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     if (p.netWeightKg !== undefined) {
       palletNet = toExactWeight(p.netWeightKg);
     } else if (invoicedNetKg !== undefined) {
-      if (isLast) {
+      if (isLast && !hasShortfallInputs) {
         palletNet = toExactWeight(Math.max(0, invoicedNetKg - accumulatedNet));
       } else {
-        const ratio = totalPalletUnits > 0 ? (p.invoicedBatteries || 0) / totalPalletUnits : (1 / (rawPallets.length || 1));
+        const units = p.receivedBatteries ?? p.invoicedBatteries ?? 0;
+        const ratio = denominatorUnits > 0 ? units / denominatorUnits : (1 / (rawPallets.length || 1));
         palletNet = toExactWeight(invoicedNetKg * ratio);
         accumulatedNet = toExactWeight(accumulatedNet + palletNet);
       }
@@ -2350,45 +2931,28 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     };
   });
 
-  let finalPalletUnits: PalletStockUnit[] = [];
+  // 1. Physically received stock enters active floor stock (IN_WAREHOUSE)
+  const finalPalletUnits: PalletStockUnit[] = resolvedRawPallets.map((p, idx) => ({
+    id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
+    palletNumber: p.palletNumber || idx + 1,
+    model: p.model || 'STANDARD',
+    brand: p.brand || '',
+    invoicedBatteries: p.invoicedBatteries,
+    receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
+    remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
+    grossWeightKg: p.grossWeightKg,
+    netWeightKg: p.netWeightKg,
+    status: 'IN_WAREHOUSE' as const,
+    invoiceNumber: params.customInvoiceNo
+  }));
+
   const shortfallRecords: ShortfallRecord[] = [];
   let totalShortfallPallets = 0;
   let totalShortfallBatteries = 0;
 
-  if (params.receiptMode === 'RECEIVED_FULL') {
-    finalPalletUnits = resolvedRawPallets.map((p, idx) => ({
-      id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
-      palletNumber: p.palletNumber || idx + 1,
-      model: p.model || 'STANDARD',
-      brand: p.brand || '',
-      invoicedBatteries: p.invoicedBatteries,
-      receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
-      remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
-      grossWeightKg: p.grossWeightKg,
-      netWeightKg: p.netWeightKg,
-      status: 'IN_WAREHOUSE' as const,
-      invoiceNumber: params.customInvoiceNo
-    }));
-  } else if (params.receiptMode === 'SHORT_FALL') {
-    const shortfallInputs = params.shortfallInputs || [];
-
-    // 1. Physically received stock enters active floor stock (IN_WAREHOUSE)
-    finalPalletUnits = resolvedRawPallets.map((p, idx) => ({
-      id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
-      palletNumber: p.palletNumber || idx + 1,
-      model: p.model || 'STANDARD',
-      brand: p.brand || '',
-      invoicedBatteries: p.invoicedBatteries,
-      receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
-      remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
-      grossWeightKg: p.grossWeightKg,
-      netWeightKg: p.netWeightKg,
-      status: 'IN_WAREHOUSE' as const,
-      invoiceNumber: params.customInvoiceNo
-    }));
-
-    // 2. Shortfall inputs are recorded strictly in the shortfall backlog (never on floor)
-    shortfallInputs.forEach((sf, sfIdx) => {
+  // 2. Shortfall inputs are recorded strictly in the shortfall backlog (never on floor)
+  if (params.shortfallInputs && params.shortfallInputs.length > 0) {
+    params.shortfallInputs.forEach((sf, sfIdx) => {
       const pNumStr = String(sf.palletNumber).trim();
       const sfUnits = sf.shortfallUnits || sf.billedUnits || 0;
       if (sfUnits <= 0) return;
@@ -2402,7 +2966,7 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
         id: `sf-${params.customInvoiceNo}-${pNumStr}-${Date.now()}_${sfIdx}`,
         mode: sf.mode,
         palletNumber: sf.palletNumber,
-        billedUnits: sfUnits,
+        billedUnits: sf.billedUnits || sfUnits,
         shortfallUnits: sfUnits,
         remainingShortfallUnits: sfUnits,
         openedDate: today,
@@ -2411,9 +2975,11 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
         linkedShortFills: []
       });
     });
-  } else if (params.receiptMode === 'SHORT_FILL') {
-    // Process short fill links against prior shortfall entries (multi-row sequential safe)
-    const shortFillInputs = params.shortFillInputs || [];
+  }
+
+  // 3. Process short fill links against prior shortfall entries (multi-row sequential safe)
+  if (params.shortFillInputs && params.shortFillInputs.length > 0) {
+    const shortFillInputs = params.shortFillInputs;
 
     // Group short fill inputs by prior invoice so all rows update prior invoice atomically
     const inputsByPriorInvoice = new Map<string, ManualInwardShortFillInput[]>();
@@ -2506,20 +3072,6 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
 
       addOrUpdateCFSEntry(updatedPriorEntry);
     });
-
-    finalPalletUnits = resolvedRawPallets.map((p, idx) => ({
-      id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
-      palletNumber: p.palletNumber || idx + 1,
-      model: p.model || 'STANDARD',
-      brand: p.brand || '',
-      invoicedBatteries: p.invoicedBatteries,
-      receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
-      remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
-      grossWeightKg: p.grossWeightKg,
-      netWeightKg: p.netWeightKg,
-      status: 'IN_WAREHOUSE' as const,
-      invoiceNumber: params.customInvoiceNo
-    }));
   }
 
   const actualRecPallets = finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').length;
@@ -2531,38 +3083,41 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     ? toExactWeight(finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').reduce((sum, p) => sum + p.netWeightKg, 0))
     : undefined;
 
-  const computedInvoicedPallets = params.receiptMode === 'SHORT_FALL'
-    ? (params.invoicedPallets && params.invoicedPallets >= (actualRecPallets + totalShortfallPallets)
-        ? params.invoicedPallets
-        : (actualRecPallets + totalShortfallPallets))
-    : params.invoicedPallets;
-  const computedInvoicedBatteries = params.receiptMode === 'SHORT_FALL'
-    ? (params.invoicedBatteries && params.invoicedBatteries >= (actualRecBatteries + totalShortfallBatteries)
-        ? params.invoicedBatteries
-        : (actualRecBatteries + totalShortfallBatteries))
-    : params.invoicedBatteries;
+  const computedInvoicedPallets = Math.max(
+    params.invoicedPallets || 0,
+    actualRecPallets + totalShortfallPallets
+  );
+  const computedInvoicedBatteries = Math.max(
+    params.invoicedBatteries || 0,
+    actualRecBatteries + totalShortfallBatteries
+  );
+
+  const stuffedPallets = existingEntry ? existingEntry.actualStuffedPallets || 0 : 0;
+  const stuffedBatteries = existingEntry ? existingEntry.actualStuffedBatteries || 0 : 0;
 
   const newEntry: CFSLedgerEntry = recomputeCFSDerivedFields({
     id: entryId,
-    createdAt: new Date().toISOString(),
+    createdAt: existingEntry ? existingEntry.createdAt : new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     month: entryMonth,
     customer: params.customer,
-    exporterShipper: params.exporterShipper || 'EXIDE INDUSTRIES LIMITED',
+    consigneeAddress: params.consigneeAddress || existingEntry?.consigneeAddress || (params.sourceShipmentJson?.consigneeAddress || existingEntry?.sourceShipmentJson?.consigneeAddress || ''),
+    sourceShipmentJson: params.sourceShipmentJson || existingEntry?.sourceShipmentJson,
+    exporterShipper: params.exporterShipper || (existingEntry?.exporterShipper || ''),
     customInvoiceNo: params.customInvoiceNo,
-    invoiceDate: params.invoiceDate || today,
-    pod: params.pod || '',
+    invoiceDate: params.invoiceDate || (existingEntry?.invoiceDate) || today,
+    pod: params.pod || (existingEntry?.pod) || '',
     invoicedPallets: computedInvoicedPallets,
     invoicedBatteries: computedInvoicedBatteries,
     invoicedGrossWeightKg: invoicedGrossKg,
     invoicedNetWeightKg: invoicedNetKg,
-    actualGrossWeightKg: params.receiptMode === 'SHORT_FALL' ? actualRecGross : actualGrossKg,
-    actualNetWeightKg: params.receiptMode === 'SHORT_FALL' ? actualRecNet : actualNetKg,
+    actualGrossWeightKg: totalShortfallBatteries > 0 ? actualRecGross : actualGrossKg,
+    actualNetWeightKg: totalShortfallBatteries > 0 ? actualRecNet : actualNetKg,
     actualReceivedPallets: actualRecPallets,
     actualReceivedBatteries: actualRecBatteries,
     shortfallPallets: totalShortfallPallets,
     shortfallBatteries: totalShortfallBatteries,
-    receiptMode: params.receiptMode,
+    receiptMode: totalShortfallBatteries > 0 ? 'SHORT_FALL' : (params.shortFillInputs && params.shortFillInputs.length > 0 ? 'SHORT_FILL' : (params.receiptMode || 'RECEIVED_FULL')),
     shortfalls: shortfallRecords,
     shortFillLinks: params.shortFillInputs?.map((sfi) => ({
       priorShortfallInvoiceNo: sfi.priorShortfallInvoiceNo,
@@ -2571,25 +3126,25 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
       arrivedPalletNumber: sfi.arrivedPalletNumber,
       unitsFilled: sfi.unitsFilled
     })),
-    dgCreated: false,
-    blCreated: false,
-    cartingInDate: params.cartingInDate || today,
-    vehicleNo: params.vehicleNo || '',
-    truckReportingDate: params.truckReportingDate || today,
-    lastPltRecdDate: actualRecPallets === computedInvoicedPallets ? today : '',
-    actualStuffedPallets: 0,
-    actualStuffedBatteries: 0,
-    balancePallets: actualRecPallets,
-    balanceBatteries: actualRecBatteries,
-    shippingBillNo: '',
-    shippingBillDate: '',
-    containerNo: '',
-    sealNo: '',
-    stuffingDate: '',
-    pickupDate: '',
-    portGateInDate: '',
-    daysInCFS: 0,
-    remarks: params.remarks || (totalShortfallBatteries > 0 ? 'FACTORY SHORTFALL' : 'IN CFS - READY'),
+    dgCreated: existingEntry ? existingEntry.dgCreated : false,
+    blCreated: existingEntry ? existingEntry.blCreated : false,
+    cartingInDate: params.cartingInDate || (existingEntry?.cartingInDate) || today,
+    vehicleNo: params.vehicleNo || (existingEntry?.vehicleNo) || '',
+    truckReportingDate: params.truckReportingDate || (existingEntry?.truckReportingDate) || today,
+    lastPltRecdDate: actualRecPallets === computedInvoicedPallets ? today : (existingEntry?.lastPltRecdDate || ''),
+    actualStuffedPallets: stuffedPallets,
+    actualStuffedBatteries: stuffedBatteries,
+    balancePallets: Math.max(0, actualRecPallets - stuffedPallets),
+    balanceBatteries: Math.max(0, actualRecBatteries - stuffedBatteries),
+    shippingBillNo: existingEntry?.shippingBillNo || '',
+    shippingBillDate: existingEntry?.shippingBillDate || '',
+    containerNo: existingEntry?.containerNo || '',
+    sealNo: existingEntry?.sealNo || '',
+    stuffingDate: existingEntry?.stuffingDate || '',
+    pickupDate: existingEntry?.pickupDate || '',
+    portGateInDate: existingEntry?.portGateInDate || '',
+    daysInCFS: existingEntry?.daysInCFS || 0,
+    remarks: params.remarks || (existingEntry?.remarks) || (totalShortfallBatteries > 0 ? 'FACTORY SHORTFALL' : 'IN CFS - READY'),
     pallets: finalPalletUnits
   });
 
@@ -2836,35 +3391,66 @@ export function markLedgerDocumentCreated(ledgerIds: string[], docType: 'DG' | '
 
 /**
  * Restores all pallets and units from a completed dispatch back into active floor stock.
- * Recomputes balances and cleans up movement logs in local cache and Supabase.
+ * Recomputes balances, reverts shortfill/shortfall links, and cleans up movement logs in local cache and Supabase.
  */
-export function restoreDispatchedRecord(dispatchOrLogId: string): {
+export function restoreDispatchedRecord(
+  dispatchOrLogId: string,
+  customInvoiceNo?: string,
+  directLedgerId?: string
+): {
   success: boolean;
   error?: string;
   restoredEntry?: CFSLedgerEntry;
   restoredPallets?: number;
   restoredBatteries?: number;
 } {
-  const allLogs = getPersistedMovementLogs();
-  const targetLog = allLogs.find((l) => l.id === dispatchOrLogId || l.sourceLedgerId === dispatchOrLogId);
+  const rawId = (dispatchOrLogId || '').trim();
+  const cleanId = rawId
+    .replace(/^act_disp_/, '')
+    .replace(/^act_inw_/, '')
+    .replace(/^disp_synth_/, '')
+    .replace(/^inw_synth_/, '')
+    .replace(/^log_/, '')
+    .trim();
+  const directId = (directLedgerId || '').trim();
+  const invUpper = (customInvoiceNo || '').trim().toUpperCase();
 
-  if (!targetLog) {
-    return { success: false, error: 'Movement log record not found.' };
-  }
+  const allLogs = getPersistedMovementLogs();
+  const targetLog = allLogs.find(
+    (l) =>
+      l.id === rawId ||
+      l.id === cleanId ||
+      (directId && l.sourceLedgerId === directId) ||
+      l.sourceLedgerId === rawId ||
+      l.sourceLedgerId === cleanId ||
+      (invUpper && l.customInvoiceNo && l.customInvoiceNo.trim().toUpperCase() === invUpper)
+  );
 
   const existingEntries = getCFSLedgerEntries();
   const entryIndex = existingEntries.findIndex(
-    (e) => (targetLog.sourceLedgerId && e.id === targetLog.sourceLedgerId) ||
-           (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === targetLog.customInvoiceNo.trim().toUpperCase())
+    (e) =>
+      (directId && e.id === directId) ||
+      (cleanId && e.id === cleanId) ||
+      (rawId && e.id === rawId) ||
+      (targetLog?.sourceLedgerId && e.id === targetLog.sourceLedgerId) ||
+      (invUpper && e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === invUpper) ||
+      (cleanId && e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === cleanId.toUpperCase()) ||
+      (targetLog?.customInvoiceNo &&
+        e.customInvoiceNo &&
+        e.customInvoiceNo.trim().toUpperCase() === targetLog.customInvoiceNo.trim().toUpperCase())
   );
 
   if (entryIndex === -1) {
-    deleteMovementLog(targetLog.id);
-    return { success: true, restoredPallets: targetLog.pallets, restoredBatteries: targetLog.batteries };
+    if (targetLog) {
+      const persisted = getPersistedMovementLogs().filter((l) => l.id !== targetLog.id);
+      savePersistedMovementLogs(persisted);
+      return { success: true, restoredPallets: targetLog.pallets, restoredBatteries: targetLog.batteries };
+    }
+    return { success: false, error: 'Dispatch record or entry not found.' };
   }
 
   const entry = existingEntries[entryIndex];
-  const containerNo = targetLog.containerNo?.trim().toUpperCase() || '';
+  const containerNo = targetLog?.containerNo?.trim().toUpperCase() || entry.containerNo?.trim().toUpperCase() || '';
   const dispatchedIds = new Set(entry.dispatchedPalletIds || []);
 
   let restoredPalletsCount = 0;
@@ -2874,7 +3460,7 @@ export function restoreDispatchedRecord(dispatchOrLogId: string): {
     const isMatchingContainer = Boolean(containerNo && p.containerNo && p.containerNo.trim().toUpperCase() === containerNo);
     const isDispatched = p.status === 'STUFFED_DISPATCHED';
 
-    if (isDispatched && (isMatchingContainer || !containerNo || dispatchedIds.has(p.id))) {
+    if (isDispatched && (isMatchingContainer || !containerNo || dispatchedIds.has(p.id) || !p.containerNo)) {
       restoredPalletsCount += 1;
       restoredBatteriesCount += p.receivedBatteries || p.invoicedBatteries || 0;
       dispatchedIds.delete(p.id);
@@ -2882,29 +3468,42 @@ export function restoreDispatchedRecord(dispatchOrLogId: string): {
         ...p,
         status: 'IN_WAREHOUSE' as const,
         containerNo: undefined,
-        stuffedDate: undefined
+        stuffedDate: undefined,
+        allocatedUnits: undefined
       };
     }
     return p;
   });
 
-  const effectiveRestoredPallets = restoredPalletsCount > 0 ? restoredPalletsCount : (targetLog.pallets || 0);
-  const effectiveRestoredBatteries = restoredBatteriesCount > 0 ? restoredBatteriesCount : (targetLog.batteries || 0);
+  const recPallets = Number(entry.actualReceivedPallets) || Number(entry.invoicedPallets) || 0;
+  const recBatteries = Number(entry.actualReceivedBatteries) || Number(entry.invoicedBatteries) || 0;
+
+  const effectiveRestoredPallets = restoredPalletsCount > 0
+    ? restoredPalletsCount
+    : (targetLog?.pallets || entry.actualStuffedPallets || recPallets);
+
+  const effectiveRestoredBatteries = restoredBatteriesCount > 0
+    ? restoredBatteriesCount
+    : (targetLog?.batteries || entry.actualStuffedBatteries || recBatteries);
 
   const updatedStuffedPallets = Math.max(0, (entry.actualStuffedPallets || 0) - effectiveRestoredPallets);
   const updatedStuffedBatteries = Math.max(0, (entry.actualStuffedBatteries || 0) - effectiveRestoredBatteries);
-  const updatedBalancePallets = Math.max(0, (entry.actualReceivedPallets || 0) - updatedStuffedPallets);
-  const updatedBalanceBatteries = Math.max(0, (entry.actualReceivedBatteries || 0) - updatedStuffedBatteries);
+  const updatedBalancePallets = Math.max(0, recPallets - updatedStuffedPallets);
+  const updatedBalanceBatteries = Math.max(0, recBatteries - updatedStuffedBatteries);
 
   const isFullyOnFloor = updatedStuffedPallets === 0;
 
   const updatedShortfalls = (entry.shortfalls || []).map((sf) => {
-    if (sf.status === 'CLEARED' && (sf.remainingShortfallUnits > 0 || isFullyOnFloor)) {
+    if (sf.status === 'FULFILLED' || (sf.status === 'CLEARED' && (sf.remainingShortfallUnits > 0 || isFullyOnFloor))) {
+      const isCleared = sf.remainingShortfallUnits === 0;
       return {
         ...sf,
-        status: sf.remainingShortfallUnits === 0 ? ('CLEARED' as const) : ('OPEN' as const),
-        clearedDate: sf.remainingShortfallUnits === 0 ? sf.clearedDate : undefined,
-        clearedMonth: sf.remainingShortfallUnits === 0 ? sf.clearedMonth : undefined
+        status: isCleared ? ('CLEARED' as const) : (sf.remainingShortfallUnits < sf.shortfallUnits ? ('PARTIAL_FILL' as const) : ('OPEN' as const)),
+        clearedDate: isCleared ? sf.clearedDate : undefined,
+        clearedMonth: isCleared ? sf.clearedMonth : undefined,
+        fulfilledDate: undefined,
+        fulfilledMonth: undefined,
+        fulfilledContainerNo: undefined
       };
     }
     return sf;
@@ -2914,7 +3513,7 @@ export function restoreDispatchedRecord(dispatchOrLogId: string): {
     ...entry,
     pallets: updatedPallets,
     shortfalls: updatedShortfalls,
-    dispatchedPalletIds: Array.from(dispatchedIds),
+    dispatchedPalletIds: isFullyOnFloor ? [] : Array.from(dispatchedIds),
     actualStuffedPallets: updatedStuffedPallets,
     actualStuffedBatteries: updatedStuffedBatteries,
     balancePallets: updatedBalancePallets,
@@ -2922,55 +3521,77 @@ export function restoreDispatchedRecord(dispatchOrLogId: string): {
     containerNo: isFullyOnFloor ? '' : entry.containerNo,
     sealNo: isFullyOnFloor ? '' : entry.sealNo,
     shippingBillNo: isFullyOnFloor ? '' : entry.shippingBillNo,
+    shippingBillDate: isFullyOnFloor ? '' : entry.shippingBillDate,
     stuffingDate: isFullyOnFloor ? '' : entry.stuffingDate,
+    pickupDate: isFullyOnFloor ? '' : entry.pickupDate,
+    portGateInDate: isFullyOnFloor ? '' : entry.portGateInDate,
+    dispatchedAt: isFullyOnFloor ? undefined : entry.dispatchedAt,
+    remarks: isFullyOnFloor ? 'IN CFS - READY' : (updatedStuffedPallets > 0 ? 'PARTIAL / BALANCE IN CFS' : entry.remarks),
     updatedAt: new Date().toISOString()
   });
 
   existingEntries[entryIndex] = updatedEntry;
+
+  // Revert prior shortfall status from FULFILLED back to CLEARED/OPEN across all entries referencing this entry
+  const entryInvoiceUpper = (entry.customInvoiceNo || '').trim().toUpperCase();
+
+  existingEntries.forEach((prior, pIdx) => {
+    if (pIdx === entryIndex) return;
+
+    let priorModified = false;
+    const updatedPriorShortfalls = (prior.shortfalls || []).map((sf) => {
+      const hasMatchingLink = (sf.linkedShortFills || []).some(
+        (lsf) => lsf.shortFillInvoiceNo.trim().toUpperCase() === entryInvoiceUpper
+      );
+      if (!hasMatchingLink) return sf;
+
+      priorModified = true;
+      const updatedLinks = (sf.linkedShortFills || []).map((lsf) =>
+        lsf.shortFillInvoiceNo.trim().toUpperCase() === entryInvoiceUpper
+          ? { ...lsf, dispatched: false, dispatchedDate: undefined, dispatchContainerNo: undefined }
+          : lsf
+      );
+
+      const isCleared = sf.remainingShortfallUnits === 0;
+      const fallbackStatus = isCleared
+        ? ('CLEARED' as const)
+        : (sf.remainingShortfallUnits < sf.shortfallUnits ? ('PARTIAL_FILL' as const) : ('OPEN' as const));
+
+      return {
+        ...sf,
+        status: sf.status === 'FULFILLED' ? fallbackStatus : sf.status,
+        fulfilledDate: undefined,
+        fulfilledMonth: undefined,
+        fulfilledContainerNo: undefined,
+        linkedShortFills: updatedLinks
+      };
+    });
+
+    if (priorModified) {
+      const updatedPrior = {
+        ...prior,
+        shortfalls: updatedPriorShortfalls,
+        updatedAt: new Date().toISOString()
+      };
+      existingEntries[pIdx] = updatedPrior;
+      syncEntryToCloud(updatedPrior);
+    }
+  });
+
   saveCFSLedgerEntries(existingEntries);
   syncEntryToCloud(updatedEntry);
 
-  // Revert prior shortfall status from FULFILLED back to CLEARED if this was a short-fill entry
-  if (entry.shortFillLinks && entry.shortFillLinks.length > 0) {
-    entry.shortFillLinks.forEach((link) => {
-      const priorIdx = existingEntries.findIndex(
-        (e) => (link.priorShortfallLedgerId && e.id === link.priorShortfallLedgerId) ||
-               (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === link.priorShortfallInvoiceNo.trim().toUpperCase())
-      );
-      if (priorIdx !== -1) {
-        const prior = existingEntries[priorIdx];
-        const updatedShortfalls = (prior.shortfalls || []).map((sf) => {
-          if (!link.palletNumber || String(sf.palletNumber).trim() === String(link.palletNumber).trim()) {
-            return {
-              ...sf,
-              status: 'CLEARED' as const,
-              fulfilledDate: undefined,
-              fulfilledMonth: undefined,
-              fulfilledContainerNo: undefined,
-              linkedShortFills: (sf.linkedShortFills || []).map((lsf) =>
-                lsf.shortFillInvoiceNo.trim().toUpperCase() === entry.customInvoiceNo.trim().toUpperCase()
-                  ? { ...lsf, dispatched: false, dispatchedDate: undefined, dispatchContainerNo: undefined }
-                  : lsf
-              )
-            };
-          }
-          return sf;
-        });
-
-        const updatedPrior = {
-          ...prior,
-          shortfalls: updatedShortfalls,
-          updatedAt: new Date().toISOString()
-        };
-        existingEntries[priorIdx] = updatedPrior;
-        saveCFSLedgerEntries(existingEntries);
-        syncEntryToCloud(updatedPrior);
-      }
-    });
+  // Remove persisted STOCK_OUT movement logs for this dispatch (safely without calling deleteCFSEntry)
+  const persistedLogs = getPersistedMovementLogs();
+  const remainingPersisted = persistedLogs.filter(
+    (l) =>
+      !(targetLog && l.id === targetLog.id) &&
+      !(l.sourceLedgerId && l.sourceLedgerId === entry.id && l.direction === 'STOCK_OUT') &&
+      !(l.customInvoiceNo && l.customInvoiceNo.trim().toUpperCase() === entryInvoiceUpper && l.direction === 'STOCK_OUT')
+  );
+  if (remainingPersisted.length !== persistedLogs.length) {
+    savePersistedMovementLogs(remainingPersisted);
   }
-
-  // Remove movement log locally and in cloud
-  deleteMovementLog(targetLog.id);
 
   return {
     success: true,

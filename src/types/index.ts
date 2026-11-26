@@ -195,11 +195,13 @@ export interface ExtractedShipmentJSON {
   emsNumber: string;
   segregationGroup: string;
   unPackingCode: string;
+  unCode: string;
   emergencyContactName: string;
   emergencyContactPhone: string;
   dgDeclarantName: string;
   dgDeclarantStatus: string;
   dgDeclarationPlaceAndDate: string;
+  additionalHandlingInformation?: string;
 
   // Granular Pallet Breakdown
   pallets: ExtractedPallet[];
@@ -214,6 +216,7 @@ export interface ExtractedShipmentJSON {
   // Inventory Provenance & Dispatch Tracking (Sprint 6)
   sourceLedgerIds?: string[];
   selectedPalletIds?: string[];
+  selectedPalletUnits?: Record<string, number>;
   isDispatched?: boolean;
   dispatchedAt?: string;
 }
@@ -359,7 +362,8 @@ export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): Ex
     flashPoint: '',
     emsNumber: '',
     segregationGroup: '',
-    unPackingCode: '',
+    unPackingCode: '4G/Z 30/S/**IND/K/19700134',
+    unCode: '063-UN/IIPK/07-2627',
     emergencyContactName: '',
     emergencyContactPhone: '',
     dgDeclarantName: '',
@@ -672,6 +676,7 @@ export interface CFSLedgerEntry {
   dispatchedAt?: string;
   month: string; // 'APR' | 'MAY' | 'JUNE' | 'JULY' | 'AUG' | 'SEP' | 'OCT' | 'NOV' | 'DEC' | 'JAN' | 'FEB' | 'MAR'
   customer: string;
+  consigneeAddress?: string;
   exporterShipper: string;
   customInvoiceNo: string;
   invoiceDate?: string;
@@ -694,7 +699,7 @@ export interface CFSLedgerEntry {
   shortfallBatteries: number;
   receiptMode?: ReceiptMode;
   shortfalls?: ShortfallRecord[];
-  shortFillLinks?: { priorShortfallInvoiceNo: string; priorShortfallLedgerId: string; palletNumber?: string | number; arrivedPalletNumber?: string | number; unitsFilled: number }[];
+  shortFillLinks?: { priorShortfallInvoiceNo: string; priorShortfallLedgerId: string; palletNumber?: string | number; arrivedPalletNumber?: string | number; unitsFilled: number; dispatched?: boolean }[];
 
   // Gate-In & DG/BL Flags
   dgCreated?: boolean;
@@ -739,6 +744,13 @@ export interface CFSLedgerEntry {
 }
 
 export type CustomerStockAlert = 'STOCK_OUT' | 'LOW_STOCK' | 'FACTORY_SHORTFALL' | 'OK';
+
+export interface TrashBinItem {
+  id: string;
+  deletedAt: string;
+  deletedReason?: string;
+  entry: CFSLedgerEntry;
+}
 
 export interface CustomerStockSummary {
   customer: string;

@@ -121,13 +121,14 @@ export function detectRecommendedDgTemplate(carrierName?: string): DgTemplateId 
  */
 export function buildDgCargoItems(shipment: ExtractedShipmentJSON): DgCargoItemLine[] {
   if (!shipment.pallets || shipment.pallets.length === 0) {
-    const unDigits = (shipment.unNumber || '').replace(/\D/g, '');
-    const imdg = IMDG_UN_LOOKUP[unDigits];
+    const rawUn = (shipment.unNumber && shipment.unNumber.trim()) ? shipment.unNumber.trim() : '2794';
+    const unDigits = rawUn.replace(/\D/g, '');
+    const imdg = IMDG_UN_LOOKUP[unDigits] || IMDG_UN_LOOKUP['2794'];
     return [
       {
         id: 'cargo-item-default',
         modelCode: shipment.productDescription || 'General Cargo',
-        unNumber: shipment.unNumber || '2794',
+        unNumber: rawUn,
         properShippingName: shipment.properShippingName || imdg?.properShippingName || 'BATTERIES, WET, FILLED WITH ACID',
         brand: shipment.brandName,
         invoiceNumber: shipment.invoiceNumbers?.[0],
@@ -169,8 +170,9 @@ export function buildDgCargoItems(shipment: ExtractedShipmentJSON): DgCargoItemL
     groupMap.set(key, existing);
   });
 
-  const unDigits = (shipment.unNumber || '').replace(/\D/g, '');
-  const imdg = IMDG_UN_LOOKUP[unDigits];
+  const rawUn = (shipment.unNumber && shipment.unNumber.trim()) ? shipment.unNumber.trim() : '2794';
+  const unDigits = rawUn.replace(/\D/g, '');
+  const imdg = IMDG_UN_LOOKUP[unDigits] || IMDG_UN_LOOKUP['2794'];
   const items: DgCargoItemLine[] = [];
 
   let lineCounter = 1;
@@ -189,7 +191,7 @@ export function buildDgCargoItems(shipment: ExtractedShipmentJSON): DgCargoItemL
       modelCode: grp.modelCode,
       brand: grp.brand,
       invoiceNumber: grp.invoiceNumber,
-      unNumber: shipment.unNumber || '2794',
+      unNumber: rawUn,
       properShippingName: shipment.properShippingName || imdg?.properShippingName || 'BATTERIES, WET, FILLED WITH ACID',
       palletCount: grp.pallets.length,
       boxCount: bCount,
@@ -266,28 +268,27 @@ export function buildTemplateCargoBlock(
   templateId: DgTemplateId,
   shipment: ExtractedShipmentJSON
 ): string {
-  const unDigits = (shipment.unNumber || '').replace(/\D/g, '');
-  const imdg = IMDG_UN_LOOKUP[unDigits];
-
-  const unNo = (shipment.unNumber || '2794').trim();
+  const unNo = (shipment.unNumber && shipment.unNumber.trim()) ? shipment.unNumber.trim() : '2794';
+  const unDigits = unNo.replace(/\D/g, '');
+  const imdg = IMDG_UN_LOOKUP[unDigits] || IMDG_UN_LOOKUP['2794'];
   const psn = (shipment.properShippingName || imdg?.properShippingName || 'BATTERIES, WET, FILLED WITH ACID').trim();
   const rawTech = (shipment.productDescription || '').trim();
   const techName = rawTech && rawTech.toLowerCase() !== psn.toLowerCase() ? rawTech : 'LEAD ACID STORAGE BATTERIES';
   const imoClass = (shipment.imoClass || imdg?.imoClass || '8').trim();
   const pg = (shipment.packingGroup || imdg?.packingGroup || 'III').trim();
   const ems = (shipment.emsNumber || imdg?.emsNumber || 'F-A, S-B').trim();
-  const unPkg = (shipment.unPackingCode || '').trim();
+  let rawUnPkg = (shipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134').trim();
+  if (rawUnPkg.includes('19700007')) {
+    rawUnPkg = rawUnPkg.replace('19700007', '19700134');
+  }
+  const unPkg = rawUnPkg;
+  const unCode = ((shipment as any).unCode || '063-UN/IIPK/07-2627').trim();
   const sgg = (shipment.segregationGroup || imdg?.segregationGroup || 'SGG1').trim();
-  const emergencyContact = (shipment.emergencyContactPhone || '').trim();
+  const emergencyContactPhone = (shipment.emergencyContactPhone || '').trim() || '9729899131';
+  const emergencyContactName = (shipment.emergencyContactName || '').trim() || 'MR. SUJOY';
 
   const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
   const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
-
-  // Extract clean pallet range from shipping marks or pallets
-  const palletNumbers = Array.from(new Set((shipment.pallets || []).map((p) => p.palletNumber).filter(Boolean)));
-  const palletRange = palletNumbers.length > 0
-    ? (palletNumbers.length === 1 ? palletNumbers[0] : `${palletNumbers[0]} TO ${palletNumbers[palletNumbers.length - 1]}`)
-    : '';
 
   const blockText = (() => {
     switch (templateId) {
@@ -308,19 +309,16 @@ export function buildTemplateCargoBlock(
         `Marine Pollutant (Yes/No) : ${shipment.marinePollutant ? 'YES' : 'NO'}`,
         'Severe Marine Pollutant : NA'
       ];
-      if (emergencyContact) {
-        lines.push(`24 hr Emergency Tel No. (at destination) : ${emergencyContact}`);
+      if (emergencyContactPhone) {
+        lines.push(`24 hr Emergency Tel No. (at destination) : ${emergencyContactPhone}`);
       }
-      // Leave destination contact person blank / editable by default instead of auto-filling shipper's name
-      lines.push('Emergency Contact Person (at destination) : ');
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
+      lines.push(`Emergency Contact Person (at destination) : ${emergencyContactName || 'MR. SUJOY'}`);
       return lines.join('\n');
     }
 
     case 'VSTAR_DG': {
-      // V-Star DG (modeled on VSTAR DG.doc)
+      // V-Star DG (modeled on VSTAR DG master reference)
+      const cleanEms = (ems ? ems.replace(/,/g, '-').replace(/\s+/g, '') : 'F-A-S-B');
       const lines: string[] = [
         `PROPER SHIPPING NAME(PSN): ${psn}`,
         `TECHNICAL NAME: ${techName}`,
@@ -328,98 +326,90 @@ export function buildTemplateCargoBlock(
         'SUB CLASS: NA',
         `UN NO: ${unNo}`,
         `PKG GROUP: ${pg || 'III'}`,
-        `EMS: ${ems.replace(/,/g, '-')}`,
-        `MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NO'}`,
+        `EMS: ${cleanEms}`,
+        'MARINE POLLUTANT: NA',
+        `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
+        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
         `OUTER: ${outerCount} PALLETS`,
         `INNER: ${innerCount} CORRUGATED BOXES`,
         '*FLASH POINT: N.A',
-        '*LTD QTY: N.A'
+        '*LTD QTY: N.A',
+        `EMERGENCY CONTACT NO. & NAME: ${emergencyContactName}`,
+        `MOB :${emergencyContactPhone}`
       ];
-      if (emergencyContact) {
-        lines.push(`EMERGENCY CONTACT NO. & NAME: ${emergencyContact}`);
-      } else {
-        lines.push('EMERGENCY CONTACT NO. & NAME: ');
-      }
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
       return lines.join('\n');
     }
 
     case 'ONE_LINE_DG': {
-      // ONE Line DG (modeled on ONE LINE DG.docx - benchmark compact layout)
+      // ONE Line DG (modeled on ONE LINE DG master reference)
+      const cleanEms = (ems ? ems.replace(/,/g, '-').replace(/\s+/g, '') : 'F-A-S-B');
       const lines: string[] = [
         `PROPER SHIPPING NAME(PSN): ${psn}`,
         `TECHNICAL NAME: ${techName}`,
-        `CLASS: ${imoClass}   SUB CLASS: NA   UN NO: ${unNo}   PKG GROUP: ${pg === 'III' ? 'III' : 'NIL'}`,
-        `EMS: ${ems}   MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NA'}`
-      ];
-      if (unPkg) {
-        lines.push(`UN PACKING CODE: ${unPkg}`);
-      }
-      lines.push(
+        `CLASS: ${imoClass}`,
+        'SUB CLASS: NA',
+        `UN NO: ${unNo}`,
+        `PKG GROUP: ${pg === 'III' ? 'III' : (pg || 'NIL')}`,
+        `EMS: ${cleanEms}`,
+        'MARINE POLLUTANT: NA',
+        `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
+        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
-        `OUTER: ${outerCount} PALLETS   INNER: ${innerCount} CORRUGATED BOXES`,
-        '*FLASH POINT: N.A   *LTD QTY: N.A'
-      );
-      if (emergencyContact) {
-        lines.push(`EMERGENCY CONTACT NO. & NAME: ${emergencyContact}`);
-      }
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
+        `OUTER: ${outerCount} PALLETS`,
+        `INNER: ${innerCount} CORRUGATED BOXES`,
+        '*FLASH POINT: N.A',
+        '*LTD QTY: N.A',
+        `EMERGENCY CONTACT NO. & NAME: ${emergencyContactName || 'MR. SUJOY'}`,
+        `MOB :${emergencyContactPhone || '9729899131'}`
+      ];
       return lines.join('\n');
     }
 
     case 'MSC_LINE_DG': {
-      // MSC Line DG (modeled on MSC LINE DG.docx - benchmark compact layout)
+      // MSC Line DG (modeled on MSC LINE DG master reference)
+      const cleanEms = (ems ? ems.replace(/,/g, '-').replace(/\s+/g, '') : 'F-A-S-B');
       const lines: string[] = [
         `PROPER SHIPPING NAME(PSN): ${psn}`,
         `TECHNICAL NAME: ${techName}`,
-        `CLASS: ${imoClass}   SUB CLASS: NA   UN NO: ${unNo}   PKG GROUP: ${pg || 'III'}`,
-        `EMS: ${ems}   MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NA'}`
-      ];
-      if (unPkg) {
-        lines.push(`UN PACKING CODE: ${unPkg}`);
-      }
-      lines.push(
+        `CLASS: ${imoClass}`,
+        'SUB CLASS: NA',
+        `UN NO: ${unNo}`,
+        `EMS: ${cleanEms}`,
+        'MARINE POLLUTANT: NA',
+        `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
+        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
-        `OUTER: ${outerCount} PALLETS   INNER: ${innerCount} CORRUGATED BOXES`,
-        '*FLASH POINT: N.A   *LTD QTY: N.A'
-      );
-      if (emergencyContact) {
-        lines.push(`EMERGENCY CONTACT NO. & NAME: ${emergencyContact}`);
-      }
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
+        `OUTER: ${outerCount} PALLETS`,
+        `INNER: ${innerCount} CORRUGATED BOXES`,
+        '*FLASH POINT: N.A',
+        '*LTD QTY: N.A',
+        `EMERGENCY CONTACT NO. & NAME: ${emergencyContactName || 'MR. SUJOY'}`,
+        `MOB :${emergencyContactPhone || '9729899131'}`
+      ];
       return lines.join('\n');
     }
 
     case 'DIAMOND_MARITIME_DG': {
       // Diamond Maritime DG (modeled on DIAMOND MARITIME DG.docx)
+      const cleanEms = (ems || 'F-A, S-B').replace(/\s+/g, ' ').trim();
+      const emergencyPhone = shipment.emergencyContactPhone || '8420006501';
       const lines: string[] = [
-        `UN : ${unNo}`,
-        `PROPER SHIPPING NAME: ${psn}`,
-        `TECHNICAL NAME (IF ANY ): ${techName}`,
-        `CLASS: ${imoClass}`,
-        'SUB RISK (IF ANY ): NA',
-        `PACKING GROUP: ${pg === 'III' ? 'III' : 'NIL'}`,
-        `MARINE POLLUTANT : ${shipment.marinePollutant ? 'YES' : 'NA'}`,
-        `TOTAL PACKAGING TYPE WITH QUANTITY : ${innerCount} BATTERIES IN ${outerCount} PALLETS`,
+        `UN: ${unNo || '2794'}`,
+        `PROPER SHIPPING NAME: ${psn || 'Batteries, wet-filled with acid'}`,
+        `TECHNICAL NAME (IF ANY): ${techName || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES'}`,
+        `CLASS: ${imoClass || '8'}`,
+        'SUB RISK (IF ANY): NA',
+        'PACKING GROUP: NIL',
+        'MARINE POLLUTANT: NA',
+        `TOTAL PACKAGING TYPE WITH QUANTITY: ${innerCount} BATTERIES IN ${outerCount} PALLETS`,
         'PACKAGING TYPE WITH QUANTITY: 1 BATTERY / 1 BOX AND PACKED IN PALLETS',
         'FLASHPOINT: NA',
-        `EMS CODE: ${ems}`,
-        `IMO LABEL: ${imoClass}`
+        `EMS CODE: ${cleanEms}`,
+        'IMO LABEL:',
+        `EMERGENCY CONTACT PERSON NAME/NUMBER: MR. SUJOY DUTTA / ${emergencyPhone}`,
+        'NOTES: BATTERIES ARE NEW AND UNDAMAGED'
       ];
-      if (emergencyContact) {
-        lines.push(`EMERGENCY CONTACT PERSON NAME/NUMBER : ${emergencyContact}`);
-      }
-      lines.push('NOTES: BATTERIES ARE NEW AND UNDAMAGED');
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
       return lines.join('\n');
     }
 
@@ -442,9 +432,6 @@ export function buildTemplateCargoBlock(
         `MARINE POLLUTANT :- ${shipment.marinePollutant ? 'YES' : 'NO'}`,
         `SEGREGATION GROUP :- ${sgg}`
       );
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
       return lines.join('\n');
     }
 
@@ -466,34 +453,31 @@ export function buildTemplateCargoBlock(
         'FLASH POINT :-  NA',
         `MARINE POLLUTANT :-   ${shipment.marinePollutant ? 'YES' : 'NA'}`
       );
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
       return lines.join('\n');
     }
 
     case 'COMMON_DG':
     default: {
-      // Standard IMO Box 14
+      // Standard IMO Box 14 (modeled on COMMON DG master reference)
+      const cleanEms = (ems ? ems.replace(/,/g, '-').replace(/\s+/g, '') : 'F-A-S-B');
       const lines: string[] = [
-        `PROPER SHIPPING NAME (PSN): ${psn}`,
+        `PROPER SHIPPING NAME(PSN): ${psn}`,
         `TECHNICAL NAME: ${techName}`,
         `CLASS: ${imoClass}`,
+        'SUB CLASS: NA',
         `UN NO: ${unNo}`,
-        `PKG GROUP: ${pg}`,
-        `EMS: ${ems}`,
-        `MARINE POLLUTANT: ${shipment.marinePollutant ? 'YES' : 'NO'}`,
-        `SEGREGATION GROUP: ${sgg}`
+        `EMS: ${cleanEms}`,
+        'MARINE POLLUTANT : NA',
+        `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
+        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
+        'PG (Packaging Group) : N.A',
+        `OUTER: ${outerCount} PALLETS`,
+        `INNER: ${innerCount} CORRUGATED BOXES`,
+        '*FLASH POINT: N.A',
+        '*LTD QTY: N.A',
+        `EMERGENCY CONTACT NO. & NAME: ${emergencyContactName}`,
+        `MOB :${emergencyContactPhone}`
       ];
-      if (unPkg) {
-        lines.push(`UN PACKING CODE: ${unPkg}`);
-      }
-      if (outerCount > 0 || innerCount > 0) {
-        lines.push(`NO & KIND OF PACKAGING: ${outerCount} PALLETS / ${innerCount} BOXES`);
-      }
-      if (palletRange) {
-        lines.push(`PALLET NOS: ${palletRange}`);
-      }
       return lines.join('\n');
     }
   }

@@ -179,8 +179,8 @@ function generateDgManifestHtml(
 
   const box14CargoBlock = buildTemplateCargoBlock(tmplId, shipment);
 
-  const box16Gross = val((id, lbl) => id.includes('box_16') || lbl.includes('gross mass')) || (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '');
-  const box17Net = val((id, lbl) => id.includes('box_17') || lbl.includes('net mass')) || (shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '');
+  const box16Gross = formatWeightWithKgs(val((id, lbl) => id.includes('box_16') || lbl.includes('gross mass')), shipment.grossWeightKg);
+  const box17Net = formatWeightWithKgs(val((id, lbl) => id.includes('box_17') || lbl.includes('net mass')), shipment.netWeightKg);
   const box18Cube = val((id, lbl) => id.includes('box_18') || lbl.includes('cube') || lbl.includes('m³')) || (shipment.volumeCbm > 0 ? `${shipment.volumeCbm.toFixed(3)} M³` : '');
 
   const box19Tare = val((id, lbl) => id.includes('box_18_tare') || id.includes('box_19_tare') || lbl.includes('tare mass')) || (shipment.tareWeightKg > 0 ? `${shipment.tareWeightKg.toLocaleString()} KGS` : '2,150 KGS');
@@ -190,10 +190,12 @@ function generateDgManifestHtml(
 
   const box17CntrType = isOneLine || isMscLine ? "1x20'" : (isDiamond ? "01X20 GP" : (isNomination || isVstar ? "20 GP" : (shipment.containerType || "20' GP")));
 
-  const box20Declarant = val((id, lbl) => id.includes('box_20') || lbl.includes('container / vehicle packing certificate')) || shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY';
-  const box21Emergency = val((id, lbl) => id.includes('box_9') || id.includes('box_21') || lbl.includes('emergency')) || shipment.emergencyContactPhone || '';
-  const box22ShipperDecl = val((id, lbl) => (id.includes('box_22') || lbl.includes("shipper's declaration") || lbl.includes('shipper declaration')) && !id.includes('place_date') && !lbl.includes('place')) ||
-    (shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY');
+  const rawDecl20 = val((id, lbl) => id.includes('box_20') || lbl.includes('container / vehicle packing certificate')) || shipment.dgDeclarantName || 'MR.SUJOY EXPORT MANAGER';
+  const box20Declarant = (!rawDecl20 || /exide/i.test(rawDecl20) || rawDecl20 === shipment.shipperName) ? 'MR.SUJOY EXPORT MANAGER' : rawDecl20;
+  const box21Emergency = val((id, lbl) => id.includes('box_9') || id.includes('box_21') || lbl.includes('emergency')) || shipment.emergencyContactPhone || '9729899131';
+  const rawDecl22 = val((id, lbl) => (id.includes('box_22') || lbl.includes("shipper's declaration") || lbl.includes('shipper declaration')) && !id.includes('place_date') && !lbl.includes('place')) ||
+    (shipment.dgDeclarantName || 'MR.SUJOY EXPORT MANAGER');
+  const box22ShipperDecl = (!rawDecl22 || /exide/i.test(rawDecl22) || rawDecl22 === shipment.shipperName) ? 'MR.SUJOY EXPORT MANAGER' : rawDecl22;
 
   if (isAnlHaz) {
     return `<!DOCTYPE html>
@@ -618,14 +620,14 @@ function generateDgManifestHtml(
       ${isNomination ? `
       <tr>
         <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
-          Other Details : UN PACKING CODE :- ${escapeHtml(shipment.unPackingCode || '')}
+          Other Details : UN PACKING CODE :- ${escapeHtml(shipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134')} | UN CODE: ${escapeHtml((shipment as any).unCode || '063-UN/IIPK/07-2627')}
         </td>
       </tr>
       ` : ''}
       ${isVstar ? `
       <tr>
         <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
-          Other Details ${shipment.unPackingCode ? `: UN PACKING CODE: ${escapeHtml(shipment.unPackingCode)}` : ''}
+          Other Details : UN PACKING CODE: ${escapeHtml(shipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134')} | UN CODE: ${escapeHtml((shipment as any).unCode || '063-UN/IIPK/07-2627')}
         </td>
       </tr>
       ` : ''}
@@ -637,7 +639,7 @@ function generateDgManifestHtml(
       </tr>
       <tr>
         <td colspan="4" style="background: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px;">
-          Other Details UN PACKAGING NO. ${escapeHtml(shipment.unPackingCode || '')}
+          Other Details : UN PACKAGING NO. ${escapeHtml((shipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134').replace(/^UN\s*PACKAGING\s*NO\.?\s*/i, ''))} / UN CODE: ${escapeHtml((shipment as any).unCode || '063-UN/IIPK/07-2627')}
         </td>
       </tr>
       ` : ''}
@@ -710,6 +712,73 @@ function generateDgManifestHtml(
 </html>`;
 }
 
+// Integer to English Words helper for standard maritime documentation (e.g. 20 -> TWENTY)
+function integerToWords(num: number): string {
+  if (num <= 0) return 'ZERO';
+  const ones = [
+    '', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
+    'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'
+  ];
+  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
+
+  if (num < 20) return ones[num];
+  if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? '-' + ones[num % 10] : '');
+  if (num < 1000) return ones[Math.floor(num / 100)] + ' HUNDRED' + (num % 100 !== 0 ? ' ' + integerToWords(num % 100) : '');
+  if (num < 1000000) return integerToWords(Math.floor(num / 1000)) + ' THOUSAND' + (num % 1000 !== 0 ? ' ' + integerToWords(num % 1000) : '');
+  return String(num);
+}
+
+// Builds the standard clean BL commodity & package description without hardcoded customer data
+function buildStandardBlCargoDescription(s: ExtractedShipmentJSON): string {
+  const contCount = s.containers && s.containers.length > 0 ? s.containers.length : 1;
+  const pCount = s.pallets?.length || s.totalPallets || 0;
+  const brand = s.brandName || (s.pallets && s.pallets[0]?.brand);
+
+  const sections: string[] = [];
+
+  const rawType = (s.containerType || '').toUpperCase();
+  const contType = rawType.includes('40') ? "40' FCL" : "20' FCL";
+  const headerLines = [`${contCount} X ${contType} SAID TO CONTAIN`];
+  if (pCount > 0) {
+    headerLines.push(`TOTAL ${pCount} PALLETS`);
+    headerLines.push(`(TOTAL ${integerToWords(pCount)} PALLETS ONLY)`);
+  }
+  sections.push(headerLines.join('\n'));
+
+  sections.push(s.productDescription || 'LEAD ACID STORAGE BATTERIES');
+
+  if (brand) {
+    sections.push(`BRAND: ${brand}`);
+  }
+  const hs = s.hsnCode || (s as any).hsCode || '85071000';
+  if (hs) {
+    sections.push(`H.S. CODE NO. ${hs}`);
+  }
+  if (s.shippingBillNumbers) {
+    const sbFormatted = s.shippingBillNumbers
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => (line.toUpperCase().startsWith('SB') ? line : `SB.NO. ${line}`))
+      .join('\n');
+    sections.push(sbFormatted);
+  }
+  const un = (s.unNumber && s.unNumber !== '2794') ? s.unNumber : '2627';
+  const imo = s.imoClass ? s.imoClass : '8';
+  const pg = s.packingGroup ? s.packingGroup : 'III';
+  sections.push(`UN NO. ${un}\nIMCO CLASS: ${imo}\nPG: ${pg}`);
+
+  const rawFreight = s.freightTerms ? s.freightTerms.replace(/freight\s*/i, '').trim().toUpperCase() : 'COLLECT';
+  sections.push(`FREIGHT ${rawFreight}`);
+
+  const freeTime = (s.freeTimeClause || '14 DAYS FREE TIME DETENTION AT DESTINATION')
+    .replace(/^["“”']+|["“”']+$/g, '')
+    .trim();
+  sections.push(`“${freeTime}”`);
+
+  return sections.join('\n\n');
+}
+
 /**
  * Renders authentic Ocean Bill of Lading Draft (Standard Carrier B/L Layout)
  */
@@ -733,13 +802,7 @@ function generateBlManifestHtml(
     buildCleanPartyBlock(shipment.notifyPartyName || 'SAME AS CONSIGNEE', shipment.notifyPartyAddress || '');
 
   const bookingNo = val((id, lbl) => id.includes('booking') || lbl.includes('booking')) || shipment.bookingNumber || '';
-  const blNo = val((id, lbl) => id.includes('bl_number') || lbl.includes('bill of lading')) || shipment.bookingNumber || 'DRAFT-BL';
-  const rawExportRefs = val((id, lbl) => id.includes('export_reference') || lbl.includes('export ref') || lbl.includes("shipper's ref")) ||
-    shipment.shipperReference || shipment.invoiceNumbers?.join(', ') || '';
-  const exportRefs = deduplicateMultiLineText(rawExportRefs);
-  const shippingBills = val((id, lbl) => id.includes('shipping_bill') || lbl.includes('shipping bill')) || shipment.shippingBillNumbers || '';
 
-  const preCarriage = val((id, lbl) => id.includes('pre_carriage') || lbl.includes('pre-carriage')) || shipment.preCarriageBy || '';
   const placeOfReceipt = val((id, lbl) => id.includes('place_of_receipt') || lbl.includes('place of receipt')) || shipment.placeOfReceipt || shipment.portOfLoading || '';
   const vesselVal = val((id, lbl) => id.includes('vessel') || lbl.includes('ocean vessel')) || shipment.vesselName || '';
   const voyageVal = val((id, lbl) => id.includes('voyage') || lbl.includes('voyage no')) || shipment.voyageNumber || '';
@@ -753,17 +816,16 @@ function generateBlManifestHtml(
 
   const rawMarks = val((id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers')) || shipment.shippingMarks || '';
   const marksAndNumbers = deduplicateMultiLineText(rawMarks);
-  const rawCargoDesc = val((id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars')) || shipment.productDescription || '';
+  const rawCargoDesc = val((id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars')) || buildStandardBlCargoDescription(shipment);
   const cargoDesc = deduplicateMultiLineText(rawCargoDesc);
 
   const grossWt = val((id, lbl) => id.includes('gross_weight') || lbl.includes('gross weight')) || (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : '');
   const netWt = val((id, lbl) => id.includes('net_weight') || lbl.includes('net weight')) || (shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toFixed(2)} KGS` : '');
-  const measurement = val((id, lbl) => id.includes('measurement') || lbl.includes('cbm') || lbl.includes('volume')) || (shipment.volumeCbm > 0 ? `${shipment.volumeCbm.toFixed(3)} CBM` : '');
 
-  const movement = val((id, lbl) => id.includes('movement') || lbl.includes('movement type')) || shipment.movementType || 'FCL/FCL';
+  const contCount = shipment.containers && shipment.containers.length > 0 ? shipment.containers.length : 1;
+  const pCount = shipment.pallets?.length || shipment.totalPallets || 1;
+  const movement = val((id, lbl) => id.includes('movement') || lbl.includes('movement type')) || shipment.movementType || 'FCL / CY';
   const freightTerms = val((id, lbl) => id.includes('freight_term') || lbl.includes('freight terms')) || shipment.freightTerms || 'FREIGHT PREPAID';
-
-  const vgmVal = shipment.grossWeightKg > 0 && shipment.tareWeightKg > 0 ? Number((shipment.grossWeightKg + shipment.tareWeightKg).toFixed(2)) : null;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -773,212 +835,188 @@ function generateBlManifestHtml(
   <style>
     @page { size: A4 portrait; margin: 8mm 10mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { font-family: "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 12px; color: #000000; background: #ffffff; font-size: 10px; line-height: 1.25; }
-    .bl-form-container { width: 100%; max-width: 820px; margin: 0 auto; border: 2px solid #000; background: #fff; }
+    body { font-family: "Cambria", Georgia, serif; margin: 0; padding: 12px; color: #000000; background: #ffffff; font-size: 10px; line-height: 1.25; }
+    .bl-form-container { width: 100%; max-width: 820px; margin: 0 auto; background: #fff; }
     .table-layout { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    .table-layout td, .table-layout th { border: 1px solid #000; padding: 4px 6px; vertical-align: top; word-wrap: break-word; }
-    .cell-title { font-size: 8px; font-weight: 800; text-transform: uppercase; color: #334155; display: block; margin-bottom: 2px; }
-    .cell-data { font-size: 9.5px; font-weight: 600; white-space: pre-wrap; color: #000; }
+    .table-layout td, .table-layout th { border: 1px solid #000; padding: 3px 5px; vertical-align: top; word-wrap: break-word; }
+    .cell-title { font-family: "Tahoma", Arial, sans-serif; font-size: 8.5px; font-weight: 700; text-transform: uppercase; color: #000; display: inline-block; background-color: #C0C0C0; padding: 1px 4px; margin-bottom: 2px; }
+    .cell-data { font-size: 10px; font-weight: normal; white-space: pre-wrap; color: #000; }
     .cell-data-bold { font-weight: 700; }
-    .header-bar { background: #0f172a; color: #fff; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; }
-    .header-bar h1 { margin: 0; font-size: 12.5px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; }
     .right-col { text-align: right; }
     .center-col { text-align: center; }
+    .shaded-header { background-color: #C0C0C0 !important; font-family: "Tahoma", Arial, sans-serif; font-size: 9px; font-weight: 700; color: #000; }
     .annex-section { margin-top: 14px; border-top: 2px solid #000; padding-top: 8px; }
     .annex-title { font-size: 10.5px; font-weight: 800; text-transform: uppercase; margin: 0 0 6px 0; }
     .annex-table { width: 100%; border-collapse: collapse; font-size: 9px; }
-    .annex-table th { background: #f1f5f9; border: 1px solid #000; padding: 4px; text-align: left; font-size: 8px; }
+    .annex-table th { background: #C0C0C0; border: 1px solid #000; padding: 4px; text-align: left; font-size: 8px; font-weight: bold; }
     .annex-table td { border: 1px solid #000; padding: 3px 5px; }
-    @media print { body { padding: 0; } .bl-form-container { border: 2px solid #000; } }
+    @media print {
+      body { padding: 0; }
+      tr { page-break-inside: avoid; }
+    }
   </style>
 </head>
 <body>
   <div class="bl-form-container">
-    <div class="header-bar">
-      <div>
-        <h1>BILL OF LADING FOR OCEAN TRANSPORT</h1>
-        <div style="font-size: 8px; color: #94a3b8; font-family: monospace;">NON-NEGOTIABLE UNLESS CONSIGNED TO ORDER</div>
-      </div>
-      <div style="text-align: right;">
-        <div style="font-size: 10.5px; font-weight: 800;">${escapeHtml(shipment.carrierName || 'CARRIER DRAFT')}</div>
-        <div style="font-size: 8.5px; color: #cbd5e1; font-family: monospace;">B/L NO: ${escapeHtml(blNo)}</div>
-      </div>
-    </div>
-
-    <table class="table-layout">
-      <!-- Upper Parties & References Grid -->
+    {/* Table 0: Main B/L Grid */}
+    <table class="table-layout" style="border: 2px solid #000;">
+      <!-- Row 0: Shipper: | BOOKING NO: -->
       <tr>
-        <td style="width: 52%;" rowspan="2">
-          <span class="cell-title">Shipper / Exporter</span>
-          <div class="cell-data">${escapeHtml(shipper)}</div>
+        <td style="width: 56%;">
+          <span class="cell-title">Shipper:</span>
+          <div class="cell-data" style="margin-top: 2px;">${escapeHtml(shipper)}</div>
         </td>
-        <td style="width: 48%;">
-          <span class="cell-title">Booking Number</span>
-          <div class="cell-data cell-data-bold">${escapeHtml(bookingNo || '---')}</div>
-        </td>
-      </tr>
-      <tr>
-        <td>
-          <span class="cell-title">Export References (Invoices / PO / IEC)</span>
-          <div class="cell-data">${escapeHtml(exportRefs || '---')}</div>
-          ${shippingBills && !exportRefs.toLowerCase().includes(shippingBills.toLowerCase()) ? `<div style="font-size: 8.5px; font-weight: bold; color: #0284c7; margin-top: 2px;">SHIPPING BILL: ${escapeHtml(shippingBills)}</div>` : ''}
+        <td style="width: 44%; background-color: #C0C0C0; vertical-align: middle;">
+          <div style="font-family: 'Calibri', Arial, sans-serif; font-size: 11px; font-weight: bold; color: #000;">
+            BOOKING NO:&nbsp;&nbsp;${escapeHtml(bookingNo || '---')}
+          </div>
         </td>
       </tr>
 
-      <tr>
-        <td rowspan="2">
-          <span class="cell-title">Consignee (If 'To Order' so state)</span>
-          <div class="cell-data">${escapeHtml(consignee)}</div>
-        </td>
-        <td>
-          <span class="cell-title">Bill of Lading Number</span>
-          <div class="cell-data cell-data-bold">${escapeHtml(blNo)}</div>
-        </td>
-      </tr>
+      <!-- Row 1: Consignee: | Blank Cell -->
       <tr>
         <td>
-          <span class="cell-title">Freight Forwarder / Agent Details</span>
-          <div class="cell-data">${escapeHtml(shipment.forwarderReference || '---')}</div>
+          <span class="cell-title">Consignee:</span>
+          <div class="cell-data" style="margin-top: 2px;">${escapeHtml(consignee)}</div>
+        </td>
+        <td style="background-color: #ffffff;">
+          &nbsp;
         </td>
       </tr>
 
+      <!-- Row 2: Notify Party: | Blank Cell -->
       <tr>
-        <td colspan="2">
-          <span class="cell-title">Notify Party (Carrier not responsible for failure to notify)</span>
-          <div class="cell-data">${escapeHtml(notifyParty)}</div>
+        <td>
+          <span class="cell-title">Notify Party:</span>
+          <div class="cell-data" style="margin-top: 2px;">${escapeHtml(notifyParty)}</div>
+        </td>
+        <td style="background-color: #ffffff;">
+          &nbsp;
         </td>
       </tr>
 
-      <!-- Routing Grid -->
+      <!-- Row 3: Vessel and Voyage No: | Place of Receipt: -->
       <tr>
-        <td style="width: 50%;">
-          <span class="cell-title">Pre-Carriage by</span>
-          <div class="cell-data">${escapeHtml(preCarriage || 'ROAD / FEEDER')}</div>
+        <td>
+          <span class="cell-title">Vessel and Voyage No:</span>
+          <div class="cell-data cell-data-bold" style="margin-top: 2px;">${escapeHtml(vesselVoyage || '---')}</div>
         </td>
-        <td style="width: 50%;">
-          <span class="cell-title">Place of Receipt</span>
-          <div class="cell-data">${escapeHtml(placeOfReceipt || '---')}</div>
+        <td>
+          <span class="cell-title">Place of Receipt:</span>
+          <span class="cell-data" style="margin-left: 4px;">${escapeHtml(placeOfReceipt)}</span>
         </td>
       </tr>
+
+      <!-- Row 4: Port of Loading | Port of Discharge | Port of Delivery -->
       <tr>
-        <td>
-          <span class="cell-title">Ocean Vessel / Voyage Number</span>
-          <div class="cell-data cell-data-bold">${escapeHtml(vesselVoyage || '---')}</div>
-        </td>
-        <td>
-          <span class="cell-title">Port of Loading</span>
-          <div class="cell-data">${escapeHtml(pol || '---')}</div>
-        </td>
-      </tr>
-      <tr>
-        <td>
-          <span class="cell-title">Port of Discharge</span>
-          <div class="cell-data">${escapeHtml(pod || '---')}</div>
-        </td>
-        <td>
-          <span class="cell-title">Place of Delivery by Carrier / Final Destination</span>
-          <div class="cell-data">${escapeHtml(placeOfDelivery || '---')}</div>
+        <td colspan="2" style="padding: 0; border: none;">
+          <table class="table-layout" style="margin: -1px 0 0 0; width: 100%;">
+            <tr>
+              <td style="width: 33.33%;">
+                <span class="cell-title">Port of Loading:</span>
+                <div class="cell-data" style="margin-top: 2px;">${escapeHtml(pol)}</div>
+              </td>
+              <td style="width: 33.33%;">
+                <span class="cell-title">Port of Discharge:</span>
+                <div class="cell-data" style="margin-top: 2px;">${escapeHtml(pod || '---')}</div>
+              </td>
+              <td style="width: 33.34%;">
+                <span class="cell-title">Port of Delivery:</span>
+                <div class="cell-data" style="margin-top: 2px;">${escapeHtml(placeOfDelivery || '---')}</div>
+              </td>
+            </tr>
+          </table>
         </td>
       </tr>
     </table>
 
-    <!-- Main Cargo Table (4 columns) -->
-    <table class="table-layout" style="border-top: none;">
-      <tr style="background: #f8fafc;">
-        <th style="width: 25%;"><span class="cell-title">Container Nos. / Marks &amp; Numbers</span></th>
-        <th style="width: 45%;"><span class="cell-title">Number and Kind of Packages / Description of Goods</span></th>
-        <th style="width: 15%;" class="right-col"><span class="cell-title">Gross / Net Weight (KGS)</span></th>
-        <th style="width: 15%;" class="right-col"><span class="cell-title">Measurement (CBM)</span></th>
+    <!-- Main Cargo Table (3 columns: Row 5 & 6) -->
+    <table class="table-layout" style="border: 2px solid #000; border-top: none;">
+      <tr>
+        <th class="shaded-header" style="width: 34%;">Container Nos. Marks &amp; Numbers</th>
+        <th class="shaded-header" style="width: 50%;">Number and Kind of Packages<br/>Description of Goods</th>
+        <th class="shaded-header right-col" style="width: 16%;">Gross Weight</th>
       </tr>
       <tr>
-        <td style="min-height: 200px;">
-          <div class="cell-data cell-data-bold" style="color: #0369a1; margin-bottom: 4px;">
-            ${escapeHtml(shipment.containerNumber ? `${shipment.containerNumber} / ${shipment.sealNumber || 'NO SEAL'}` : 'CONTAINER TO BE ADVISED')}
-          </div>
+        <td style="min-height: 220px;">
           <div class="cell-data">${escapeHtml(marksAndNumbers || '---')}</div>
         </td>
         <td>
-          <div class="cell-data">${escapeHtml(cargoDesc)}</div>
+          <div class="cell-data" style="line-height: 1.35;">${escapeHtml(cargoDesc)}</div>
         </td>
         <td class="right-col">
           <div class="cell-data cell-data-bold">${escapeHtml(grossWt || '---')}</div>
-          ${netWt ? `<div class="cell-data" style="color: #475569; font-size: 8.5px; margin-top: 4px;">NT: ${escapeHtml(netWt)}</div>` : ''}
-        </td>
-        <td class="right-col">
-          <div class="cell-data">${escapeHtml(measurement || '---')}</div>
+          ${netWt ? `<div class="cell-data-bold" style="margin-top: 14px; text-align: right;">NET WEIGHT</div><div class="cell-data cell-data-bold">${escapeHtml(netWt)}</div>` : ''}
+          ${shipment.volumeCbm > 0 ? `<div style="margin-top: 10px; font-size: 8.5px; font-weight: bold; text-align: right;">MEASUREMENT</div><div class="cell-data">${shipment.volumeCbm.toFixed(3)} CBM</div>` : ''}
         </td>
       </tr>
     </table>
 
-    <!-- Summary Bar -->
-    <table class="table-layout" style="border-top: none; background: #f8fafc;">
+    <!-- Row 7: Summary Bar (3 columns) -->
+    <table class="table-layout" style="border: 2px solid #000; border-top: none;">
       <tr>
-        <td style="width: 40%;">
-          <span class="cell-title">Total Number of Packages / Containers</span>
-          <div class="cell-data cell-data-bold">
-            ${shipment.outerPackagingCount > 0 ? `${shipment.outerPackagingCount} ${shipment.outerPackagingType || 'PALLETS'}` : `${shipment.totalPallets || 1} PALLETS`}
-            ${shipment.innerPackageCount > 0 ? ` (${shipment.innerPackageCount} ${shipment.innerPackageType || 'BOXES'})` : ''}
+        <td style="width: 56%;">
+          <span class="cell-title">Total No. of Containers /Packages:</span>
+          <div class="cell-data cell-data-bold" style="margin-top: 2px;">
+            ${String(contCount).padStart(2, '0')} / ${pCount} PLTS
           </div>
         </td>
-        <td style="width: 30%;">
-          <span class="cell-title">Movement</span>
-          <div class="cell-data cell-data-bold">${escapeHtml(movement)}</div>
+        <td style="width: 28%;">
+          <span class="cell-title">Movement:</span>
+          <div class="cell-data cell-data-bold" style="margin-top: 2px;">${escapeHtml(movement)}</div>
         </td>
-        <td style="width: 30%;">
-          <span class="cell-title">Freight &amp; Charges</span>
-          <div class="cell-data cell-data-bold" style="color: #b91c1c;">${escapeHtml(freightTerms)}</div>
+        <td style="width: 16%;">
+          <span class="cell-title">Freight:</span>
+          <div class="cell-data cell-data-bold" style="margin-top: 2px;">${escapeHtml(freightTerms)}</div>
         </td>
       </tr>
     </table>
 
-    <!-- Bottom Container Summary Table (5 Columns) -->
-    <table class="table-layout" style="border-top: none;">
-      <tr style="background: #e2e8f0;">
-        <th style="width: 25%;"><span class="cell-title">CONT. NO.</span></th>
-        <th style="width: 20%;"><span class="cell-title">SEAL NO.</span></th>
-        <th style="width: 15%;" class="center-col"><span class="cell-title">PALLETS</span></th>
-        <th style="width: 20%;" class="right-col"><span class="cell-title">GR. WT. KGS</span></th>
-        <th style="width: 20%;" class="right-col"><span class="cell-title">NT. WT. KGS</span></th>
+    <!-- Table 1: Separate Equipment / Container Breakdown Table (5 Columns) -->
+    <div style="height: 10px;"></div>
+    <table class="table-layout" style="border: 1px solid #000; width: 100%;">
+      <tr>
+        <th style="width: 34%; font-family: 'Calibri', Arial, sans-serif; font-size: 8.5px; text-align: left; padding: 3px 5px;">CONT.NO.</th>
+        <th style="width: 18%; font-family: 'Calibri', Arial, sans-serif; font-size: 8.5px; text-align: left; padding: 3px 5px;">Seal no.</th>
+        <th style="width: 18%; font-family: 'Calibri', Arial, sans-serif; font-size: 8.5px; text-align: left; padding: 3px 5px;">Pallets</th>
+        <th style="width: 15%; font-family: 'Calibri', Arial, sans-serif; font-size: 8.5px; text-align: right; padding: 3px 5px;">Gr.wt. kgs</th>
+        <th style="width: 15%; font-family: 'Calibri', Arial, sans-serif; font-size: 8.5px; text-align: right; padding: 3px 5px;">Nt.wt.kgs</th>
       </tr>
       ${shipment.containers && shipment.containers.length > 1 ? shipment.containers.map((cont, cIdx) => {
         const cPallets = cont.palletIndices && cont.palletIndices.length > 0 && shipment.pallets
           ? cont.palletIndices.map(i => shipment.pallets[i]).filter(Boolean)
           : [];
-        const cGross = cPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0);
-        const cNet = cPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0);
-        const cTare = cont.tareWeightKg || 2150;
-        const cVgm = cGross + cTare;
+        const cPalletCount = cPallets.length > 0 ? cPallets.length : Math.round(pCount / shipment.containers!.length);
+        const cGross = cPallets.length > 0
+          ? cPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0)
+          : (shipment.grossWeightKg / shipment.containers!.length);
+        const cNet = cPallets.length > 0
+          ? cPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0)
+          : (shipment.netWeightKg / shipment.containers!.length);
+
         return `
       <tr>
         <td><div class="cell-data cell-data-bold">${escapeHtml(cont.containerNumber || `Container ${cIdx + 1}`)}</div></td>
         <td><div class="cell-data">${escapeHtml(cont.sealNumber || '---')}</div></td>
-        <td class="center-col"><div class="cell-data">${cPallets.length || cont.palletIndices?.length || '---'}</div></td>
-        <td class="right-col"><div class="cell-data cell-data-bold">${cGross > 0 ? cGross.toFixed(2) : '---'}</div></td>
-        <td class="right-col"><div class="cell-data">${cNet > 0 ? cNet.toFixed(2) : '---'}</div></td>
-      </tr>
-      <tr style="background: #f8fafc; font-size: 8px;">
-        <td colspan="2" style="font-size: 8px; color: #64748b;">${escapeHtml(cont.label || `Container ${cIdx + 1}`)} (Tare: ${cTare} kg)</td>
-        <td class="center-col" style="font-weight: bold; color: #047857;">VGM</td>
-        <td colspan="2" class="right-col font-bold" style="color: #047857;">${cVgm.toFixed(2)} KGS</td>
+        <td><div class="cell-data">${cPalletCount} PALLETS</div></td>
+        <td class="right-col"><div class="cell-data cell-data-bold">${cGross > 0 ? cGross.toFixed(2) : '0.00'}</div></td>
+        <td class="right-col"><div class="cell-data">${cNet > 0 ? cNet.toFixed(2) : '0.00'}</div></td>
       </tr>`;
-      }).join('') : `
+      }).join('') + `
+      <tr style="font-weight: bold;">
+        <td><div class="cell-data cell-data-bold">TOTAL (${shipment.containers.length} CONTAINERS)</div></td>
+        <td><div class="cell-data">—</div></td>
+        <td><div class="cell-data cell-data-bold">${pCount} PALLETS</div></td>
+        <td class="right-col"><div class="cell-data cell-data-bold">${shipment.grossWeightKg.toFixed(2)}</div></td>
+        <td class="right-col"><div class="cell-data cell-data-bold">${shipment.netWeightKg.toFixed(2)}</div></td>
+      </tr>` : `
       <tr>
         <td><div class="cell-data cell-data-bold">${escapeHtml(shipment.containerNumber || '---')}</div></td>
         <td><div class="cell-data">${escapeHtml(shipment.sealNumber || '---')}</div></td>
-        <td class="center-col"><div class="cell-data">${shipment.totalPallets || shipment.outerPackagingCount || 1}</div></td>
-        <td class="right-col"><div class="cell-data cell-data-bold">${shipment.grossWeightKg > 0 ? shipment.grossWeightKg.toFixed(2) : '---'}</div></td>
-        <td class="right-col"><div class="cell-data">${shipment.netWeightKg > 0 ? shipment.netWeightKg.toFixed(2) : '---'}</div></td>
-      </tr>
-      ${shipment.tareWeightKg > 0 ? `
-      <tr style="background: #f8fafc; font-size: 8.5px;">
-        <td colspan="3" style="text-align: right; font-weight: bold; color: #475569;">CONTAINER TARE WEIGHT:</td>
-        <td colspan="2" class="right-col font-bold">${shipment.tareWeightKg.toFixed(2)} KGS</td>
-      </tr>` : ''}
-      ${vgmVal !== null ? `
-      <tr style="background: #f1f5f9; font-size: 9px; font-weight: bold;">
-        <td colspan="3" style="text-align: right; color: #047857;">VERIFIED GROSS MASS (VGM):</td>
-        <td colspan="2" class="right-col" style="color: #047857;">${vgmVal.toFixed(2)} KGS</td>
-      </tr>` : ''}`}
+        <td><div class="cell-data">${pCount} PALLETS</div></td>
+        <td class="right-col"><div class="cell-data cell-data-bold">${shipment.grossWeightKg > 0 ? shipment.grossWeightKg.toFixed(2) : '0.00'}</div></td>
+        <td class="right-col"><div class="cell-data">${shipment.netWeightKg > 0 ? shipment.netWeightKg.toFixed(2) : '0.00'}</div></td>
+      </tr>`}
     </table>
   </div>
 
@@ -1074,6 +1112,24 @@ export function printManifestToPdf(
       printWindow.print();
     }, 250);
   };
+}
+
+function formatWeightWithKgs(rawVal: string, fallbackNum?: number): string {
+  if (rawVal && rawVal.trim()) {
+    const trimmed = rawVal.trim();
+    if (/\b(?:kgs?|kilograms?)\b/i.test(trimmed)) {
+      return trimmed;
+    }
+    const num = parseFloat(trimmed.replace(/,/g, ''));
+    if (!isNaN(num) && num > 0) {
+      return `${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KGS`;
+    }
+    return `${trimmed} KGS`;
+  }
+  if (fallbackNum !== undefined && fallbackNum > 0) {
+    return `${fallbackNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KGS`;
+  }
+  return '';
 }
 
 /**
@@ -1178,7 +1234,8 @@ export async function generatePopulatedDocxBlob(
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
-      nullGetter: () => ''
+      nullGetter: () => '',
+      delimiters: { start: '{{', end: '}}' }
     });
 
     const isDiamond = tmplId === 'DIAMOND_MARITIME_DG';
@@ -1197,7 +1254,7 @@ export async function generatePopulatedDocxBlob(
 
     const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
     const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
-    const unNo = shipment.unNumber || '2794';
+    const unNo = (shipment.unNumber && shipment.unNumber.trim()) ? shipment.unNumber.trim() : '2794';
     const psn = shipment.properShippingName || 'BATTERIES, WET, FILLED WITH ACID';
     const techName = shipment.productDescription || 'LEAD ACID STORAGE BATTERIES';
     const imoClass = shipment.imoClass || '8';
@@ -1208,32 +1265,108 @@ export async function generatePopulatedDocxBlob(
     const tareVal = shipment.tareWeightKg || 2200;
     const vgmVal = (shipment.grossWeightKg || 0) + tareVal;
 
-    const sFull = val('box_1_shipper', shipment.shipperAddress || shipment.shipperName || '');
-    const sParsed = parseCleanShipperBlock(sFull, shipment.shipperName || '');
+    const sFull = val('box_1_shipper', '');
+    let fullShipperSource = '';
+    if (sFull && sFull.includes('\n')) {
+      fullShipperSource = sFull;
+    } else {
+      const sName = sFull || shipment.shipperName || 'EXIDE INDUSTRIES LIMITED';
+      let sAddr = shipment.shipperAddress || '';
+      if (!sAddr && /exide/i.test(sName)) {
+        sAddr = 'EXIDE HOUSE, 59/E, CHOWRINGHEE ROAD\nKOLKATA - 700 020, WEST BENGAL, INDIA';
+      }
+      fullShipperSource = sAddr ? `${sName}\n${sAddr}` : sName;
+    }
+    const sParsed = parseCleanShipperBlock(
+      fullShipperSource,
+      shipment.shipperName || 'EXIDE INDUSTRIES LIMITED'
+    );
+    let shipperAddrCombined = [sParsed.addr1, sParsed.addr2, sParsed.addr3].filter(Boolean).join('\n') || shipment.shipperAddress || '';
+    if (!shipperAddrCombined && /exide/i.test(sParsed.name || shipment.shipperName || '')) {
+      shipperAddrCombined = 'EXIDE HOUSE, 59/E, CHOWRINGHEE ROAD\nKOLKATA - 700 020, WEST BENGAL, INDIA';
+      sParsed.addr1 = 'EXIDE HOUSE,';
+      sParsed.addr2 = '59/E, CHOWRINGHEE ROAD,';
+      sParsed.addr3 = 'KOLKATA - 700 020, INDIA';
+    }
 
-    const cFull = val('box_6_consignee', shipment.consigneeAddress || shipment.consigneeName || '');
-    const cParsed = parseCleanConsigneeBlock(cFull, shipment.consigneeName || '');
+    const cFull = val('box_6_consignee', '');
+    let fullConsigneeSource = '';
+    if (cFull && cFull.includes('\n')) {
+      fullConsigneeSource = cFull;
+    } else {
+      const cName = cFull || shipment.consigneeName || '';
+      let cAddr = shipment.consigneeAddress || '';
+      if (!cAddr) {
+        if (/nickel/i.test(cName)) {
+          cAddr = 'AUTO 1- A Member of KAPICO Group\nKuwait 00000 Kuwait';
+        } else if (shipment.finalDestination || shipment.portOfDischarge) {
+          cAddr = shipment.finalDestination || shipment.portOfDischarge || '';
+        }
+      }
+      fullConsigneeSource = cAddr ? `${cName}\n${cAddr}` : cName;
+    }
+    const cParsed = parseCleanConsigneeBlock(fullConsigneeSource, shipment.consigneeName || '');
+    let consigneeAddrCombined = [cParsed.addr1, cParsed.addr2, cParsed.addr3].filter(Boolean).join('\n') || shipment.consigneeAddress || '';
+    if (!consigneeAddrCombined && /nickel/i.test(cParsed.name || shipment.consigneeName || '')) {
+      consigneeAddrCombined = 'AUTO 1- A Member of KAPICO Group\nKuwait 00000 Kuwait';
+      cParsed.addr1 = 'AUTO 1- A Member of KAPICO Group';
+      cParsed.addr2 = 'Kuwait 00000 Kuwait';
+    }
 
     const carrierDefault = isOneLine
       ? 'ONE LINE'
       : (isMscLine ? 'MSC MEDITERRANEAN SHIPPING COMPANY' : (isDiamond ? 'DIAMOND MARITIME AGENCY PVT LTD' : ''));
     const carrier = val('box_7_carrier', shipment.carrierName || carrierDefault);
 
-    const declarant = val(
+    const rawDecl = val(
       'box_22_declarant_details_and_signature',
-      val('box_22_declarant_details', val('box_20_container_packing_certificate', shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY'))
+      val(
+        'box_22_shipper_declaration',
+        val(
+          'box_22_declarant_details',
+          val(
+            'box_20_container_packing_certificate',
+            val('box_20_container_packing_cert', shipment.dgDeclarantName || 'MR.SUJOY EXPORT MANAGER')
+          )
+        )
+      )
     );
+    const defaultDeclarant = isMscLine ? 'SUJOY DUTTA / EXPORT MANAGER' : 'MR.SUJOY EXPORT MANAGER';
+    const declarant = (!rawDecl || /exide/i.test(rawDecl) || rawDecl === shipment.shipperName)
+      ? defaultDeclarant
+      : rawDecl;
 
-    const cargoBlock = val('box_14_shipping_marks', buildTemplateCargoBlock(tmplId, shipment));
+    const generatedCargo = buildTemplateCargoBlock(tmplId, shipment);
+    const rawMarks = val('box_14_shipping_marks', '');
+    let cargoBlock = generatedCargo;
+    if (tmplId === 'VSTAR_DG' || tmplId === 'COMMON_DG' || tmplId === 'DIAMOND_MARITIME_DG' || tmplId === 'MSC_LINE_DG' || tmplId === 'ONE_LINE_DG') {
+      cargoBlock = generatedCargo;
+    } else if (rawMarks) {
+      if (/un\s*(?:no|number)|proper\s*shipping|class\s*8|imdg\s*code/i.test(rawMarks)) {
+        cargoBlock = rawMarks;
+      } else {
+        // Filter out pallet info from shipping marks so pallet ranges are not duplicated in description of goods
+        const cleanRawMarks = rawMarks
+          .split('\n')
+          .filter((line) => !/^(?:PALLET\s*NOS?|PALLET\s*NO|PALLETS?|\d+\s*TO\s*\d+)/i.test(line.trim()))
+          .join('\n')
+          .trim();
+        cargoBlock = cleanRawMarks ? `${cleanRawMarks}\n\n${generatedCargo}` : generatedCargo;
+      }
+    }
+
+
 
     const data: Record<string, string> = {
       shipperBlock: sParsed.compactBlock,
       shipperName: sParsed.name,
+      shipperAddress: shipperAddrCombined,
       shipperAddressLine1: sParsed.addr1,
       shipperAddressLine2: sParsed.addr2,
       shipperAddressLine3: sParsed.addr3,
       consigneeBlock: cParsed.compactBlock,
       consigneeName: cParsed.name,
+      consigneeAddress: consigneeAddrCombined,
       consigneeAddressLine1: cParsed.addr1,
       consigneeAddressLine2: cParsed.addr2,
       consigneeAddressLine3: cParsed.addr3,
@@ -1253,19 +1386,29 @@ export async function generatePopulatedDocxBlob(
       portOfLoading: val('box_11_port_of_loading', shipment.portOfLoading || ''),
       portOfDischarge: val('box_12_port_of_discharge', shipment.portOfDischarge || ''),
       destination: val('box_13_destination', shipment.finalDestination || shipment.portOfDischarge || ''),
-      emergencyContact: val('box_21_emergency_contact', val('box_9_place_of_receipt', shipment.emergencyContactPhone || '')),
+      emergencyContact: (isOneLine || isMscLine)
+        ? `MR. SUJOY MOB : ${shipment.emergencyContactPhone || '9729899131'}`
+        : val('box_21_emergency_contact', shipment.emergencyContactPhone || ''),
       cargoDescriptionBlock: cargoBlock,
-      grossMass: val('box_16_gross_mass_kg', val('box_16_gross_mass', shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '')),
-      netMass: val('box_17_net_mass_kg', val('box_17_net_mass', shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '')),
+      box14CargoBlock: cargoBlock,
+      grossMass: formatWeightWithKgs(val('box_16_gross_mass_kg', val('box_16_gross_mass', '')), shipment.grossWeightKg),
+      netMass: formatWeightWithKgs(val('box_17_net_mass_kg', val('box_17_net_mass', '')), shipment.netWeightKg),
       cube: val('box_18_cube_m3', shipment.volumeCbm > 0 ? `${shipment.volumeCbm} CBM` : (isDiamond ? '25 CBM' : '')),
-      unPackingCode: val('box_other_details_un_pack', unPkg || ''),
+      unPackingCode: isDiamond
+        ? (val('box_other_details_un_pack', '') || `UN PACKAGING NO. ${(unPkg || '4G/Z 30/S/**IND/K/19700134').replace(/^UN\s*PACKAGING\s*NO\.?\s*/i, '')} / UN CODE: ${(shipment as any).unCode || '063-UN/IIPK/07-2627'}`)
+        : (val('box_other_details_un_pack', '') || (unPkg ? `UN PACKING CODE: ${unPkg} | UN CODE: ${(shipment as any).unCode || '063-UN/IIPK/07-2627'}` : `UN PACKING CODE: 4G/Z 30/S/**IND/K/19700134 | UN CODE: ${(shipment as any).unCode || '063-UN/IIPK/07-2627'}`)),
+      unCode: val('box_other_details_un_code', (shipment as any).unCode || '063-UN/IIPK/07-2627'),
       containerNo: deduplicateTokens(val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || ''))),
       sealNo: deduplicateTokens(val('box_16_seal_number', shipment.sealNumber || '')),
       containerType: val('box_17_container_size_type', isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP")))),
       tareMass: val('box_19_tare_mass_kg', `${tareVal.toLocaleString()} KGS`),
       totalGrossVgm: vgmVal > 0 ? `${vgmVal.toLocaleString()} KGS` : '',
+      packerCompany: shipment.shipperName || 'EXIDE INDUSTRIES LIMITED',
+      shipperCompany: shipment.shipperName || 'EXIDE INDUSTRIES LIMITED',
       declarantName: declarant,
+      shipperDeclarantName: declarant,
       placeAndDate: val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''),
+      shipperPlaceAndDate: val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''),
       haulierName: '',
       vehicleRegNo: '',
       unNumber: unNo,
@@ -1290,6 +1433,195 @@ export async function generatePopulatedDocxBlob(
     return outBlob;
   } catch (err) {
     console.warn('generatePopulatedDocxBlob error:', err);
+    return null;
+  }
+}
+
+export async function generatePopulatedBlDocxBlob(
+  shipment: ExtractedShipmentJSON,
+  mappedFields?: MappedManifestField[]
+): Promise<Blob | null> {
+  try {
+    const res = await fetch('/templates/bl/BL_DRAFT.docx');
+    if (!res.ok) return null;
+    const arrayBuf = await res.arrayBuffer();
+    const zip = new PizZip(arrayBuf);
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      nullGetter: () => '',
+      delimiters: { start: '{{', end: '}}' }
+    });
+
+    const val = (pred: (id: string, label: string) => boolean, fallback: string = '') => {
+      if (mappedFields && mappedFields.length > 0) {
+        const match = mappedFields.find((f) => pred(f.fieldId.toLowerCase(), f.labelInTemplate.toLowerCase()));
+        if (match && match.value) return match.value;
+      }
+      return fallback;
+    };
+
+    const shipper = val(
+      (id, lbl) => id.includes('shipper') || lbl.includes('shipper'),
+      buildCleanPartyBlock(shipment.shipperName, shipment.shipperAddress, [
+        shipment.shipperIec ? `IEC: ${shipment.shipperIec}` : '',
+        shipment.shipperGstin ? `GSTIN: ${shipment.shipperGstin}` : ''
+      ])
+    );
+    const consignee = val(
+      (id, lbl) => id.includes('consignee') || lbl.includes('consignee'),
+      buildCleanPartyBlock(shipment.consigneeName, shipment.consigneeAddress)
+    );
+    const notifyParty = val(
+      (id, lbl) => id.includes('notify') || lbl.includes('notify party'),
+      buildCleanPartyBlock(shipment.notifyPartyName || 'SAME AS CONSIGNEE', shipment.notifyPartyAddress || '')
+    );
+
+    const bookingNo = val((id, lbl) => id.includes('booking') || lbl.includes('booking'), shipment.bookingNumber || '');
+    const placeOfReceipt = val(
+      (id, lbl) => id.includes('place_of_receipt') || lbl.includes('place of receipt'),
+      shipment.placeOfReceipt || shipment.portOfLoading || ''
+    );
+    const vesselVal = val((id, lbl) => id.includes('vessel') || lbl.includes('ocean vessel'), shipment.vesselName || '');
+    const voyageVal = val((id, lbl) => id.includes('voyage') || lbl.includes('voyage no'), shipment.voyageNumber || '');
+    const vesselVoyage = vesselVal && voyageVal
+      ? (vesselVal.includes(voyageVal) ? vesselVal : `${vesselVal} / ${voyageVal}`)
+      : (vesselVal || voyageVal || '');
+    const pol = val((id, lbl) => id.includes('port_of_loading') || lbl.includes('port of loading'), shipment.portOfLoading || '');
+    const pod = val((id, lbl) => id.includes('port_of_discharge') || lbl.includes('port of discharge'), shipment.portOfDischarge || '');
+    const placeOfDelivery = val(
+      (id, lbl) => id.includes('place_of_delivery') || lbl.includes('place of delivery') || lbl.includes('final destination'),
+      shipment.placeOfDelivery || shipment.finalDestination || shipment.portOfDischarge || ''
+    );
+
+    const rawMarks = val(
+      (id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers'),
+      shipment.shippingMarks || ''
+    );
+    const marksAndNumbers = deduplicateMultiLineText(rawMarks);
+    const rawCargoDesc = val(
+      (id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars'),
+      buildStandardBlCargoDescription(shipment)
+    );
+    const cargoDesc = deduplicateMultiLineText(rawCargoDesc);
+
+    const grossWt = shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : '';
+    const netWt = shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toFixed(2)} KGS` : '';
+
+    const contCount = shipment.containers && shipment.containers.length > 0 ? shipment.containers.length : 1;
+    const pCount = shipment.pallets?.length || shipment.totalPallets || 1;
+    const movement = val((id, lbl) => id.includes('movement') || lbl.includes('movement type'), shipment.movementType || 'FCL / CY');
+    const rawFreight = val((id, lbl) => id.includes('freight_term') || lbl.includes('freight terms'), shipment.freightTerms || 'FREIGHT COLLECT');
+    const freight = rawFreight.toUpperCase().includes('FREIGHT') ? rawFreight.toUpperCase() : `FREIGHT ${rawFreight.toUpperCase()}`;
+
+    const totalContainersPackages = `${String(contCount).padStart(2, '0')} / ${pCount} PLTS`;
+
+    const isMulti = shipment.containers && shipment.containers.length > 1;
+
+    const containers = (shipment.containers && shipment.containers.length > 0)
+      ? shipment.containers.map((c, idx) => {
+          const cPallets = c.palletIndices && c.palletIndices.length > 0 && shipment.pallets
+            ? c.palletIndices.map((i) => shipment.pallets[i]).filter(Boolean)
+            : [];
+          const cPalletCount = cPallets.length > 0 ? cPallets.length : Math.round(pCount / shipment.containers!.length);
+          const cGross = cPallets.length > 0
+            ? cPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0)
+            : (shipment.grossWeightKg / shipment.containers!.length);
+          const cNet = cPallets.length > 0
+            ? cPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0)
+            : (shipment.netWeightKg / shipment.containers!.length);
+
+          return {
+            containerNo: c.containerNumber || `Container ${idx + 1}`,
+            sealNo: c.sealNumber || '',
+            pallets: `${cPalletCount} PALLETS`,
+            grossWeight: cGross > 0 ? cGross.toFixed(2) : '',
+            netWeight: cNet > 0 ? cNet.toFixed(2) : ''
+          };
+        })
+      : [
+          {
+            containerNo: shipment.containerNumber || '',
+            sealNo: shipment.sealNumber || '',
+            pallets: `${pCount} PALLETS`,
+            grossWeight: shipment.grossWeightKg > 0 ? shipment.grossWeightKg.toFixed(2) : '',
+            netWeight: shipment.netWeightKg > 0 ? shipment.netWeightKg.toFixed(2) : ''
+          }
+        ];
+
+    // 1. Shipper Name & Address resolution (supports split lines and fallback)
+    const sLines = (shipper || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const sName = shipment.shipperName || (sLines.length > 0 ? sLines[0] : 'EXIDE INDUSTRIES LIMITED');
+    let sAddr = sLines.length > 1 ? sLines.slice(1).join('\n') : '';
+    if (!sAddr) {
+      const parts = [
+        shipment.shipperAddress,
+        shipment.shipperIec ? `IEC: ${shipment.shipperIec}` : '',
+        shipment.shipperGstin ? `GSTIN: ${shipment.shipperGstin}` : ''
+      ].filter(Boolean);
+      sAddr = parts.length > 0 ? parts.join('\n') : 'EXIDE HOUSE,\n59E, CHOWRINGHEE ROAD,\nKOLKATA – 700 020, INDIA';
+    }
+
+    // 2. Consignee Name & Address resolution
+    const cLines = (consignee || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const cName = shipment.consigneeName || (cLines.length > 0 ? cLines[0] : '');
+    let cAddr = cLines.length > 1 ? cLines.slice(1).join('\n') : (shipment.consigneeAddress || '');
+    if (!cAddr) {
+      if (cName.toLowerCase().includes('nickel')) {
+        cAddr = 'AUTO 1- A Member of KAPICO Group\nKuwait 00000 Kuwait';
+      } else if (shipment.finalDestination || shipment.portOfDischarge) {
+        cAddr = shipment.finalDestination || shipment.portOfDischarge || '';
+      }
+    }
+
+    // 3. Notify Party Name & Address resolution
+    const nLines = (notifyParty || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    const nName = shipment.notifyPartyName || (nLines.length > 0 ? nLines[0] : 'SAME AS CONSIGNEE');
+    let nAddr = nLines.length > 1 ? nLines.slice(1).join('\n') : (shipment.notifyPartyAddress || '');
+    if (!nAddr && !nName.toUpperCase().includes('SAME AS CONSIGNEE')) {
+      nAddr = cAddr;
+    }
+
+    const templateData = {
+      shipper,
+      shipperName: sName,
+      shipperAddress: sAddr,
+      bookingNo,
+      consignee,
+      consigneeName: cName,
+      consigneeAddress: cAddr,
+      notifyParty,
+      notifyPartyName: nName,
+      notifyPartyAddress: nAddr,
+      vesselVoyage,
+      placeOfReceipt,
+      portOfLoading: pol,
+      portOfDischarge: pod,
+      portOfDelivery: placeOfDelivery,
+      marksAndNumbers,
+      cargoDescription: cargoDesc,
+      grossWeightKgs: grossWt,
+      netWeightKgs: netWt,
+      totalContainersPackages,
+      movement,
+      freight,
+      containers,
+      isMulti: Boolean(isMulti),
+      containerCount: contCount,
+      totalPallets: `${pCount} PALLETS`,
+      totalGross: shipment.grossWeightKg > 0 ? shipment.grossWeightKg.toFixed(2) : '',
+      totalNet: shipment.netWeightKg > 0 ? shipment.netWeightKg.toFixed(2) : ''
+    };
+
+    doc.render(templateData);
+    const outBlob = doc.getZip().generate({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      compression: 'DEFLATE'
+    });
+    return outBlob;
+  } catch (err) {
+    console.warn('generatePopulatedBlDocxBlob error:', err);
     return null;
   }
 }
@@ -1328,34 +1660,110 @@ export async function exportManifestToDocx(
           return fallback;
         };
 
-        const sFull = val('box_1_shipper', shipment.shipperAddress || shipment.shipperName || '');
-        const sParsed = parseCleanShipperBlock(sFull, shipment.shipperName || '');
+        const sFull = val('box_1_shipper', '');
+        let fullShipperSource = '';
+        if (sFull && sFull.includes('\n')) {
+          fullShipperSource = sFull;
+        } else {
+          const sName = sFull || shipment.shipperName || 'Exide Industries Limited';
+          const sAddr = shipment.shipperAddress || '';
+          fullShipperSource = sAddr ? `${sName}\n${sAddr}` : sName;
+        }
+        const sParsed = parseCleanShipperBlock(fullShipperSource, shipment.shipperName || 'Exide Industries Limited');
+        if (!sParsed.addr1) {
+          let sLines: string[] = [];
+          if (shipment.shipperAddress) {
+            sLines = shipment.shipperAddress.includes('\n')
+              ? shipment.shipperAddress.split('\n').map((l) => l.trim()).filter(Boolean)
+              : shipment.shipperAddress.split(',').map((l) => l.trim()).filter(Boolean);
+          }
+          if (sLines.length > 0) {
+            sParsed.addr1 = sLines[0] || '';
+            sParsed.addr2 = sLines[1] || '';
+            sParsed.addr3 = sLines.length > 2 ? sLines.slice(2).join(', ') : '';
+          } else if (/exide/i.test(sParsed.name || shipment.shipperName || '')) {
+            sParsed.addr1 = 'EXIDE HOUSE,';
+            sParsed.addr2 = '59/E, CHOWRINGHEE ROAD,';
+            sParsed.addr3 = 'KOLKATA -700 020, INDIA';
+          }
+        } else if (!sParsed.addr3 && shipment.shipperGstin) {
+          sParsed.addr3 = `GSTIN: ${shipment.shipperGstin}`;
+        }
 
-        const cFull = val('box_6_consignee', shipment.consigneeAddress || shipment.consigneeName || '');
-        const cParsed = parseCleanConsigneeBlock(cFull, shipment.consigneeName || '');
+        const cFull = val('box_6_consignee', '');
+        let fullConsigneeSource = '';
+        if (cFull && cFull.includes('\n')) {
+          fullConsigneeSource = cFull;
+        } else {
+          const cName = cFull || shipment.consigneeName || '';
+          const cAddr = shipment.consigneeAddress || '';
+          fullConsigneeSource = cAddr ? `${cName}\n${cAddr}` : cName;
+        }
+        const cParsed = parseCleanConsigneeBlock(fullConsigneeSource, shipment.consigneeName || '');
+        if (!cParsed.addr1) {
+          let cLines: string[] = [];
+          if (shipment.consigneeAddress) {
+            cLines = shipment.consigneeAddress.includes('\n')
+              ? shipment.consigneeAddress.split('\n').map((l) => l.trim()).filter(Boolean)
+              : shipment.consigneeAddress.split(',').map((l) => l.trim()).filter(Boolean);
+          }
+          if (cLines.length > 0) {
+            cParsed.addr1 = cLines[0] || '';
+            cParsed.addr2 = cLines[1] || '';
+            cParsed.addr3 = cLines.length > 2 ? cLines.slice(2).join(', ') : '';
+          }
+        }
 
         const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
         const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
-        const unNo = shipment.unNumber || '2794';
+        const unNo = (shipment.unNumber && shipment.unNumber.trim()) ? shipment.unNumber.trim() : '2794';
         const psn = shipment.properShippingName || 'BATTERIES, WET, FILLED WITH ACID';
         const techName = shipment.productDescription || 'LEAD ACID STORAGE BATTERIES';
         const imoClass = shipment.imoClass || '8';
         const pg = shipment.packingGroup || 'III';
         const ems = shipment.emsNumber || 'F-A, S-B';
-        const unPkg = shipment.unPackingCode || '';
+        const unPkg = shipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134';
         const sgg = shipment.segregationGroup || 'SGG1';
         const carrierDefault = tmplId === 'CMA_CGM_DG'
           ? 'CMA-CGM AGENCIES INDIA PVT. LTD.'
           : 'KOREA MARINE TRANSPORT CO. LTD.';
         const carrier = val('box_7_carrier', shipment.carrierName || carrierDefault);
-        const declarant = val(
-          'box_22_declarant_details',
+        const defaultDeclarant = tmplId === 'CMA_CGM_DG'
+          ? 'Mr. Sujoy Dutta, Manager - Exports,Tel: +91 9729899131'
+          : (tmplId === 'KMTC_DG' ? 'SUJOY DUTTA / MANAGER EXPORTS' : 'MR.SUJOY EXPORT MANAGER');
+        const rawDeclExcel = val(
+          'box_20_container_packing_certificate',
           val(
-            'box_20_container_packing_certificate',
-            shipment.dgDeclarantName || shipment.shipperName || 'AUTHORIZED SIGNATORY'
+            'box_22_declarant_details',
+            shipment.dgDeclarantName || defaultDeclarant
           )
         );
+        const declarant = (!rawDeclExcel || /exide/i.test(rawDeclExcel) || rawDeclExcel === shipment.shipperName)
+          ? defaultDeclarant
+          : rawDeclExcel;
+
+        const shipperCompany = shipment.shipperName || 'EXIDE INDUSTRIES LTD';
+        const defaultShipperDeclarant = tmplId === 'KMTC_DG'
+          ? `SUJOY DUTTA / MANAGER EXPORT / ${shipperCompany.toUpperCase()}`
+          : (tmplId === 'CMA_CGM_DG' ? defaultDeclarant : 'MR.SUJOY EXPORT MANAGER');
+
+        const rawShipperDecl = val('box_22_declarant_details', '');
+        const shipperDeclarant = (!rawShipperDecl || (/exide/i.test(rawShipperDecl) && !/sujoy/i.test(rawShipperDecl)))
+          ? defaultShipperDeclarant
+          : rawShipperDecl;
+
         const placeDate = val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || '');
+
+        const rawEmergency = val('box_21_emergency_contact', shipment.emergencyContactPhone || '');
+        const cleanEmergency = (/handling\s*instructions/i.test(rawEmergency) || !rawEmergency.trim()) ? '' : rawEmergency.trim();
+
+        let rawGrossMass = formatWeightWithKgs(val('box_16_gross_mass_kg', val('box_16_gross_mass', '')), shipment.grossWeightKg);
+        rawGrossMass = rawGrossMass.replace(/^GR\s*WT\s*[:\s-]*/i, '');
+        let rawNetMass = formatWeightWithKgs(val('box_17_net_mass_kg', val('box_17_net_mass', '')), shipment.netWeightKg);
+        rawNetMass = rawNetMass.replace(/^NT\s*WT\s*[:\s-]*/i, '');
+
+        const kmtcOuter = outerCount > 0 ? `${outerCount} PALLETS` : (innerCount > 0 ? `${innerCount} FIBREBOARD BOXES` : '');
+        const kmtcInner = innerCount > 0 ? `${innerCount} BOXES` : '';
 
         const tags: Record<string, string> = {
           shipperName: sParsed.name,
@@ -1367,10 +1775,12 @@ export async function exportManifestToDocx(
           consigneeAddressLine2: cParsed.addr2,
           consigneeAddressLine3: cParsed.addr3,
           shipperRef: val('box_4_shipper_reference', shipment.shipperReference || shipment.invoiceNumbers?.[0] || ''),
-          emergencyContact: val('box_21_emergency_contact', val('box_9_place_of_receipt', shipment.emergencyContactPhone || '')),
+          emergencyContact: cleanEmergency,
           carrierName: carrier,
           bookingNo: val('box_2_transport_document_number', shipment.bookingNumber || ''),
           declarantName: declarant,
+          packerCompany: shipperCompany,
+          shipperDeclarantName: shipperDeclarant,
           placeAndDate: placeDate,
           vesselVoyage: val(
             'box_10_vessel_and_voyage_number',
@@ -1383,16 +1793,17 @@ export async function exportManifestToDocx(
           portOfDischarge: val('box_12_port_of_discharge', shipment.portOfDischarge || ''),
           destination: val('box_13_destination', shipment.finalDestination || shipment.portOfDischarge || ''),
           unNumber: unNo,
-          grossMass: val('box_16_gross_mass_kg', val('box_16_gross_mass', shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toLocaleString()} KGS` : '')),
-          netMass: val('box_17_net_mass_kg', val('box_17_net_mass', shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toLocaleString()} KGS` : '')),
+          grossMass: rawGrossMass,
+          netMass: rawNetMass,
           properShippingName: psn,
           technicalName: techName,
-          outerPackages: outerCount > 0 ? (innerCount > 0 ? `${innerCount} FIBREBOARD BOXES IN ${outerCount} PALLETS` : `${outerCount} PALLETS`) : '',
-          innerPackages: innerCount > 0 ? `${innerCount} BOXES` : 'EACH BOX HAS 1 BATTERY',
+          outerPackages: tmplId === 'KMTC_DG' ? kmtcOuter : (outerCount > 0 ? (innerCount > 0 ? `${innerCount} FIBREBOARD BOXES IN ${outerCount} PALLETS` : `${outerCount} PALLETS`) : ''),
+          innerPackages: tmplId === 'KMTC_DG' ? kmtcInner : (innerCount > 0 ? `${innerCount} BOXES` : 'EACH BOX HAS 1 BATTERY'),
           hazardClass: imoClass,
           subsidiaryRisk: 'NA',
           packingGroup: pg,
-          unPackingCode: unPkg || '',
+          unPackingCode: unPkg || '4G/Z 30/S/**IND/K/19700134',
+          unCode: (shipment as any).unCode || '063-UN/IIPK/07-2627',
           emsNo: ems,
           flashPoint: 'NA',
           marinePollutant: shipment.marinePollutant ? 'YES' : 'NA',
@@ -1409,10 +1820,22 @@ export async function exportManifestToDocx(
         };
 
         for (const [tagKey, tagVal] of Object.entries(tags)) {
-          sheetXml = sheetXml.replaceAll(`{${tagKey}}`, escapeXml(tagVal));
+          const escaped = escapeXml(tagVal);
+          sheetXml = sheetXml.replaceAll(`{{${tagKey}}}`, escaped);
+          sheetXml = sheetXml.replaceAll(`{${tagKey}}`, escaped);
         }
 
         zip.file('xl/worksheets/sheet1.xml', sheetXml);
+
+        let sstXml = zip.file('xl/sharedStrings.xml')?.asText() || '';
+        if (sstXml) {
+          for (const [tagKey, tagVal] of Object.entries(tags)) {
+            const escaped = escapeXml(tagVal);
+            sstXml = sstXml.replaceAll(`{{${tagKey}}}`, escaped);
+            sstXml = sstXml.replaceAll(`{${tagKey}}`, escaped);
+          }
+          zip.file('xl/sharedStrings.xml', sstXml);
+        }
         const outBlob = zip.generate({
           type: 'blob',
           mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1433,6 +1856,15 @@ export async function exportManifestToDocx(
       }
     } catch (e) {
       console.warn('Direct DOCX master template slot-in failed, falling back:', e);
+    }
+  } else {
+    try {
+      const blBlob = await generatePopulatedBlDocxBlob(shipment, mappedFields);
+      if (blBlob) {
+        return blBlob;
+      }
+    } catch (e) {
+      console.warn('Direct BL master template slot-in failed, falling back:', e);
     }
   }
 
@@ -1475,6 +1907,10 @@ export async function exportManifestToDocx(
       </w:rPr>
     </w:rPrDefault>
   </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:qFormat/>
+  </w:style>
 </w:styles>`;
   zip.file('word/styles.xml', stylesXml);
 
@@ -1498,20 +1934,120 @@ export async function exportManifestToDocx(
   };
 
   // 5. word/document.xml
-  const grouped = groupManifestFieldsBySection(mappedFields);
+  let tableGridXml = '';
   let tableRowsXml = '';
 
-  for (const [sectionName, fields] of Object.entries(grouped)) {
-    // Section Header row
-    tableRowsXml += `
-      <w:tr>
-        <w:trPr>
-          <w:cantSplit/>
-        </w:trPr>
+  if (!isDg) {
+    // Generate Exact Standard Maritime Bill of Lading Word Table
+    const val = (pred: (id: string, label: string) => boolean) => findFieldValue(mappedFields, pred);
+
+    const shipper = val((id, lbl) => id.includes('shipper') || lbl.includes('shipper')) ||
+      buildCleanPartyBlock(shipment.shipperName, shipment.shipperAddress, [
+        shipment.shipperIec ? `IEC: ${shipment.shipperIec}` : '',
+        shipment.shipperGstin ? `GSTIN: ${shipment.shipperGstin}` : ''
+      ]);
+    const consignee = val((id, lbl) => id.includes('consignee') || lbl.includes('consignee')) ||
+      buildCleanPartyBlock(shipment.consigneeName, shipment.consigneeAddress);
+    const notifyParty = val((id, lbl) => id.includes('notify') || lbl.includes('notify party')) ||
+      buildCleanPartyBlock(shipment.notifyPartyName || 'SAME AS CONSIGNEE', shipment.notifyPartyAddress || '');
+
+    const bookingNo = val((id, lbl) => id.includes('booking') || lbl.includes('booking')) || shipment.bookingNumber || '';
+    const rawExportRefs = val((id, lbl) => id.includes('export_reference') || lbl.includes('export ref') || lbl.includes("shipper's ref")) ||
+      shipment.shipperReference || shipment.invoiceNumbers?.join(', ') || '';
+    const exportRefs = deduplicateMultiLineText(rawExportRefs);
+
+    const placeOfReceipt = val((id, lbl) => id.includes('place_of_receipt') || lbl.includes('place of receipt')) || shipment.placeOfReceipt || shipment.portOfLoading || '';
+    const vesselVal = val((id, lbl) => id.includes('vessel') || lbl.includes('ocean vessel')) || shipment.vesselName || '';
+    const voyageVal = val((id, lbl) => id.includes('voyage') || lbl.includes('voyage no')) || shipment.voyageNumber || '';
+    const vesselVoyage = vesselVal && voyageVal
+      ? (vesselVal.includes(voyageVal) ? vesselVal : `${vesselVal} / ${voyageVal}`)
+      : (vesselVal || voyageVal || '');
+    const pol = val((id, lbl) => id.includes('port_of_loading') || lbl.includes('port of loading')) || shipment.portOfLoading || '';
+    const pod = val((id, lbl) => id.includes('port_of_discharge') || lbl.includes('port of discharge')) || shipment.portOfDischarge || '';
+    const placeOfDelivery = val((id, lbl) => id.includes('place_of_delivery') || lbl.includes('place of delivery') || lbl.includes('final destination')) ||
+      shipment.placeOfDelivery || shipment.finalDestination || shipment.portOfDischarge || '';
+
+    const rawMarks = val((id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers')) || shipment.shippingMarks || '';
+    const marksAndNumbers = deduplicateMultiLineText(rawMarks);
+    const rawCargoDesc = val((id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars')) || buildStandardBlCargoDescription(shipment);
+    const cargoDesc = deduplicateMultiLineText(rawCargoDesc);
+
+    const grossWt = val((id, lbl) => id.includes('gross_weight') || lbl.includes('gross weight')) || (shipment.grossWeightKg > 0 ? `${shipment.grossWeightKg.toFixed(2)} KGS` : '');
+    const netWt = val((id, lbl) => id.includes('net_weight') || lbl.includes('net weight')) || (shipment.netWeightKg > 0 ? `${shipment.netWeightKg.toFixed(2)} KGS` : '');
+
+    const contCount = shipment.containers && shipment.containers.length > 0 ? shipment.containers.length : 1;
+    const pCount = shipment.pallets?.length || shipment.totalPallets || 1;
+    const movement = val((id, lbl) => id.includes('movement') || lbl.includes('movement type')) || shipment.movementType || 'FCL / CY';
+    const freightTerms = val((id, lbl) => id.includes('freight_term') || lbl.includes('freight terms')) || shipment.freightTerms || 'FREIGHT PREPAID';
+
+    // Standard 5-column grid matching official BL_DRAFT.docx (Total: 10319 dxa)
+    tableGridXml = `
+      <w:tblGrid>
+        <w:gridCol w:w="2381"/>
+        <w:gridCol w:w="1134"/>
+        <w:gridCol w:w="2268"/>
+        <w:gridCol w:w="2902"/>
+        <w:gridCol w:w="1634"/>
+      </w:tblGrid>
+    `;
+
+    const makeCell = (
+      content: string,
+      widthDxa: number,
+      cellOpts: {
+        gridSpan?: number;
+        boldLabel?: string;
+        bgColor?: string;
+        align?: 'left' | 'right' | 'center';
+      } = {}
+    ): string => {
+      const { gridSpan, boldLabel, bgColor, align = 'left' } = cellOpts;
+      const trimmed = (content || '').trim();
+      const isBlockParagraphs = trimmed.startsWith('<w:p');
+
+      let bodyXml = '';
+      if (boldLabel) {
+        bodyXml += `
+          <w:p>
+            <w:pPr><w:spacing w:before="0" w:after="40"/></w:pPr>
+            <w:r>
+              <w:rPr><w:b/><w:sz w:val="15"/><w:color w:val="334155"/></w:rPr>
+              <w:t xml:space="preserve">${escapeXml(boldLabel)}</w:t>
+            </w:r>
+          </w:p>`;
+      }
+
+      if (isBlockParagraphs) {
+        bodyXml += trimmed;
+      } else if (trimmed.length > 0) {
+        bodyXml += `
+          <w:p>
+            <w:pPr>
+              <w:jc w:val="${align}"/>
+              <w:spacing w:before="0" w:after="0"/>
+            </w:pPr>
+            ${content}
+          </w:p>`;
+      } else if (!boldLabel) {
+        // Microsoft Word strictly requires at least one paragraph inside every table cell
+        bodyXml += `
+          <w:p>
+            <w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>
+          </w:p>`;
+      }
+
+      return `
         <w:tc>
           <w:tcPr>
-            <w:gridSpan w:val="2"/>
-            <w:shd w:val="clear" w:color="auto" w:fill="E2E8F0"/>
+            ${gridSpan && gridSpan > 1 ? `<w:gridSpan w:val="${gridSpan}"/>` : ''}
+            <w:tcW w:w="${widthDxa}" w:type="dxa"/>
+            ${bgColor ? `<w:shd w:val="clear" w:color="auto" w:fill="${bgColor}"/>` : ''}
+            <w:tcBorders>
+              <w:top w:val="single" w:sz="6" w:space="0" w:color="000000"/>
+              <w:left w:val="single" w:sz="6" w:space="0" w:color="000000"/>
+              <w:bottom w:val="single" w:sz="6" w:space="0" w:color="000000"/>
+              <w:right w:val="single" w:sz="6" w:space="0" w:color="000000"/>
+            </w:tcBorders>
             <w:tcMar>
               <w:top w:w="80" w:type="dxa"/>
               <w:bottom w:w="80" w:type="dxa"/>
@@ -1519,19 +2055,187 @@ export async function exportManifestToDocx(
               <w:right w:w="120" w:type="dxa"/>
             </w:tcMar>
           </w:tcPr>
-          <w:p>
-            <w:pPr><w:spacing w:after="0" w:before="0"/></w:pPr>
-            <w:r>
-              <w:rPr><w:b/><w:sz w:val="18"/><w:color w:val="1E293B"/></w:rPr>
-              <w:t>${escapeXml(sectionName.toUpperCase())}</w:t>
-            </w:r>
-          </w:p>
+          ${bodyXml}
         </w:tc>
+      `;
+    };
+
+    // Table 0 (Main B/L Grid: Rows 0-7)
+    tableRowsXml = `
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell(makeTextRuns(shipper, false, 19), 5783, { gridSpan: 3, boldLabel: 'Shipper:' })}
+        ${makeCell(makeTextRuns(bookingNo || '---', true, 20), 4536, { gridSpan: 2, boldLabel: 'BOOKING NO:' })}
+      </w:tr>
+
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell(makeTextRuns(consignee, false, 19), 5783, { gridSpan: 3, boldLabel: 'Consignee:' })}
+        ${makeCell(makeTextRuns(exportRefs || '---', false, 18), 4536, { gridSpan: 2, boldLabel: 'Export / Shipper References:' })}
+      </w:tr>
+
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell(makeTextRuns(notifyParty, false, 19), 5783, { gridSpan: 3, boldLabel: 'Notify Party:' })}
+        ${makeCell(makeTextRuns(shipment.carrierName || shipment.forwarderReference || '---', false, 18), 4536, { gridSpan: 2, boldLabel: 'Carrier / Forwarder Details:' })}
+      </w:tr>
+
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell(makeTextRuns(vesselVoyage || '---', true, 19), 5783, { gridSpan: 3, boldLabel: 'Vessel and Voyage No:' })}
+        ${makeCell(makeTextRuns(placeOfReceipt, false, 19), 4536, { gridSpan: 2, boldLabel: 'Place of Receipt:' })}
+      </w:tr>
+
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell(makeTextRuns(pol, false, 19), 2381, { gridSpan: 1, boldLabel: 'Port of Loading:' })}
+        ${makeCell(makeTextRuns(pod || '---', false, 19), 3402, { gridSpan: 2, boldLabel: 'Port of Discharge:' })}
+        ${makeCell(makeTextRuns(placeOfDelivery || '---', false, 19), 4536, { gridSpan: 2, boldLabel: 'Port of Delivery:' })}
+      </w:tr>
+
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell('', 3515, { gridSpan: 2, boldLabel: 'Container Nos. Marks & Numbers', bgColor: 'F8FAFC' })}
+        ${makeCell('', 5170, { gridSpan: 2, boldLabel: 'Number and Kind of Packages  Description of Goods', bgColor: 'F8FAFC' })}
+        ${makeCell('', 1634, { gridSpan: 1, boldLabel: 'Gross Weight', bgColor: 'F8FAFC', align: 'right' })}
+      </w:tr>
+
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell(
+          makeTextRuns(marksAndNumbers || '---', false, 18),
+          3515,
+          { gridSpan: 2 }
+        )}
+        ${makeCell(makeTextRuns(cargoDesc, false, 18), 5170, { gridSpan: 2 })}
+        ${makeCell(
+          `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="0" w:after="80"/></w:pPr>${makeTextRuns(grossWt || '---', true, 20)}</w:p>` +
+          (netWt ? `<w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="80" w:after="0"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="15"/><w:color w:val="334155"/></w:rPr><w:t>NET WEIGHT</w:t></w:r></w:p><w:p><w:pPr><w:jc w:val="right"/><w:spacing w:before="0" w:after="0"/></w:pPr>${makeTextRuns(netWt, true, 19)}</w:p>` : ''),
+          1634,
+          { gridSpan: 1, align: 'right' }
+        )}
+      </w:tr>
+
+      <w:tr>
+        <w:trPr><w:cantSplit/></w:trPr>
+        ${makeCell(makeTextRuns(`${String(contCount).padStart(2, '0')} / ${pCount} PLTS`, true, 19), 5783, { gridSpan: 3, boldLabel: 'Total No. of Containers /Packages:', bgColor: 'F8FAFC' })}
+        ${makeCell(makeTextRuns(movement, true, 19), 2902, { gridSpan: 1, boldLabel: 'Movement:', bgColor: 'F8FAFC' })}
+        ${makeCell(makeTextRuns(freightTerms, true, 19, 'B91C1C'), 1634, { gridSpan: 1, boldLabel: 'Freight:', bgColor: 'F8FAFC' })}
       </w:tr>
     `;
 
-    // Field pairs
-    for (const field of fields) {
+    // Table 1 (Equipment / Container Breakdown Table: Separate Table matching BL DRAFT.docx)
+    // Grid: 3568, 1892, 1892, 1532, 1494 (Total: 10,378 dxa)
+    const makeContCell = (content: string, widthDxa: number, cellOpts: { bold?: boolean; bgColor?: string; align?: 'left' | 'right' } = {}) => {
+      const { bold = false, bgColor, align = 'left' } = cellOpts;
+      return `
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="${widthDxa}" w:type="dxa"/>
+            ${bgColor ? `<w:shd w:val="clear" w:color="auto" w:fill="${bgColor}"/>` : ''}
+            <w:tcBorders>
+              <w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+            </w:tcBorders>
+            <w:tcMar>
+              <w:top w:w="60" w:type="dxa"/>
+              <w:bottom w:w="60" w:type="dxa"/>
+              <w:left w:w="100" w:type="dxa"/>
+              <w:right w:w="100" w:type="dxa"/>
+            </w:tcMar>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              ${align === 'right' ? '<w:jc w:val="right"/>' : ''}
+              <w:spacing w:before="0" w:after="0"/>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                ${bold ? '<w:b/>' : ''}
+                <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>
+                <w:sz w:val="18"/>
+              </w:rPr>
+              <w:t xml:space="preserve">${escapeXml(content)}</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      `;
+    };
+
+    let table1Rows = `
+      <w:tr>
+        <w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>
+        ${makeContCell('CONT.NO.', 3568, { bold: true, bgColor: 'F1F5F9' })}
+        ${makeContCell('Seal no.', 1892, { bold: true, bgColor: 'F1F5F9' })}
+        ${makeContCell('Pallets', 1892, { bold: true, bgColor: 'F1F5F9' })}
+        ${makeContCell('Gr.wt. kgs', 1532, { bold: true, bgColor: 'F1F5F9', align: 'right' })}
+        ${makeContCell('Nt.wt.kgs', 1494, { bold: true, bgColor: 'F1F5F9', align: 'right' })}
+      </w:tr>
+    `;
+
+    if (shipment.containers && shipment.containers.length > 1) {
+      shipment.containers.forEach((cont, cIdx) => {
+        const cPallets = cont.palletIndices && cont.palletIndices.length > 0 && shipment.pallets
+          ? cont.palletIndices.map((i) => shipment.pallets[i]).filter(Boolean)
+          : [];
+        const cPalletCount = cPallets.length > 0 ? cPallets.length : Math.round(pCount / shipment.containers!.length);
+        const cGross = cPallets.length > 0
+          ? cPallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0)
+          : (shipment.grossWeightKg / shipment.containers!.length);
+        const cNet = cPallets.length > 0
+          ? cPallets.reduce((s, p) => s + (p.netWeightKg || 0), 0)
+          : (shipment.netWeightKg / shipment.containers!.length);
+
+        table1Rows += `
+          <w:tr>
+            <w:trPr><w:cantSplit/></w:trPr>
+            ${makeContCell(cont.containerNumber || `Container ${cIdx + 1}`, 3568, { bold: true })}
+            ${makeContCell(cont.sealNumber || '---', 1892)}
+            ${makeContCell(`${cPalletCount} PALLET`, 1892)}
+            ${makeContCell(cGross > 0 ? cGross.toFixed(2) : '0.00', 1532, { align: 'right' })}
+            ${makeContCell(cNet > 0 ? cNet.toFixed(2) : '0.00', 1494, { align: 'right' })}
+          </w:tr>
+        `;
+      });
+
+      // Total summary row for multi-container
+      table1Rows += `
+        <w:tr>
+          <w:trPr><w:cantSplit/></w:trPr>
+          ${makeContCell(`TOTAL (${shipment.containers.length} CONTAINERS)`, 3568, { bold: true, bgColor: 'F1F5F9' })}
+          ${makeContCell('—', 1892, { bgColor: 'F1F5F9' })}
+          ${makeContCell(`${pCount} PALLET`, 1892, { bold: true, bgColor: 'F1F5F9' })}
+          ${makeContCell(shipment.grossWeightKg.toFixed(2), 1532, { bold: true, bgColor: 'F1F5F9', align: 'right' })}
+          ${makeContCell(shipment.netWeightKg.toFixed(2), 1494, { bold: true, bgColor: 'F1F5F9', align: 'right' })}
+        </w:tr>
+      `;
+    } else {
+      table1Rows += `
+        <w:tr>
+          <w:trPr><w:cantSplit/></w:trPr>
+          ${makeContCell(shipment.containerNumber || '---', 3568, { bold: true })}
+          ${makeContCell(shipment.sealNumber || '---', 1892)}
+          ${makeContCell(`${pCount} PALLET`, 1892)}
+          ${makeContCell(shipment.grossWeightKg > 0 ? shipment.grossWeightKg.toFixed(2) : '0.00', 1532, { align: 'right' })}
+          ${makeContCell(shipment.netWeightKg > 0 ? shipment.netWeightKg.toFixed(2) : '0.00', 1494, { align: 'right' })}
+        </w:tr>
+      `;
+    }
+
+    (tableRowsXml as any) = { table0Rows: tableRowsXml, table1Rows };
+  } else {
+    // DG Manifest Word Table
+    tableGridXml = `
+      <w:tblGrid>
+        <w:gridCol w:w="3000"/>
+        <w:gridCol w:w="7319"/>
+      </w:tblGrid>
+    `;
+    const grouped = groupManifestFieldsBySection(mappedFields);
+    for (const [sectionName, fields] of Object.entries(grouped)) {
+      // Section Header row
       tableRowsXml += `
         <w:tr>
           <w:trPr>
@@ -1540,12 +2244,8 @@ export async function exportManifestToDocx(
           <w:tc>
             <w:tcPr>
               <w:gridSpan w:val="2"/>
-              <w:tcBorders>
-                <w:top w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
-                <w:bottom w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
-                <w:left w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
-                <w:right w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
-              </w:tcBorders>
+              <w:tcW w:w="10319" w:type="dxa"/>
+              <w:shd w:val="clear" w:color="auto" w:fill="E2E8F0"/>
               <w:tcMar>
                 <w:top w:w="80" w:type="dxa"/>
                 <w:bottom w:w="80" w:type="dxa"/>
@@ -1554,19 +2254,55 @@ export async function exportManifestToDocx(
               </w:tcMar>
             </w:tcPr>
             <w:p>
-              <w:pPr><w:spacing w:after="40" w:before="0"/></w:pPr>
-              <w:r>
-                <w:rPr><w:b/><w:sz w:val="16"/><w:color w:val="475569"/></w:rPr>
-                <w:t>${escapeXml(field.labelInTemplate.toUpperCase())}</w:t>
-              </w:r>
-            </w:p>
-            <w:p>
               <w:pPr><w:spacing w:after="0" w:before="0"/></w:pPr>
-              ${makeTextRuns(field.value, false, 20, '0F172A')}
+              <w:r>
+                <w:rPr><w:b/><w:sz w:val="18"/><w:color w:val="1E293B"/></w:rPr>
+                <w:t>${escapeXml(sectionName.toUpperCase())}</w:t>
+              </w:r>
             </w:p>
           </w:tc>
         </w:tr>
       `;
+
+      // Field pairs
+      for (const field of fields) {
+        tableRowsXml += `
+          <w:tr>
+            <w:trPr>
+              <w:cantSplit/>
+            </w:trPr>
+            <w:tc>
+              <w:tcPr>
+                <w:gridSpan w:val="2"/>
+                <w:tcW w:w="10319" w:type="dxa"/>
+                <w:tcBorders>
+                  <w:top w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+                  <w:bottom w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+                  <w:left w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+                  <w:right w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+                </w:tcBorders>
+                <w:tcMar>
+                  <w:top w:w="80" w:type="dxa"/>
+                  <w:bottom w:w="80" w:type="dxa"/>
+                  <w:left w:w="120" w:type="dxa"/>
+                  <w:right w:w="120" w:type="dxa"/>
+                </w:tcMar>
+              </w:tcPr>
+              <w:p>
+                <w:pPr><w:spacing w:after="40" w:before="0"/></w:pPr>
+                <w:r>
+                  <w:rPr><w:b/><w:sz w:val="16"/><w:color w:val="475569"/></w:rPr>
+                  <w:t>${escapeXml(field.labelInTemplate.toUpperCase())}</w:t>
+                </w:r>
+              </w:p>
+              <w:p>
+                <w:pPr><w:spacing w:after="0" w:before="0"/></w:pPr>
+                ${makeTextRuns(field.value, false, 20, '0F172A')}
+              </w:p>
+            </w:tc>
+          </w:tr>
+        `;
+      }
     }
   }
 
@@ -1579,12 +2315,12 @@ export async function exportManifestToDocx(
       const p = shipment.pallets[idx];
       palletRows += `
         <w:tr>
-          <w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:r><w:t>${idx + 1}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:r><w:b/><w:t>${escapeXml(p.palletNumber)}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:r><w:t>${escapeXml(p.modelCode || '---')}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${p.boxCount}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${p.netWeightKg.toFixed(2)}</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${p.grossWeightKg.toFixed(2)}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="600" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:r><w:t>${idx + 1}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:r><w:b/><w:t>${escapeXml(p.palletNumber)}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:r><w:t>${escapeXml(p.modelCode || '---')}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="1319" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${p.boxCount}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="1500" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${p.netWeightKg.toFixed(2)}</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="1500" w:type="dxa"/><w:tcBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/></w:tcBorders></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:t>${p.grossWeightKg.toFixed(2)}</w:t></w:r></w:p></w:tc>
         </w:tr>
       `;
     }
@@ -1593,7 +2329,7 @@ export async function exportManifestToDocx(
       <w:p><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="22"/></w:rPr><w:t>ANNEX: PALLET-LEVEL PACKAGING &amp; WEIGHT BREAKDOWN</w:t></w:r></w:p>
       <w:tbl>
         <w:tblPr>
-          <w:tblW w:w="0" w:type="auto"/>
+          <w:tblW w:w="10319" w:type="dxa"/>
           <w:tblBorders>
             <w:top w:val="single" w:sz="4" w:color="CBD5E1"/>
             <w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/>
@@ -1603,14 +2339,22 @@ export async function exportManifestToDocx(
             <w:insideV w:val="single" w:sz="4" w:color="CBD5E1"/>
           </w:tblBorders>
         </w:tblPr>
+        <w:tblGrid>
+          <w:gridCol w:w="600"/>
+          <w:gridCol w:w="2400"/>
+          <w:gridCol w:w="3000"/>
+          <w:gridCol w:w="1319"/>
+          <w:gridCol w:w="1500"/>
+          <w:gridCol w:w="1500"/>
+        </w:tblGrid>
         <w:tr>
           <w:trPr><w:tblHeader/></w:trPr>
-          <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>#</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>PALLET NO.</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>MODEL / DESCRIPTION</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>BOXES</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>NET WT (KG)</w:t></w:r></w:p></w:tc>
-          <w:tc><w:tcPr><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>GROSS WT (KG)</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="600" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>#</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>PALLET NO.</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>MODEL / DESCRIPTION</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="1319" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>BOXES</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="1500" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>NET WT (KG)</w:t></w:r></w:p></w:tc>
+          <w:tc><w:tcPr><w:tcW w:w="1500" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/></w:tcPr><w:p><w:pPr><w:jc w:val="right"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="16"/></w:rPr><w:t>GROSS WT (KG)</w:t></w:r></w:p></w:tc>
         </w:tr>
         ${palletRows}
       </w:tbl>
@@ -1627,12 +2371,62 @@ export async function exportManifestToDocx(
   }
   const refCode = shipment.bookingNumber || shipment.invoiceNumbers?.[0] || shipment.shipperReference || 'DRAFT';
 
-  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const blTable0Rows = !isDg && typeof tableRowsXml === 'object' && tableRowsXml !== null ? (tableRowsXml as any).table0Rows : tableRowsXml;
+  const blTable1Rows = !isDg && typeof tableRowsXml === 'object' && tableRowsXml !== null ? (tableRowsXml as any).table1Rows : '';
+
+  const documentXml = !isDg ? `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="10319" w:type="dxa"/>
+        <w:tblBorders>
+          <w:top w:val="single" w:sz="8" w:space="0" w:color="000000"/>
+          <w:bottom w:val="single" w:sz="8" w:space="0" w:color="000000"/>
+          <w:left w:val="single" w:sz="8" w:space="0" w:color="000000"/>
+          <w:right w:val="single" w:sz="8" w:space="0" w:color="000000"/>
+          <w:insideH w:val="single" w:sz="6" w:space="0" w:color="000000"/>
+          <w:insideV w:val="single" w:sz="6" w:space="0" w:color="000000"/>
+        </w:tblBorders>
+      </w:tblPr>
+      ${tableGridXml}
+      ${blTable0Rows}
+    </w:tbl>
+    <w:p>
+      <w:pPr><w:spacing w:before="120" w:after="120"/></w:pPr>
+    </w:p>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="10378" w:type="dxa"/>
+        <w:tblBorders>
+          <w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+          <w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+          <w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+          <w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+          <w:insideH w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+          <w:insideV w:val="single" w:sz="4" w:space="0" w:color="CBD5E1"/>
+        </w:tblBorders>
+      </w:tblPr>
+      <w:tblGrid>
+        <w:gridCol w:w="3568"/>
+        <w:gridCol w:w="1892"/>
+        <w:gridCol w:w="1892"/>
+        <w:gridCol w:w="1532"/>
+        <w:gridCol w:w="1494"/>
+      </w:tblGrid>
+      ${blTable1Rows}
+    </w:tbl>
+    ${palletAnnexXml}
+    <w:sectPr>
+      <w:pgSz w:w="11906" w:h="16838"/>
+      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
+    </w:sectPr>
+  </w:body>
+</w:document>` : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
     <w:p>
       <w:pPr>
-        <w:pStyle w:val="Heading1"/>
         <w:jc w:val="center"/>
         <w:spacing w:after="60"/>
       </w:pPr>
@@ -1650,7 +2444,7 @@ export async function exportManifestToDocx(
     </w:p>
     <w:tbl>
       <w:tblPr>
-        <w:tblW w:w="0" w:type="auto"/>
+        <w:tblW w:w="10319" w:type="dxa"/>
         <w:tblBorders>
           <w:top w:val="single" w:sz="6" w:space="0" w:color="0F172A"/>
           <w:bottom w:val="single" w:sz="6" w:space="0" w:color="0F172A"/>
@@ -1660,6 +2454,7 @@ export async function exportManifestToDocx(
           <w:insideV w:val="none"/>
         </w:tblBorders>
       </w:tblPr>
+      ${tableGridXml}
       ${tableRowsXml}
     </w:tbl>
     ${palletAnnexXml}

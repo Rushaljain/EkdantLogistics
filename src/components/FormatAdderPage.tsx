@@ -70,7 +70,7 @@ export function FormatAdderPage({
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-app text-content-primary">
       {/* Top Header */}
-      <header className="h-14 px-6 border-b border-divider bg-surface flex items-center justify-between shrink-0">
+      <header className="h-12 px-6 border-b border-divider bg-surface flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-sm font-bold text-content-primary tracking-wide">Format Adder & Template Library</h1>
           <p className="text-[11px] text-content-secondary">

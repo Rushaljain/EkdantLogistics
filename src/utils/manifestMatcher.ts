@@ -90,11 +90,30 @@ export function buildMappedManifest(
       } else if (typeof rawVal === 'boolean') {
         resolvedValue = rawVal ? 'YES' : 'NO';
       } else if (typeof rawVal === 'number') {
-        resolvedValue = rawVal === 0 ? '' : String(rawVal);
+        if (rawVal === 0) {
+          resolvedValue = '';
+        } else if (
+          format.documentType === 'DG' &&
+          (field.mappedShipmentKey === 'grossWeightKg' || field.mappedShipmentKey === 'netWeightKg' || field.mappedShipmentKey === 'tareWeightKg')
+        ) {
+          resolvedValue = `${rawVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KGS`;
+        } else {
+          resolvedValue = String(rawVal);
+        }
       } else if (typeof rawVal === 'string') {
         resolvedValue = rawVal.trim();
         if (resolvedValue === '0' || resolvedValue === '---' || resolvedValue === 'NIL') {
           resolvedValue = resolvedValue === '0' ? '' : resolvedValue;
+        } else if (
+          format.documentType === 'DG' &&
+          (field.mappedShipmentKey === 'grossWeightKg' || field.mappedShipmentKey === 'netWeightKg' || field.mappedShipmentKey === 'tareWeightKg')
+        ) {
+          if (!/\b(?:kgs?|kilograms?)\b/i.test(resolvedValue)) {
+            const num = parseFloat(resolvedValue.replace(/,/g, ''));
+            if (!isNaN(num) && num > 0) {
+              resolvedValue = `${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KGS`;
+            }
+          }
         }
       }
     }
@@ -471,6 +490,21 @@ export function buildMappedManifest(
       } else {
         resolvedValue = vName;
       }
+    }
+
+    // 10b. Name / Status of Declarant (Box 20 / Box 22)
+    const isDeclarantField =
+      format.documentType === 'DG' &&
+      (
+        field.mappedShipmentKey === 'dgDeclarantName' ||
+        fieldIdLower.includes('declarant') ||
+        labelLower.includes('declarant') ||
+        fieldIdLower === 'box_20_container_packing_cert' ||
+        fieldIdLower === 'box_22_shipper_declaration'
+      );
+
+    if (isDeclarantField && (!resolvedValue || /exide/i.test(resolvedValue) || resolvedValue === shipment.shipperName)) {
+      resolvedValue = 'MR.SUJOY EXPORT MANAGER';
     }
 
     // 11. Global Keyword Reference & Cascading Fallback Engine

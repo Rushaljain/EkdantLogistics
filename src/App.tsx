@@ -46,18 +46,16 @@ import {
 } from './utils/documentExporter.ts';
 
 // UI Components
-import { NavigationSidebar, type PageId } from './components/NavigationSidebar.tsx';
+import type { PageId } from './components/NavigationSidebar.tsx';
 import { WorkspacePage } from './components/WorkspacePage.tsx';
 import { FilesPage } from './components/FilesPage.tsx';
 import { FormatAdderPage } from './components/FormatAdderPage.tsx';
-import { InventoryStockSelector } from './components/InventoryStockSelector.tsx';
 import { WarehouseInventoryHub } from './components/WarehouseInventoryHub.tsx';
-import { getCFSLedgerEntries, syncStage2FieldsToLedger } from './utils/inventoryStore.ts';
+import { syncStage2FieldsToLedger } from './utils/inventoryStore.ts';
 
 export function App(): React.JSX.Element {
   // Navigation & Shell State - Default to Warehouse as primary page
   const [activePage, setActivePage] = useState<PageId>('inventory');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [_mode, setMode] = useState<UploadMode | ''>('SINGLE_INVOICE');
 
   // Ingestion & File State
@@ -66,7 +64,6 @@ export function App(): React.JSX.Element {
 
   // Storage Purge & Reset State
   const [isPurging, setIsPurging] = useState(false);
-  const [lastPurgedAt, setLastPurgedAt] = useState<string | null>(null);
 
   // API Key management
   const [showKeyModal, setShowKeyModal] = useState(false);
@@ -103,23 +100,13 @@ export function App(): React.JSX.Element {
   const [savedWorkSessions, setSavedWorkSessions] = useState<ArchivedShipment[]>(() => getSavedWorkSessions());
   const [showUploadConfirmModal, setShowUploadConfirmModal] = useState(false);
   const [saveToastMessage, setSaveToastMessage] = useState<string | null>(null);
-  const [cfsLedgerCount] = useState<number>(() => getCFSLedgerEntries().length);
 
   // Purge workspace storage on initial mount
   useEffect(() => {
-    let isMounted = true;
     purgeAllWorkspaceStorage()
-      .then(() => {
-        if (isMounted) {
-          setLastPurgedAt(new Date().toLocaleTimeString());
-        }
-      })
       .catch((err) => {
         console.error('Initial storage purge failed:', err);
       });
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   const resetSessionState = (selectedMode: UploadMode | '') => {
@@ -141,7 +128,6 @@ export function App(): React.JSX.Element {
     try {
       await purgeAllWorkspaceStorage();
       resetSessionState('');
-      setLastPurgedAt(new Date().toLocaleTimeString());
     } finally {
       setIsPurging(false);
     }
@@ -446,37 +432,17 @@ export function App(): React.JSX.Element {
     setActivePage('formats');
   };
 
-  // Condition to determine if shipment data is loaded
-  const isShipmentLoaded = hasParsed || shipmentJson.invoiceNumbers.length > 0;
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-cyan-500 selection:text-white overflow-hidden">
-      {/* Persistent Navigation Drawer */}
-      <NavigationSidebar
-        activePage={activePage}
-        onSelectPage={setActivePage}
-        filesCount={uploadedFiles.length}
-        formatsCount={formats.length}
-        inventoryCount={cfsLedgerCount}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
-        onOpenApiKeyModal={() => setShowKeyModal(true)}
-        hasCustomKey={Boolean(customApiKey.trim())}
-        lastPurgedAt={lastPurgedAt}
-        onHardReset={handleHardReset}
-        isPurging={isPurging}
-      />
-
-      {/* Primary Page Canvas (All 3 pages keep state alive) */}
+    <div className="h-screen max-h-screen bg-app text-content-primary flex flex-col font-sans selection:bg-brand-primary selection:text-white overflow-hidden">
+      {/* Primary Page Canvas (All pages keep state alive) */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {activePage === 'workspace' && (
-          isShipmentLoaded ? (
-            <div className="flex-1 flex flex-col h-full overflow-hidden animate-fade-in transition-opacity duration-300">
-              <WorkspacePage
-                shipmentJson={shipmentJson}
-                onUpdateShipment={handleUpdateShipmentFromContainer}
-                activeDgFormat={activeDgFormat}
-                activeBlFormat={activeBlFormat}
+          <div className="flex-1 flex flex-col h-full overflow-hidden animate-fade-in transition-opacity duration-300">
+            <WorkspacePage
+              shipmentJson={shipmentJson}
+              onUpdateShipment={handleUpdateShipmentFromContainer}
+              activeDgFormat={activeDgFormat}
+              activeBlFormat={activeBlFormat}
                 dgFormats={dgFormats}
                 blFormats={blFormats}
                 selectedDgFormatId={selectedDgFormatId}
@@ -506,13 +472,7 @@ export function App(): React.JSX.Element {
                 onDownloadZip={handleDownloadZip}
                 isExportingZip={isExportingZip}
               />
-            </div>
-          ) : (
-            <InventoryStockSelector
-              onSelectShipment={handleLoadShipmentFromWarehouse}
-              onOpenInventory={() => setActivePage('inventory')}
-            />
-          )
+          </div>
         )}
 
         {activePage === 'inventory' && (

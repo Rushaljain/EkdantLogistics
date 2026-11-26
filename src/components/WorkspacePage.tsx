@@ -14,8 +14,8 @@ import {
   RotateCcw,
   Sparkles,
   CheckCircle2,
-  Save,
-  Layers
+  AlertTriangle,
+  Save
 } from 'lucide-react';
 import type {
   ExtractedShipmentJSON,
@@ -26,14 +26,10 @@ import type {
 import { DgDocumentCanvas } from './DgDocumentCanvas.tsx';
 import { BlDocumentCanvas } from './BlDocumentCanvas.tsx';
 import { ContainerBayWorkspace } from './ContainerBayWorkspace.tsx';
+import { DateInput } from './DateInput.tsx';
 import { synthesizePalletRanges } from '../utils/manifestKeywordReference.ts';
 import { syncStage2FieldsToLedger, executeWorkspaceDispatch, formatToDDMMYYYY, markLedgerDocumentCreated } from '../utils/inventoryStore.ts';
 import { InventoryStockSelector } from './InventoryStockSelector.tsx';
-import {
-  buildDgCargoItems,
-  filterShipmentByDgCargoItems,
-  type DgCargoItemLine
-} from '../utils/dgTemplates.ts';
 
 export type WorkspaceTab = 'dg_manifest' | 'bl_manifest' | 'container_bay' | 'extracted_data' | 'export_center';
 
@@ -145,11 +141,26 @@ export function WorkspacePage({
   const [showDispatchConfirmModal, setShowDispatchConfirmModal] = useState(false);
   const [dispatchToast, setDispatchToast] = useState<string | null>(null);
 
+  // Pending export action to resume immediately once container specifications are confirmed
+  const [pendingExport, setPendingExport] = useState<{
+    actionType: 'PRINT_PDF' | 'DOWNLOAD_DOCX' | 'DOWNLOAD_HTML' | 'DOWNLOAD_ZIP';
+    docType?: FormatDocumentType;
+    overrideShipment?: ExtractedShipmentJSON;
+  } | null>(null);
+
   const [dispatchDetails, setDispatchDetails] = useState(() => {
     const today = formatToDDMMYYYY(new Date());
+    const vName = shipmentJson.vesselName || '';
+    const vVoy = shipmentJson.voyageNumber || '';
+    const vComb = vName ? (vVoy ? `${vName} / ${vVoy}` : vName) : '';
     return {
-      containerNo: shipmentJson.containerNumber || shipmentJson.containers?.[0]?.containerNumber || '',
-      sealNo: shipmentJson.sealNumber || shipmentJson.containers?.[0]?.sealNumber || '',
+      containerNo: (shipmentJson.containerNumber && !shipmentJson.containerNumber.startsWith('Container ') ? shipmentJson.containerNumber : '') || shipmentJson.containers?.[0]?.containerNumber || '',
+      sealNo: (shipmentJson.sealNumber !== '---' ? shipmentJson.sealNumber : '') || shipmentJson.containers?.[0]?.sealNumber || '',
+      bookingNumber: shipmentJson.bookingNumber || '',
+      forwarderReference: shipmentJson.forwarderReference || '',
+      carrierName: shipmentJson.carrierName || '',
+      vesselVoyage: vComb,
+      additionalHandlingInfo: (shipmentJson as any).additionalHandlingInformation || shipmentJson.emergencyContactPhone || '',
       shippingBillNo: shipmentJson.shippingBillNumbers || '',
       shippingBillDate: shipmentJson.invoiceDates?.[0] || today,
       stuffingDate: today,
@@ -188,25 +199,145 @@ export function WorkspacePage({
     onDownloadZip();
   };
 
-  const handleExecuteWorkspaceDispatch = () => {
-    if (!dispatchDetails.containerNo.trim() || !dispatchDetails.sealNo.trim()) {
-      alert('Please enter Container No and Seal No before dispatching.');
+  const executeExportDirectly = (
+    actionType: 'PRINT_PDF' | 'DOWNLOAD_DOCX' | 'DOWNLOAD_HTML' | 'DOWNLOAD_ZIP',
+    docType?: FormatDocumentType,
+    overrideShipment?: ExtractedShipmentJSON
+  ) => {
+    if (actionType === 'PRINT_PDF' && docType) {
+      handlePrintPdf(docType);
+    } else if (actionType === 'DOWNLOAD_DOCX' && docType) {
+      handleDownloadDocx(docType, overrideShipment);
+    } else if (actionType === 'DOWNLOAD_HTML' && docType) {
+      handleDownloadHtml(docType);
+    } else if (actionType === 'DOWNLOAD_ZIP') {
+      handleDownloadZip();
+    }
+  };
+
+  // Mandatory Container & Transport Specifications Gatekeeper before any BL or DG Download
+  const checkContainerSpecsAndExecute = (
+    actionType: 'PRINT_PDF' | 'DOWNLOAD_DOCX' | 'DOWNLOAD_HTML' | 'DOWNLOAD_ZIP',
+    docType?: FormatDocumentType,
+    overrideShipment?: ExtractedShipmentJSON
+  ) => {
+    const targetShipment = overrideShipment || shipmentJson;
+
+    const hasContainerNo = Boolean(
+      targetShipment.containerNumber?.trim() &&
+      targetShipment.containerNumber !== '---' &&
+      !targetShipment.containerNumber.startsWith('Container ')
+    );
+    const hasSealNo = Boolean(
+      targetShipment.sealNumber?.trim() &&
+      targetShipment.sealNumber !== '---'
+    );
+    const hasBookingNo = Boolean(
+      targetShipment.bookingNumber?.trim() &&
+      targetShipment.bookingNumber !== '---'
+    );
+    const hasCarrier = Boolean(
+      targetShipment.carrierName?.trim() &&
+      targetShipment.carrierName !== '---'
+    );
+    const hasVessel = Boolean(
+      targetShipment.vesselName?.trim() &&
+      targetShipment.vesselName !== '---'
+    );
+    const hasForwarder = Boolean(
+      targetShipment.forwarderReference?.trim() &&
+      targetShipment.forwarderReference !== '---'
+    );
+
+    if (!hasContainerNo || !hasSealNo || !hasBookingNo || !hasCarrier || !hasVessel || !hasForwarder) {
+      setPendingExport({ actionType, docType, overrideShipment });
+      const vName = targetShipment.vesselName || '';
+      const vVoy = targetShipment.voyageNumber || '';
+      const vComb = vName ? (vVoy ? `${vName} / ${vVoy}` : vName) : '';
+      setDispatchDetails((prev) => ({
+        ...prev,
+        containerNo: (targetShipment.containerNumber && !targetShipment.containerNumber.startsWith('Container ') ? targetShipment.containerNumber : prev.containerNo) || '',
+        sealNo: (targetShipment.sealNumber !== '---' ? targetShipment.sealNumber : prev.sealNo) || '',
+        bookingNumber: targetShipment.bookingNumber || prev.bookingNumber || '',
+        forwarderReference: targetShipment.forwarderReference || prev.forwarderReference || '',
+        carrierName: targetShipment.carrierName || prev.carrierName || '',
+        vesselVoyage: vComb || prev.vesselVoyage || '',
+        additionalHandlingInfo: (targetShipment as any).additionalHandlingInformation || targetShipment.emergencyContactPhone || prev.additionalHandlingInfo || '',
+        shippingBillNo: targetShipment.shippingBillNumbers || prev.shippingBillNo || ''
+      }));
+      setShowDispatchConfirmModal(true);
       return;
     }
 
+    executeExportDirectly(actionType, docType, overrideShipment);
+  };
+
+  const handleExecuteWorkspaceDispatch = () => {
+    if (!dispatchDetails.containerNo.trim() || !dispatchDetails.sealNo.trim()) {
+      alert('Please enter Container Number and Seal Number before proceeding.');
+      return;
+    }
+    if (!dispatchDetails.bookingNumber.trim()) {
+      alert('Please enter Transport Document Number: BKG.NO. (Booking No.) before proceeding.');
+      return;
+    }
+    if (!dispatchDetails.carrierName.trim()) {
+      alert('Please enter Carrier Name before proceeding.');
+      return;
+    }
+    if (!dispatchDetails.vesselVoyage.trim()) {
+      alert('Please enter Vessel and Voyage Number before proceeding.');
+      return;
+    }
+    if (!dispatchDetails.forwarderReference.trim()) {
+      alert("Please enter Freight Forwarder's Reference before proceeding.");
+      return;
+    }
+
+    const vParts = dispatchDetails.vesselVoyage.split('/').map((s) => s.trim());
+    const vName = vParts[0] || dispatchDetails.vesselVoyage;
+    const vVoy = vParts.length > 1 ? vParts.slice(1).join('/') : (shipmentJson.voyageNumber || '');
+
     const { stuffedCount } = executeWorkspaceDispatch(shipmentJson, dispatchDetails);
-    const updated = {
+    const updatedContainers = (shipmentJson.containers && shipmentJson.containers.length > 0)
+      ? shipmentJson.containers.map((c, i) => i === 0 ? { ...c, containerNumber: dispatchDetails.containerNo, sealNumber: dispatchDetails.sealNo } : c)
+      : shipmentJson.containers;
+
+    const updated: ExtractedShipmentJSON = {
       ...shipmentJson,
       containerNumber: dispatchDetails.containerNo,
       sealNumber: dispatchDetails.sealNo,
+      bookingNumber: dispatchDetails.bookingNumber,
+      carrierName: dispatchDetails.carrierName,
+      vesselName: vName,
+      voyageNumber: vVoy,
+      forwarderReference: dispatchDetails.forwarderReference,
+      emergencyContactPhone: dispatchDetails.additionalHandlingInfo || shipmentJson.emergencyContactPhone,
+      additionalHandlingInformation: dispatchDetails.additionalHandlingInfo || (shipmentJson as any).additionalHandlingInformation,
       shippingBillNumbers: dispatchDetails.shippingBillNo || shipmentJson.shippingBillNumbers,
+      containers: updatedContainers,
       isDispatched: true,
       dispatchedAt: new Date().toISOString()
     };
     onUpdateShipment(updated);
+    syncStage2FieldsToLedger(updated);
     setShowDispatchConfirmModal(false);
-    setDispatchToast(`Dispatched & Deducted ${stuffedCount} Pallets from Inventory!`);
+
+    const totalUnits = shipmentJson.totalBoxes || 0;
+    setDispatchToast(`Specifications saved (${dispatchDetails.containerNo}) & ${totalUnits} units (${stuffedCount} pallets) dispatched!`);
     setTimeout(() => setDispatchToast(null), 4000);
+
+    // If an export was waiting on specifications, trigger it immediately
+    if (pendingExport) {
+      const pending = pendingExport;
+      setPendingExport(null);
+      setTimeout(() => {
+        const shipmentForExport = (pending.docType === 'DG')
+          ? { ...updated, containerNumber: dispatchDetails.containerNo, sealNumber: dispatchDetails.sealNo }
+          : updated;
+        executeExportDirectly(pending.actionType, pending.docType, shipmentForExport);
+      }, 150);
+    }
   };
 
   // Stage-2 Pending Fields Tracking & Instant Cycling
@@ -305,7 +436,7 @@ export function WorkspacePage({
       containerNumber: cont.containerNumber || '',
       sealNumber: cont.sealNumber || '',
       containerType: '20GP' as const,
-      tareWeightKg: cont.tareWeightKg || 2150,
+      tareWeightKg: cont.tareWeightKg || 0,
       totalPallets: scopedPallets.length,
       outerPackagingCount: scopedPallets.length,
       totalBoxes: scopedBoxes,
@@ -318,57 +449,8 @@ export function WorkspacePage({
     };
   }, [shipmentJson, activeScopedContainerId]);
 
-  // DG Cargo Items for Selective Inclusion
-  const dgCargoItems = useMemo<DgCargoItemLine[]>(() => {
-    return buildDgCargoItems(scopedDgShipmentJson);
-  }, [scopedDgShipmentJson]);
-
-  const [unselectedDgItemIds, setUnselectedDgItemIds] = useState<Set<string>>(new Set());
-  const [isDgItemsDropdownOpen, setIsDgItemsDropdownOpen] = useState(false);
-  const dgItemsDropdownRef = useRef<HTMLDivElement | null>(null);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dgItemsDropdownRef.current && !dgItemsDropdownRef.current.contains(e.target as Node)) {
-        setIsDgItemsDropdownOpen(false);
-      }
-    };
-    if (isDgItemsDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isDgItemsDropdownOpen]);
-
-  const selectedDgItemIds = useMemo<string[]>(() => {
-    return dgCargoItems.map((i) => i.id).filter((id) => !unselectedDgItemIds.has(id));
-  }, [dgCargoItems, unselectedDgItemIds]);
-
-  const handleToggleDgItem = (itemId: string) => {
-    setUnselectedDgItemIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      return next;
-    });
-  };
-
-  const handleSelectAllDgItems = () => {
-    setUnselectedDgItemIds(new Set());
-  };
-
-  const handleDeselectAllDgItems = () => {
-    setUnselectedDgItemIds(new Set(dgCargoItems.map((i) => i.id)));
-  };
-
-  const activeFilteredDgShipment = useMemo<ExtractedShipmentJSON>(() => {
-    return filterShipmentByDgCargoItems(scopedDgShipmentJson, selectedDgItemIds);
-  }, [scopedDgShipmentJson, selectedDgItemIds]);
+  // Scoped DG Shipment directly without item filtering dropdown
+  const activeFilteredDgShipment = scopedDgShipmentJson;
 
   const handleScopedDgUpdateShipment = (updated: ExtractedShipmentJSON) => {
     syncStage2FieldsToLedger(updated);
@@ -425,23 +507,41 @@ export function WorkspacePage({
   const populatedFieldsCount = auditEntries.filter((e) => !e.isBlank && e.key !== 'sourceFiles').length;
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-app text-content-primary">
+    <div className="flex-1 flex flex-col h-full max-h-screen overflow-hidden bg-app text-content-primary relative">
       {/* =========================================================================
           UNIFIED WORKSPACE TOP CONTROL BAR (Sticky High-Contrast Header)
           ========================================================================= */}
-      <header className="h-14 px-4 sm:px-6 border-b border-divider bg-surface backdrop-blur flex items-center justify-between shrink-0 z-30 shadow-sm">
-        {/* Left: Brand & Shipment Reference */}
+      <header className="h-12 px-4 sm:px-6 border-b border-divider bg-surface flex items-center justify-between shrink-0 z-30 shadow-xs">
+        {/* Left: Brand & Navigation Dropdown */}
         <div className="flex items-center space-x-3 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center shadow-sm">
-            <Boxes className="w-4 h-4 text-white" />
-          </div>
-          <div className="hidden sm:block">
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-content-primary tracking-wide">EKDANT</span>
+          <div className="flex items-center space-x-2 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-brand-primary flex items-center justify-center shadow-xs">
+              <Package className="w-4 h-4 text-white" />
             </div>
-            <span className="text-[10px] text-content-secondary font-mono truncate block max-w-[150px]">
-              {shipmentJson.invoiceNumbers[0] ? `Inv: ${shipmentJson.invoiceNumbers[0]}` : 'Active Shipment'}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-xs font-bold tracking-tight text-content-primary">EKDANT</span>
+              <span className="text-[8px] font-mono tracking-wider text-content-muted -mt-0.5">LOGISTICS</span>
+            </div>
+          </div>
+
+          <div className="h-4 w-px bg-divider" />
+
+          {/* Navigation Dropdown: Warehouse / Dispatch Tool */}
+          <div className="relative">
+            <select
+              value="workspace"
+              onChange={(e) => {
+                if (e.target.value === 'inventory' && onOpenInventory) {
+                  onOpenInventory();
+                }
+              }}
+              className="pl-3 pr-8 py-1.5 bg-surface border border-divider rounded-lg font-bold text-xs sm:text-sm text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer appearance-none shadow-2xs hover:bg-surface-secondary transition-colors"
+              aria-label="Navigation selector"
+            >
+              <option value="workspace">Dispatch Tool</option>
+              <option value="inventory">Warehouse</option>
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-content-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
 
@@ -492,9 +592,10 @@ export function WorkspacePage({
       </header>
 
       {/* =========================================================================
-          WORKSPACE CONTENT AREA (Renders Active Tab)
+          WORKSPACE CONTENT AREA: Orange Box (Canvas) + Blue Box (Right Sidebar)
           ========================================================================= */}
-      <main className="flex-1 overflow-hidden relative flex flex-col">
+      <div className="flex-1 flex overflow-hidden relative">
+        <main className="flex-1 overflow-hidden relative flex flex-col">
         {/* ---------------------------------------------------------------------
             VIEW 1: Extracted Data & Pallets
             --------------------------------------------------------------------- */}
@@ -721,230 +822,28 @@ export function WorkspacePage({
         )}
 
         {/* ---------------------------------------------------------------------
-            VIEW 2: DG Manifest (IMO Boxes 1–22) Full-Width Interactive A4 Canvas
+            VIEW 2: DG Manifest (IMO Boxes 1–22) Centered Interactive A4 Canvas
             --------------------------------------------------------------------- */}
         {activeTab === 'dg_manifest' && (
-          <div className="flex-1 flex flex-col overflow-hidden bg-slate-200/60">
-            {/* Top Document Action Bar */}
-            <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
-              <div className="flex items-center space-x-3">
-                {/* Pending Fields Jump Button / "Ready" Complete Badge */}
-                {dgStats.total - dgStats.populated > 0 ? (
-                  <button
-                    type="button"
-                    onClick={handleJumpToNextPending}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm inline-flex items-center transition-all opacity-100 cursor-pointer"
-                    title="Click to jump to next missing field"
-                  >
-                    <span>Fields Pending {dgStats.total - dgStats.populated}/{dgStats.total}</span>
-                  </button>
-                ) : (
-                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Ready</span>
-                  </span>
-                )}
-
-                {/* Primary Workspace View Selector Dropdown (Default Sub-Header Position) */}
-                <div className="relative flex items-center">
-                  <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
-                    <FileText className="w-3.5 h-3.5" />
-                  </div>
-                  <select
-                    aria-label="Select workspace view"
-                    value={activeTab}
-                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
-                    className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
-                  >
-                    <option value="dg_manifest">
-                      DG Manifest ({dgStats.populated}/{dgStats.total})
-                    </option>
-                    <option value="bl_manifest">
-                      Bill of Lading ({blStats.populated}/{blStats.total})
-                    </option>
-                    <option value="container_bay">
-                      Container Placement ({shipmentJson.pallets.length}p)
-                    </option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
-                </div>
-
-                {/* ELEGANT "DG Items" DROPDOWN */}
-                {dgCargoItems.length > 0 && (
-                  <div className="relative" ref={dgItemsDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setIsDgItemsDropdownOpen(!isDgItemsDropdownOpen)}
-                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg border shadow-xs inline-flex items-center space-x-1.5 transition-all cursor-pointer ${
-                        isDgItemsDropdownOpen
-                          ? 'bg-brand-primary-soft text-brand-primary border-brand-primary ring-2 ring-brand-primary/20'
-                          : 'bg-surface hover:bg-surface-secondary text-content-primary border-divider'
-                      }`}
-                      title="Select DG Cargo items included in this declaration"
-                    >
-                      <Layers className="w-3.5 h-3.5 text-brand-primary" />
-                      <span>DG Items</span>
-                      <span className="ml-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-brand-primary/10 text-brand-primary">
-                        {selectedDgItemIds.length}/{dgCargoItems.length}
-                      </span>
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 text-content-muted transition-transform duration-200 ${
-                          isDgItemsDropdownOpen ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-
-                    {/* Dropping Elegantly Menu */}
-                    {isDgItemsDropdownOpen && (
-                      <div className="absolute left-0 mt-2 w-80 sm:w-96 bg-surface border border-divider rounded-xl shadow-2xl z-50 p-3.5 animate-scale-in">
-                        {/* Header with Quick Actions */}
-                        <div className="flex items-center justify-between pb-2 border-b border-divider">
-                          <div>
-                            <div className="text-xs font-bold text-content-primary flex items-center space-x-1.5">
-                              <span>DG Cargo Items</span>
-                              <span className="text-[10px] font-mono font-semibold text-content-secondary">
-                                ({selectedDgItemIds.length} of {dgCargoItems.length} Selected)
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-content-muted font-mono mt-0.5">
-                              {(activeFilteredDgShipment.grossWeightKg || 0).toLocaleString()} kg • {activeFilteredDgShipment.totalPallets || 0} pallets
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-1.5 text-[11px]">
-                            <button
-                              type="button"
-                              onClick={handleSelectAllDgItems}
-                              className="font-semibold text-brand-primary hover:underline px-1 py-0.5 cursor-pointer"
-                            >
-                              Select All
-                            </button>
-                            <span className="text-divider">|</span>
-                            <button
-                              type="button"
-                              onClick={handleDeselectAllDgItems}
-                              className="font-semibold text-content-secondary hover:text-content-primary px-1 py-0.5 cursor-pointer"
-                            >
-                              Deselect All
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Scrollable Checkbox List */}
-                        <div className="max-h-72 overflow-y-auto space-y-1.5 my-2.5 pr-1">
-                          {dgCargoItems.map((item) => {
-                            const isChecked = selectedDgItemIds.includes(item.id);
-                            return (
-                              <label
-                                key={item.id}
-                                className={`flex items-start space-x-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
-                                  isChecked
-                                    ? 'bg-brand-primary/5 border-brand-primary/40 text-content-primary'
-                                    : 'bg-surface-secondary/40 border-divider text-content-secondary opacity-60'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => handleToggleDgItem(item.id)}
-                                  className="mt-0.5 rounded border-divider text-brand-primary focus:ring-brand-primary h-3.5 w-3.5 cursor-pointer"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-bold text-content-primary truncate">{item.modelCode}</div>
-                                  <div className="text-[10px] text-content-secondary font-mono">
-                                    {item.palletCount} plts ({item.palletRange || 'P-01'}) • {item.boxCount} boxes
-                                  </div>
-                                  <div className="text-[10px] font-mono text-content-secondary">
-                                    GW: {item.grossWeightKg.toLocaleString()} kg • NW: {item.netWeightKg.toLocaleString()} kg
-                                  </div>
-                                </div>
-                              </label>
-                            );
-                          })}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="pt-2 border-t border-divider flex items-center justify-between text-[11px] text-content-secondary font-mono">
-                          <span>
-                            VGM: <strong className="text-content-primary">{((activeFilteredDgShipment.grossWeightKg || 0) + (activeFilteredDgShipment.tareWeightKg || 2150)).toLocaleString()} kg</strong>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setIsDgItemsDropdownOpen(false)}
-                            className="px-2.5 py-1 rounded bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover shadow-xs transition-colors cursor-pointer"
-                          >
-                            Done
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Multi-Container Switcher Pill Bar (When Multi-Container) */}
-                {shipmentJson.containers && shipmentJson.containers.length > 1 && (
-                  <div className="flex items-center space-x-1 bg-input-bg p-0.5 rounded-lg border border-divider">
-                    {shipmentJson.containers.map((c, idx) => {
-                      const pCount = c.palletIndices?.length || 0;
-                      const isSelected = activeScopedContainerId === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => setSelectedContainerScope(c.id)}
-                          className={`px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-brand-primary text-brand-primary-text shadow-xs'
-                              : 'text-content-secondary hover:text-content-primary'
-                          }`}
-                        >
-                          {c.label || `Container ${idx + 1}`} ({pCount}p)
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center space-x-2">
-                {/* Carrier Format Selector */}
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-xs font-semibold text-content-secondary hidden sm:inline">DG Format:</span>
-                  <select
-                    value={selectedDgFormatId}
-                    onChange={(e) => onSelectDgFormat(e.target.value)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[260px] truncate font-medium shadow-xs"
-                  >
-                    {dgFormats.map((fmt) => (
-                      <option key={fmt.formatId} value={fmt.formatId}>
-                        {fmt.formatName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Full-Width Centered A4 Carrier Document Canvas */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center">
-              <DgDocumentCanvas
-                shipmentJson={activeFilteredDgShipment}
-                onUpdateShipment={handleScopedDgUpdateShipment}
-                templateId={selectedDgFormatId}
-                onFieldChange={(fieldId, val) => {
-                  const field = mappedDgFields.find((f) => f.fieldId === fieldId) || {
-                    fieldId,
-                    labelInTemplate: fieldId,
-                    sectionName: 'IMO Boxes',
-                    fieldType: 'text' as const,
-                    mappedShipmentKey: '',
-                    value: val,
-                    status: 'POPULATED' as const
-                  };
-                  onFieldChange(field, 'DG', val);
-                }}
-                customOverrides={dgCustomOverrides || {}}
-              />
-            </div>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-slate-200/60">
+            <DgDocumentCanvas
+              shipmentJson={activeFilteredDgShipment}
+              onUpdateShipment={handleScopedDgUpdateShipment}
+              templateId={selectedDgFormatId}
+              onFieldChange={(fieldId, val) => {
+                const field = mappedDgFields.find((f) => f.fieldId === fieldId) || {
+                  fieldId,
+                  labelInTemplate: fieldId,
+                  sectionName: 'IMO Boxes',
+                  fieldType: 'text' as const,
+                  mappedShipmentKey: '',
+                  value: val,
+                  status: 'POPULATED' as const
+                };
+                onFieldChange(field, 'DG', val);
+              }}
+              customOverrides={dgCustomOverrides || {}}
+            />
           </div>
         )}
 
@@ -952,116 +851,25 @@ export function WorkspacePage({
             VIEW 3: Bill of Lading (BOL) Full-Width Interactive A4 Canvas
             --------------------------------------------------------------------- */}
         {activeTab === 'bl_manifest' && (
-          <div className="flex-1 flex flex-col overflow-hidden bg-slate-200/60">
-            {/* Top Document Action Bar */}
-            <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
-              <div className="flex items-center space-x-3">
-                {/* Pending Fields Jump Button / "Ready" Complete Badge */}
-                {blStats.total - blStats.populated > 0 ? (
-                  <button
-                    type="button"
-                    onClick={handleJumpToNextPending}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-sm inline-flex items-center transition-all opacity-100 cursor-pointer"
-                    title="Click to jump to next missing field"
-                  >
-                    <span>Fields Pending {blStats.total - blStats.populated}/{blStats.total}</span>
-                  </button>
-                ) : (
-                  <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white shadow-sm inline-flex items-center space-x-1.5 transition-all opacity-100">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Ready</span>
-                  </span>
-                )}
-
-                {/* Primary Workspace View Selector Dropdown (Default Sub-Header Position) */}
-                <div className="relative flex items-center">
-                  <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </div>
-                  <select
-                    aria-label="Select workspace view"
-                    value={activeTab}
-                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
-                    className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
-                  >
-                    <option value="dg_manifest">
-                      DG Manifest ({dgStats.populated}/{dgStats.total})
-                    </option>
-                    <option value="bl_manifest">
-                      Bill of Lading ({blStats.populated}/{blStats.total})
-                    </option>
-                    <option value="container_bay">
-                      Container Placement ({shipmentJson.pallets.length}p)
-                    </option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
-                </div>
-
-                {/* Multi-Container Switcher Pill Bar (When Multi-Container) */}
-                {shipmentJson.containers && shipmentJson.containers.length > 1 && (
-                  <div className="flex items-center space-x-1 bg-input-bg p-0.5 rounded-lg border border-divider">
-                    {shipmentJson.containers.map((c, idx) => {
-                      const pCount = c.palletIndices?.length || 0;
-                      const isSelected = activeScopedContainerId === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => setSelectedContainerScope(c.id)}
-                          className={`px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
-                            isSelected
-                              ? 'bg-brand-primary text-brand-primary-text shadow-xs'
-                              : 'text-content-secondary hover:text-content-primary'
-                          }`}
-                        >
-                          {c.label || `Container ${idx + 1}`} ({pCount}p)
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center space-x-2">
-                {/* Carrier Format Selector */}
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-xs font-medium text-content-secondary hidden sm:inline">Format:</span>
-                  <select
-                    value={selectedBlFormatId}
-                    onChange={(e) => onSelectBlFormat(e.target.value)}
-                    className="bg-input-bg border border-divider text-content-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary max-w-[240px] truncate font-medium"
-                  >
-                    {blFormats.map((fmt) => (
-                      <option key={fmt.formatId} value={fmt.formatId}>
-                        {fmt.formatName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Full-Width Centered A4 Carrier Document Canvas */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center">
-              <BlDocumentCanvas
-                shipmentJson={shipmentJson}
-                onUpdateShipment={onUpdateShipment}
-                onFieldChange={(fieldId, val) => {
-                  const targetFieldId = fieldId === 'free_time_clause' ? 'bl_free_time' : fieldId;
-                  const field = mappedBlFields.find((f) => f.fieldId === targetFieldId || f.fieldId === fieldId) || {
-                    fieldId: targetFieldId,
-                    labelInTemplate: targetFieldId,
-                    sectionName: 'BOL Fields',
-                    fieldType: 'text' as const,
-                    mappedShipmentKey: fieldId === 'free_time_clause' || targetFieldId === 'bl_free_time' ? 'freeTimeClause' : '',
-                    value: val,
-                    status: 'POPULATED' as const
-                  };
-                  onFieldChange(field, 'BL', val);
-                }}
-                customOverrides={blCustomOverrides || {}}
-              />
-            </div>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center bg-slate-200/60">
+            <BlDocumentCanvas
+              shipmentJson={shipmentJson}
+              onUpdateShipment={onUpdateShipment}
+              onFieldChange={(fieldId, val) => {
+                const targetFieldId = fieldId === 'free_time_clause' ? 'bl_free_time' : fieldId;
+                const field = mappedBlFields.find((f) => f.fieldId === targetFieldId || f.fieldId === fieldId) || {
+                  fieldId: targetFieldId,
+                  labelInTemplate: targetFieldId,
+                  sectionName: 'BOL Fields',
+                  fieldType: 'text' as const,
+                  mappedShipmentKey: fieldId === 'free_time_clause' || targetFieldId === 'bl_free_time' ? 'freeTimeClause' : '',
+                  value: val,
+                  status: 'POPULATED' as const
+                };
+                onFieldChange(field, 'BL', val);
+              }}
+              customOverrides={blCustomOverrides || {}}
+            />
           </div>
         )}
 
@@ -1069,53 +877,52 @@ export function WorkspacePage({
             VIEW 4: Container Bay & Equipment Allocation (Inline Workspace Tab)
             --------------------------------------------------------------------- */}
         {activeTab === 'container_bay' && (
-          <div className="flex-1 flex flex-col overflow-hidden bg-app">
-            {/* Top Sub-Bar (Matches DG and BL Action Bars for Perfect UI/UX Consistency) */}
-            <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
-              <div className="flex items-center space-x-3">
-                {/* Primary Workspace View Selector Dropdown */}
-                <div className="relative flex items-center">
-                  <div className="absolute left-2.5 pointer-events-none text-brand-primary flex items-center">
-                    <Boxes className="w-3.5 h-3.5" />
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-app space-y-4">
+            {/* Container Specifications Requirement Notice */}
+            {(!shipmentJson.containerNumber?.trim() || shipmentJson.containerNumber === '---' || shipmentJson.containerNumber.startsWith('Container ') || !shipmentJson.sealNumber?.trim() || shipmentJson.sealNumber === '---') ? (
+              <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center space-x-2.5 text-xs text-amber-900 dark:text-amber-200">
+                  <div className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                   </div>
-                  <select
-                    aria-label="Select workspace view"
-                    value={activeTab}
-                    onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
-                    className="bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-lg text-xs font-semibold pl-8 pr-7 py-1.5 appearance-none cursor-pointer shadow-xs transition-colors"
-                  >
-                    <option value="dg_manifest">
-                      DG Manifest ({dgStats.populated}/{dgStats.total})
-                    </option>
-                    <option value="bl_manifest">
-                      Bill of Lading ({blStats.populated}/{blStats.total})
-                    </option>
-                    <option value="container_bay">
-                      Container Placement ({shipmentJson.pallets.length}p)
-                    </option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 text-content-secondary absolute right-2 pointer-events-none" />
+                  <div>
+                    <span className="font-bold block">Final Requirement before DG &amp; BL Export</span>
+                    <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                      Container Number &amp; Seal Number must be entered here before downloading official manifests.
+                    </span>
+                  </div>
                 </div>
-
-                <div className="h-4 w-px bg-divider hidden sm:block" />
-
-                <span className="text-xs font-semibold text-content-secondary uppercase tracking-wider hidden sm:inline">
-                  Container Placement &amp; Equipment Allocation
+                <button
+                  type="button"
+                  onClick={() => setShowDispatchConfirmModal(true)}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0 cursor-pointer shadow-xs transition-colors"
+                >
+                  Confirm Specifications &amp; Dispatch
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between shadow-2xs">
+                <div className="flex items-center space-x-2 text-xs text-emerald-800 dark:text-emerald-300 font-mono">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    <strong>Container Specifications Confirmed:</strong> {shipmentJson.containerNumber} • Seal: {shipmentJson.sealNumber}
+                  </span>
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full border border-emerald-300">
+                  ✓ Ready for Export
                 </span>
               </div>
-            </div>
+            )}
 
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-              <ContainerBayWorkspace
-                key={shipmentJson.invoiceNumbers.join('-') + '-' + shipmentJson.pallets.length + '-' + (shipmentJson.containerNumber || '') + '-' + (shipmentJson.containerType || '')}
-                shipmentJson={shipmentJson}
-                onUpdateShipment={onUpdateShipment}
-                onSwitchTab={(tab) => setActiveTab(tab)}
-                registerSyncHandler={(handler) => {
-                  containerSyncRef.current = handler;
-                }}
-              />
-            </div>
+            <ContainerBayWorkspace
+              key={shipmentJson.invoiceNumbers.join('-') + '-' + shipmentJson.pallets.length + '-' + (shipmentJson.containerNumber || '') + '-' + (shipmentJson.containerType || '')}
+              shipmentJson={shipmentJson}
+              onUpdateShipment={onUpdateShipment}
+              onSwitchTab={(tab) => setActiveTab(tab)}
+              registerSyncHandler={(handler) => {
+                containerSyncRef.current = handler;
+              }}
+            />
           </div>
         )}
 
@@ -1154,7 +961,7 @@ export function WorkspacePage({
 
                 <div className="grid grid-cols-3 gap-2">
                   <button
-                    onClick={() => handlePrintPdf('DG')}
+                    onClick={() => checkContainerSpecsAndExecute('PRINT_PDF', 'DG')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <Printer className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1163,7 +970,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => handleDownloadDocx('DG', activeFilteredDgShipment)}
+                    onClick={() => checkContainerSpecsAndExecute('DOWNLOAD_DOCX', 'DG', activeFilteredDgShipment)}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1176,7 +983,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => handleDownloadHtml('DG')}
+                    onClick={() => checkContainerSpecsAndExecute('DOWNLOAD_HTML', 'DG')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <ExternalLink className="w-4 h-4 text-brand-accent mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1205,7 +1012,7 @@ export function WorkspacePage({
 
                 <div className="grid grid-cols-3 gap-2">
                   <button
-                    onClick={() => handlePrintPdf('BL')}
+                    onClick={() => checkContainerSpecsAndExecute('PRINT_PDF', 'BL')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <Printer className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1214,7 +1021,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => handleDownloadDocx('BL')}
+                    onClick={() => checkContainerSpecsAndExecute('DOWNLOAD_DOCX', 'BL')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <FileText className="w-4 h-4 text-brand-primary mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1223,7 +1030,7 @@ export function WorkspacePage({
                   </button>
 
                   <button
-                    onClick={() => handleDownloadHtml('BL')}
+                    onClick={() => checkContainerSpecsAndExecute('DOWNLOAD_HTML', 'BL')}
                     className="p-2.5 rounded-lg bg-surface-secondary hover:bg-brand-primary-soft border border-divider hover:border-brand-primary text-center transition-all group"
                   >
                     <ExternalLink className="w-4 h-4 text-brand-accent mx-auto mb-1 group-hover:scale-110 transition-transform" />
@@ -1247,9 +1054,9 @@ export function WorkspacePage({
               </div>
 
               <button
-                onClick={handleDownloadZip}
+                onClick={() => checkContainerSpecsAndExecute('DOWNLOAD_ZIP')}
                 disabled={isExportingZip}
-                className="px-6 py-3 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text font-bold text-xs shadow-md flex items-center space-x-2 transition-all shrink-0"
+                className="px-6 py-3 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text font-bold text-xs shadow-md flex items-center space-x-2 transition-all shrink-0 cursor-pointer"
               >
                 <Package className={`w-4 h-4 ${isExportingZip ? 'animate-spin' : ''}`} />
                 <span>{isExportingZip ? 'Compiling ZIP...' : 'Download Complete Package (.zip)'}</span>
@@ -1260,52 +1067,226 @@ export function WorkspacePage({
       </main>
 
       {/* =========================================================================
-          PERSISTENT BOTTOM ACTION BAR
+          RIGHT SIDEBAR (Blue Box: Controls, Formats, Metrics & Exports)
           ========================================================================= */}
-      <footer className="h-12 px-4 sm:px-6 border-t border-divider bg-surface flex items-center justify-between shrink-0 z-30 shadow-sm">
-        {/* Left summary readouts */}
-        <div className="flex items-center space-x-3 text-xs font-mono truncate">
-          <div className="flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
-            <span className="text-content-secondary">DG:</span>
-            <span className="text-brand-primary font-semibold">{dgStats.populated}/{dgStats.total}</span>
+      <aside className="w-80 md:w-84 xl:w-96 border-l border-divider bg-surface flex flex-col shrink-0 overflow-y-auto z-20 shadow-xs divide-y divide-divider/60 font-sans">
+        {/* Section 1: View Selection & Container Scope */}
+        <div className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider">Document View</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-primary-soft text-brand-primary border border-brand-primary/20">
+              {activeTab === 'dg_manifest' ? 'DG IMO-22' : activeTab === 'bl_manifest' ? 'Ocean B/L' : 'Bay Plan'}
+            </span>
           </div>
 
-          <div className="flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
-            <span className="text-content-secondary">BL:</span>
-            <span className="text-brand-primary font-semibold">{blStats.populated}/{blStats.total}</span>
-          </div>
-
-          {shipmentJson.grossWeightKg > 0 && (
-            <div className="hidden sm:flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
-              <span className="text-content-secondary">Gross:</span>
-              <span className="text-state-success font-semibold">{shipmentJson.grossWeightKg.toLocaleString()} kg</span>
+          {/* Primary Workspace View Selector Dropdown */}
+          <div className="relative">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-brand-primary flex items-center">
+              {activeTab === 'dg_manifest' ? (
+                <FileText className="w-4 h-4" />
+              ) : activeTab === 'bl_manifest' ? (
+                <FileSpreadsheet className="w-4 h-4" />
+              ) : (
+                <Boxes className="w-4 h-4" />
+              )}
             </div>
-          )}
+            <select
+              aria-label="Select workspace view"
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as WorkspaceTab)}
+              className="w-full bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary rounded-xl text-xs font-semibold pl-9 pr-8 py-2.5 appearance-none cursor-pointer shadow-xs transition-colors"
+            >
+              <option value="dg_manifest">
+                DG Manifest ({dgStats.populated}/{dgStats.total})
+              </option>
+              <option value="bl_manifest">
+                Bill of Lading ({blStats.populated}/{blStats.total})
+              </option>
+              <option value="container_bay">
+                Container Placement ({shipmentJson.pallets.length}p)
+              </option>
+            </select>
+            <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
 
-          {calculatedVgm > 0 && (
-            <div className="hidden md:flex items-center space-x-1.5 bg-surface-secondary px-2 py-0.5 rounded border border-divider">
-              <span className="text-content-secondary">VGM:</span>
-              <span className="text-state-success font-semibold">{calculatedVgm.toLocaleString()} kg</span>
+          {/* Multi-Container Switcher Pill Bar (When Multi-Container) */}
+          {shipmentJson.containers && shipmentJson.containers.length > 1 && (
+            <div className="space-y-1.5 pt-1">
+              <span className="text-[10px] font-semibold text-content-muted uppercase tracking-wider block">Container Scope</span>
+              <div className="grid grid-cols-2 gap-1.5 bg-surface-secondary p-1 rounded-xl border border-divider">
+                {shipmentJson.containers.map((c, idx) => {
+                  const pCount = c.palletIndices?.length || 0;
+                  const isSelected = activeScopedContainerId === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setSelectedContainerScope(c.id)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer truncate ${
+                        isSelected
+                          ? 'bg-brand-primary text-brand-primary-text shadow-xs'
+                          : 'text-content-secondary hover:text-content-primary bg-surface/50'
+                      }`}
+                    >
+                      {c.label || `Container ${idx + 1}`} ({pCount}p)
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Right Actions: Apply & Sync when in container tab, otherwise Export Buttons */}
-        <div className="flex items-center space-x-2 shrink-0">
+        {/* Section 2: Missing Fields / Status Banner */}
+        <div className="p-4 space-y-2">
+          <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">Field Status</span>
+          {activeTab === 'dg_manifest' ? (
+            dgStats.total - dgStats.populated > 0 ? (
+              <button
+                type="button"
+                onClick={handleJumpToNextPending}
+                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center justify-between transition-all cursor-pointer"
+                title="Click to jump to next missing field"
+              >
+                <span className="flex items-center space-x-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-100" />
+                  <span>Fields Pending</span>
+                </span>
+                <span className="bg-amber-600/70 px-2 py-0.5 rounded text-[11px] font-mono">
+                  {dgStats.total - dgStats.populated} / {dgStats.total}
+                </span>
+              </button>
+            ) : (
+              <div className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl bg-emerald-600 text-white shadow-sm flex items-center justify-between">
+                <span className="flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-100" />
+                  <span>All DG Fields Complete</span>
+                </span>
+                <span className="bg-emerald-700/60 px-2 py-0.5 rounded text-[11px] font-mono">Ready</span>
+              </div>
+            )
+          ) : activeTab === 'bl_manifest' ? (
+            blStats.total - blStats.populated > 0 ? (
+              <button
+                type="button"
+                onClick={handleJumpToNextPending}
+                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex items-center justify-between transition-all cursor-pointer"
+                title="Click to jump to next missing field"
+              >
+                <span className="flex items-center space-x-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-100" />
+                  <span>Fields Pending</span>
+                </span>
+                <span className="bg-amber-600/70 px-2 py-0.5 rounded text-[11px] font-mono">
+                  {blStats.total - blStats.populated} / {blStats.total}
+                </span>
+              </button>
+            ) : (
+              <div className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl bg-emerald-600 text-white shadow-sm flex items-center justify-between">
+                <span className="flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-100" />
+                  <span>All BL Fields Complete</span>
+                </span>
+                <span className="bg-emerald-700/60 px-2 py-0.5 rounded text-[11px] font-mono">Ready</span>
+              </div>
+            )
+          ) : (
+            <div className="w-full text-xs font-medium px-3 py-2 rounded-xl bg-surface-secondary border border-divider text-content-secondary flex items-center justify-between">
+              <span>Equipment Allocation</span>
+              <span className="font-semibold text-content-primary">{shipmentJson.pallets.length} Pallets</span>
+            </div>
+          )}
+          {/* Shifted DG Fields & BL Fields blocks directly below Field Status (Reference Image 1) */}
+          <div className="grid grid-cols-2 gap-2 text-xs font-mono pt-1">
+            <div className="p-2.5 bg-surface-secondary rounded-xl border border-divider">
+              <span className="text-[10px] text-content-muted block mb-0.5">DG Fields</span>
+              <span className="font-semibold text-brand-primary">{dgStats.populated}/{dgStats.total}</span>
+            </div>
+            <div className="p-2.5 bg-surface-secondary rounded-xl border border-divider">
+              <span className="text-[10px] text-content-muted block mb-0.5">BL Fields</span>
+              <span className="font-semibold text-brand-primary">{blStats.populated}/{blStats.total}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Carrier Format Template */}
+        {(activeTab === 'dg_manifest' || activeTab === 'bl_manifest') && (
+          <div className="p-4 space-y-2">
+            <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">
+              {activeTab === 'dg_manifest' ? 'DG Carrier Format' : 'BL Carrier Format'}
+            </span>
+            {activeTab === 'dg_manifest' ? (
+              <div className="relative">
+                <select
+                  value={selectedDgFormatId}
+                  onChange={(e) => onSelectDgFormat(e.target.value)}
+                  className="w-full bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary text-xs rounded-xl px-3 py-2.5 pr-8 focus:outline-none font-medium appearance-none cursor-pointer transition-colors shadow-xs"
+                >
+                  {dgFormats.map((fmt) => (
+                    <option key={fmt.formatId} value={fmt.formatId}>
+                      {fmt.formatName}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            ) : (
+              <div className="relative">
+                <select
+                  value={selectedBlFormatId}
+                  onChange={(e) => onSelectBlFormat(e.target.value)}
+                  className="w-full bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary text-xs rounded-xl px-3 py-2.5 pr-8 focus:outline-none font-medium appearance-none cursor-pointer transition-colors shadow-xs"
+                >
+                  {blFormats.map((fmt) => (
+                    <option key={fmt.formatId} value={fmt.formatId}>
+                      {fmt.formatName}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section 4: Manifest Metrics */}
+        <div className="p-4 space-y-2.5">
+          <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">Manifest Metrics</span>
+          <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+            <div className="p-2.5 bg-surface-secondary rounded-xl border border-divider">
+              <span className="text-[10px] text-content-muted block mb-0.5">Gross Mass</span>
+              <span className="font-semibold text-state-success truncate block">
+                {shipmentJson.grossWeightKg > 0 ? `${shipmentJson.grossWeightKg.toLocaleString()} kg` : '—'}
+              </span>
+            </div>
+            <div className="p-2.5 bg-surface-secondary rounded-xl border border-divider">
+              <span className="text-[10px] text-content-muted block mb-0.5">SOLAS VGM</span>
+              <span className="font-semibold text-state-success truncate block">
+                {calculatedVgm > 0 ? `${calculatedVgm.toLocaleString()} kg` : '—'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 5: Actions & Export */}
+        <div className="p-4 space-y-3 mt-auto">
+          <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">Actions &amp; Export</span>
           {activeTab === 'container_bay' ? (
             <button
               type="button"
               onClick={handleContainerSync}
-              className={`flex items-center space-x-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-sm transition-all cursor-pointer ${
                 hasContainerSynced
                   ? 'bg-state-success text-white'
                   : 'bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text'
               }`}
             >
+              <Boxes className="w-4 h-4" />
               <span>{hasContainerSynced ? '✓ Synced to Manifests!' : 'Apply & Sync to Manifests'}</span>
             </button>
           ) : (
-            <>
+            <div className="space-y-2">
+              {/* Export Document Dropdown */}
               <div className="relative">
                 <select
                   value=""
@@ -1314,38 +1295,41 @@ export function WorkspacePage({
                     if (!val) return;
                     const targetDoc: FormatDocumentType = activeTab === 'bl_manifest' ? 'BL' : 'DG';
                     if (val === 'PDF') {
-                      handlePrintPdf(targetDoc);
+                      checkContainerSpecsAndExecute('PRINT_PDF', targetDoc);
                     } else if (val === 'Word') {
-                      handleDownloadDocx(targetDoc, targetDoc === 'DG' ? activeFilteredDgShipment : undefined);
+                      checkContainerSpecsAndExecute('DOWNLOAD_DOCX', targetDoc, targetDoc === 'DG' ? activeFilteredDgShipment : undefined);
                     }
                   }}
-                  className="bg-surface hover:bg-brand-primary-soft text-content-primary text-xs font-medium border border-divider rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-action-ring cursor-pointer transition-colors"
+                  className="w-full bg-surface-secondary hover:bg-surface text-content-primary text-xs font-semibold border border-divider rounded-xl px-3 py-2.5 pr-8 focus:outline-none focus:border-brand-primary cursor-pointer transition-colors shadow-xs appearance-none"
                 >
                   <option value="" disabled>
                     Export Document ({activeTab === 'bl_manifest' ? 'BL' : 'DG'})
                   </option>
-                  <option value="PDF">PDF Document</option>
+                  <option value="PDF">Print / Download PDF</option>
                   <option value="Word">
                     {activeTab !== 'bl_manifest' && (selectedDgFormatId === 'KMTC_DG' || selectedDgFormatId === 'CMA_CGM_DG')
-                      ? 'Excel (.xlsx)'
-                      : 'Word (.docx)'}
+                      ? 'Master Excel (.xlsx)'
+                      : 'Master Word (.docx)'}
                   </option>
                 </select>
+                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
 
+              {/* Package ZIP button */}
               <button
-                onClick={handleDownloadZip}
+                onClick={() => checkContainerSpecsAndExecute('DOWNLOAD_ZIP')}
                 disabled={isExportingZip}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all"
+                className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all cursor-pointer"
                 title="Download Complete Shipment Package (.zip)"
               >
-                <Package className={`w-3.5 h-3.5 ${isExportingZip ? 'animate-spin' : ''}`} />
-                <span>Package (.zip)</span>
+                <Package className={`w-4 h-4 ${isExportingZip ? 'animate-spin' : ''}`} />
+                <span>{isExportingZip ? 'Compiling Archive...' : 'Download Package (.zip)'}</span>
               </button>
-            </>
+            </div>
           )}
         </div>
-      </footer>
+      </aside>
+    </div>
 
       {/* Dispatch Confirmation Toast */}
       {dispatchToast && (
@@ -1378,96 +1362,185 @@ export function WorkspacePage({
       {/* Modal: Confirm Dispatch & Update Inventory (Stock-Out) */}
       {showDispatchConfirmModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-surface border border-divider rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-fade-in">
-            <div className="flex items-center justify-between pb-2 border-b border-divider">
+          <div className="bg-surface border border-divider rounded-2xl max-w-xl w-full p-5 space-y-4 shadow-2xl animate-fade-in max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-2 border-b border-divider shrink-0">
               <div className="flex items-center space-x-2 text-sm font-bold text-content-primary">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Confirm Dispatch &amp; Update Inventory</span>
+                <span>Container &amp; Transport Specifications</span>
               </div>
               <button
-                onClick={() => setShowDispatchConfirmModal(false)}
-                className="text-content-muted hover:text-content-primary cursor-pointer"
+                onClick={() => {
+                  setShowDispatchConfirmModal(false);
+                  setPendingExport(null);
+                }}
+                className="text-content-muted hover:text-content-primary cursor-pointer text-sm"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-xs text-content-secondary leading-relaxed">
-              Deduct <strong className="font-mono text-content-primary font-bold">{shipmentJson.totalPallets} pallets</strong> ({shipmentJson.totalBoxes} units) from warehouse inventory for <strong className="text-content-primary">{shipmentJson.consigneeName}</strong>.
-            </p>
+            {/* Notice if triggered as requirement before download */}
+            {pendingExport ? (
+              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs flex items-start space-x-2 font-sans shrink-0">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Required for Download:</strong> Container Number, Seal Number, Transport Document Number (Booking No.), Carrier, Vessel &amp; Voy, and Forwarder's Ref are mandatory before generating {pendingExport.docType ? `${pendingExport.docType} manifest` : 'manifest documents'}.
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-content-secondary leading-relaxed shrink-0">
+                Save container equipment specifications and transport details for <strong className="text-content-primary">{shipmentJson.consigneeName}</strong>.
+              </p>
+            )}
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="block text-content-secondary mb-1">Container Number *</label>
-                <input
-                  type="text"
-                  value={dispatchDetails.containerNo}
-                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, containerNo: e.target.value.toUpperCase() })}
-                  placeholder="e.g. MSKU1234567"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                />
+            <div className="space-y-4 text-xs overflow-y-auto pr-1 flex-1">
+              {/* Mandatory Section 1: Container Equipment */}
+              <div className="bg-surface-secondary/40 p-3 rounded-xl border border-divider/60">
+                <span className="text-[11px] font-bold text-content-primary uppercase tracking-wider block mb-2.5 text-slate-700 dark:text-slate-200">
+                  1. Container Equipment Specifications
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Container Number *</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.containerNo}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, containerNo: e.target.value.toUpperCase() })}
+                      placeholder="e.g. MSKU1234567"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Seal Number *</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.sealNo}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, sealNo: e.target.value.toUpperCase() })}
+                      placeholder="e.g. SL987654"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-content-secondary mb-1">Seal Number *</label>
-                <input
-                  type="text"
-                  value={dispatchDetails.sealNo}
-                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, sealNo: e.target.value.toUpperCase() })}
-                  placeholder="e.g. SL987654"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                />
+              {/* Mandatory Section 2: Transport & Booking Specifications */}
+              <div className="bg-surface-secondary/40 p-3 rounded-xl border border-divider/60">
+                <span className="text-[11px] font-bold text-content-primary uppercase tracking-wider block mb-2.5 text-slate-700 dark:text-slate-200">
+                  2. Transport &amp; Carrier Details (Manifest Header)
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Transport Doc / Booking No. *</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.bookingNumber}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, bookingNumber: e.target.value })}
+                      placeholder="e.g. AMC2616964"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Carrier Name *</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.carrierName}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, carrierName: e.target.value })}
+                      placeholder="e.g. CMA CGM / ONE LINE / MSC"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Vessel and Voy *</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.vesselVoyage}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, vesselVoyage: e.target.value })}
+                      placeholder="e.g. BROOKLYN BRIDGE / 0184E"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Freight Forwarder's Ref *</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.forwarderReference}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, forwarderReference: e.target.value })}
+                      placeholder="e.g. FWD000263"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-content-secondary mb-1 font-medium">Additional Handling Information</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.additionalHandlingInfo}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, additionalHandlingInfo: e.target.value })}
+                      placeholder="e.g. MR. SUJOY MOB : 9729899131"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-content-secondary mb-1">Shipping Bill No.</label>
-                <input
-                  type="text"
-                  value={dispatchDetails.shippingBillNo}
-                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, shippingBillNo: e.target.value })}
-                  placeholder="e.g. 5622160"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                />
-              </div>
+              {/* Section 3: Customs & Dispatch Dates */}
+              <div className="bg-surface-secondary/40 p-3 rounded-xl border border-divider/60">
+                <span className="text-[11px] font-bold text-content-primary uppercase tracking-wider block mb-2.5 text-slate-700 dark:text-slate-200">
+                  3. Customs &amp; Dispatch Dates (Optional)
+                </span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Shipping Bill No.</label>
+                    <input
+                      type="text"
+                      value={dispatchDetails.shippingBillNo}
+                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, shippingBillNo: e.target.value })}
+                      placeholder="e.g. 5622160"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-content-secondary mb-1">Shipping Bill Date</label>
-                <input
-                  type="text"
-                  value={dispatchDetails.shippingBillDate}
-                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, shippingBillDate: e.target.value })}
-                  placeholder="DD.MM.YYYY"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                />
-              </div>
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Shipping Bill Date</label>
+                    <DateInput
+                      value={dispatchDetails.shippingBillDate}
+                      onChange={(val) => setDispatchDetails({ ...dispatchDetails, shippingBillDate: val })}
+                      placeholder="DD/MM/YYYY"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-content-secondary mb-1">Stuffing Date</label>
-                <input
-                  type="text"
-                  value={dispatchDetails.stuffingDate}
-                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, stuffingDate: e.target.value })}
-                  placeholder="DD.MM.YYYY"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                />
-              </div>
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Stuffing Date</label>
+                    <DateInput
+                      value={dispatchDetails.stuffingDate}
+                      onChange={(val) => setDispatchDetails({ ...dispatchDetails, stuffingDate: val })}
+                      placeholder="DD/MM/YYYY"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-content-secondary mb-1">Port Gate-in Date</label>
-                <input
-                  type="text"
-                  value={dispatchDetails.portGateInDate}
-                  onChange={(e) => setDispatchDetails({ ...dispatchDetails, portGateInDate: e.target.value })}
-                  placeholder="DD.MM.YYYY"
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                />
+                  <div>
+                    <label className="block text-content-secondary mb-1 font-medium">Port Gate-in Date</label>
+                    <DateInput
+                      value={dispatchDetails.portGateInDate}
+                      onChange={(val) => setDispatchDetails({ ...dispatchDetails, portGateInDate: val })}
+                      placeholder="DD/MM/YYYY"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-3 border-t border-divider">
+            <div className="flex justify-end space-x-2 pt-3 border-t border-divider shrink-0">
               <button
-                onClick={() => setShowDispatchConfirmModal(false)}
-                className="px-3 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs transition-colors cursor-pointer"
+                onClick={() => {
+                  setShowDispatchConfirmModal(false);
+                  setPendingExport(null);
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1475,7 +1548,7 @@ export function WorkspacePage({
                 onClick={handleExecuteWorkspaceDispatch}
                 className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
-                Confirm Dispatch &amp; Deduct
+                {pendingExport ? `Save Specs & Download ${pendingExport.docType || 'Manifest'}` : 'Confirm & Save Specifications'}
               </button>
             </div>
           </div>

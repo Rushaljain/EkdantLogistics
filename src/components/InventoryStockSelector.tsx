@@ -247,7 +247,7 @@ export function InventoryStockSelector({
               <option value="ALL">All Customers with Stock ({customerList.length})</option>
               {customerList.map((c) => (
                 <option key={c.name} value={c.name}>
-                  {c.name} ({c.pallets}p • {c.count} inv)
+                  {c.name} ({c.pallets} Plt • {c.count} inv)
                 </option>
               ))}
             </select>
@@ -349,7 +349,7 @@ export function InventoryStockSelector({
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-content-secondary font-mono">
                         <span>POD: <strong className="text-content-primary">{entry.pod || '-'}</strong></span>
                         <span>•</span>
-                        <span>Invoiced: <strong className="text-content-primary">{entry.invoicedPallets} Plt</strong> ({entry.invoicedBatteries.toLocaleString()}u)</span>
+                        <span>Invoiced: <strong className="text-content-primary">{entry.invoicedPallets} Plt</strong> ({entry.invoicedBatteries.toLocaleString()} Units)</span>
                         <span>•</span>
                         <span>Gross: <strong className="text-content-primary">{entry.invoicedGrossWeightKg.toLocaleString()} kg</strong></span>
                       </div>
@@ -363,7 +363,7 @@ export function InventoryStockSelector({
                       <div className="font-bold">
                         <span className="text-emerald-700 text-sm">{entry.balancePallets} Plt</span>
                         <span className="text-content-muted"> / </span>
-                        <span className="text-indigo-700">{entry.balanceBatteries.toLocaleString()}u</span>
+                        <span className="text-indigo-700">{entry.balanceBatteries.toLocaleString()} Units</span>
                       </div>
                     </div>
 
@@ -442,7 +442,7 @@ export function InventoryStockSelector({
                               <div className="flex items-center space-x-1 text-content-secondary">
                                 <span>Qty:</span>
                                 <strong className="text-content-primary font-bold">
-                                  {p.receivedBatteries || p.invoicedBatteries}u
+                                  {p.receivedBatteries || p.invoicedBatteries} Units
                                 </strong>
                               </div>
                               <div className="text-[10px] text-content-muted font-medium text-right">

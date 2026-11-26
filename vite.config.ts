@@ -16,6 +16,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    server: {
+      host: true,
+      port: 5173,
+    },
     define: {
       'import.meta.env.PDF_Parser': JSON.stringify(apiKey),
       'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(apiKey),

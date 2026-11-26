@@ -88,7 +88,7 @@ export function ContainerBayWorkspace({
         containerNumber: sanitizeRef(c.containerNumber),
         sealNumber: sanitizeRef(c.sealNumber),
         containerType: '20GP' as ContainerType,
-        tareWeightKg: c.tareWeightKg || 2150,
+        tareWeightKg: c.tareWeightKg || 0,
         bookingNumber: sanitizeRef(c.bookingNumber || shipmentJson.bookingNumber),
         palletIndices: c.palletIndices || []
       }));
@@ -105,7 +105,7 @@ export function ContainerBayWorkspace({
       containerNumber: sanitizeRef(c.containerNumber),
       sealNumber: sanitizeRef(c.sealNumber),
       containerType: '20GP' as ContainerType,
-      tareWeightKg: c.tareWeightKg || 2150,
+      tareWeightKg: c.tareWeightKg || 0,
       bookingNumber: sanitizeRef(c.bookingNumber || shipmentJson.bookingNumber),
       palletIndices: c.palletIndices || []
     }));
@@ -122,7 +122,7 @@ export function ContainerBayWorkspace({
     containerNumber: '',
     sealNumber: '',
     containerType: '20GP' as ContainerType,
-    tareWeightKg: 2150
+    tareWeightKg: 0
   };
   const specs = CONTAINER_SPECS['20GP'];
 
@@ -244,7 +244,7 @@ export function ContainerBayWorkspace({
     containerNumber: '',
     sealNumber: '',
     containerType: '20GP',
-    tareWeightKg: 2150
+    tareWeightKg: 0
   });
 
   // Split / Move Units State
@@ -328,7 +328,7 @@ export function ContainerBayWorkspace({
           containerNumber: '',
           sealNumber: '',
           containerType: '20GP',
-          tareWeightKg: 2150,
+          tareWeightKg: 0,
           bookingNumber
         };
         setContainers((prev) => [...prev, newCont]);
@@ -677,7 +677,7 @@ export function ContainerBayWorkspace({
           containerNumber: '',
           sealNumber: '',
           containerType: '20GP',
-          tareWeightKg: 2150,
+          tareWeightKg: 0,
           bookingNumber
         };
         setContainers((cList) => [...cList, newCont]);
@@ -1138,7 +1138,7 @@ export function ContainerBayWorkspace({
       containerNumber: '',
       sealNumber: '',
       containerType: '20GP',
-      tareWeightKg: 2150
+      tareWeightKg: 0
     });
     setShowContainerForm(true);
   };
@@ -1152,7 +1152,7 @@ export function ContainerBayWorkspace({
       containerNumber: containerForm.containerNumber.trim(),
       sealNumber: containerForm.sealNumber.trim(),
       containerType: '20GP',
-      tareWeightKg: Number(containerForm.tareWeightKg) || 2150,
+      tareWeightKg: Number(containerForm.tareWeightKg) || 0,
       bookingNumber
     };
     setContainers((prev) => [...prev, newCont]);
@@ -1215,7 +1215,7 @@ export function ContainerBayWorkspace({
         containerNumber: c.containerNumber.trim(),
         sealNumber: c.sealNumber.trim(),
         containerType: '20GP' as const,
-        tareWeightKg: Number(c.tareWeightKg) || 2150,
+        tareWeightKg: Number(c.tareWeightKg) || 0,
         bookingNumber: bookingNumber.trim(),
         palletIndices,
         maxPayloadKg: 25000,
@@ -1237,7 +1237,7 @@ export function ContainerBayWorkspace({
       containerNumber: primaryContNum,
       sealNumber: primarySealNum,
       containerType: '20GP',
-      tareWeightKg: totalAllTare > 0 ? totalAllTare : Number(activeContainer.tareWeightKg) || 2150,
+      tareWeightKg: totalAllTare > 0 ? totalAllTare : Number(activeContainer.tareWeightKg) || 0,
       carrierName: carrierName.trim(),
       vesselName: vesselName.trim(),
       voyageNumber: voyageNumber.trim(),
@@ -1437,7 +1437,7 @@ export function ContainerBayWorkspace({
                           className="rounded border-divider bg-input-bg text-brand-primary focus:ring-0 cursor-pointer"
                         />
                         <span className="text-xs font-mono font-bold text-brand-primary shrink-0">
-                          {p.palletNumber} ({p.boxCount || 0} u)
+                          {p.palletNumber} ({p.boxCount || 0} Units)
                         </span>
                         {p.isSplitPiece && (
                           <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800 shrink-0">
@@ -1558,7 +1558,7 @@ export function ContainerBayWorkspace({
                             className="flex items-center justify-between text-[10px] font-mono bg-brand-primary-soft/30 px-2 py-0.5 rounded border border-brand-primary/20"
                           >
                             <span className="text-content-primary">
-                              +{mt.units} u from {mt.fromPalletNumber} ({mt.grossWeightKg} kg)
+                              +{mt.units} Units from {mt.fromPalletNumber} ({mt.grossWeightKg} kg)
                             </span>
                             <button
                               type="button"
@@ -2001,7 +2001,6 @@ export function ContainerBayWorkspace({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. MSKU1234567"
                   value={activeContainer.containerNumber}
                   onChange={(e) => updateActiveContainer({ containerNumber: e.target.value.toUpperCase() })}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
@@ -2014,7 +2013,6 @@ export function ContainerBayWorkspace({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. SL987654"
                   value={activeContainer.sealNumber}
                   onChange={(e) => updateActiveContainer({ sealNumber: e.target.value.toUpperCase() })}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono uppercase focus:outline-none focus:border-brand-primary"
@@ -2039,7 +2037,6 @@ export function ContainerBayWorkspace({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. BKG-99201"
                   value={bookingNumber}
                   onChange={(e) => setBookingNumber(e.target.value)}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
@@ -2052,7 +2049,6 @@ export function ContainerBayWorkspace({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Pacific Maritime Line"
                   value={carrierName}
                   onChange={(e) => setCarrierName(e.target.value)}
                   className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary focus:outline-none focus:border-brand-primary"
@@ -2066,14 +2062,12 @@ export function ContainerBayWorkspace({
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
-                    placeholder="e.g. MSC LAUREN"
                     value={vesselName}
                     onChange={(e) => setVesselName(e.target.value)}
                     className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
                   />
                   <input
                     type="text"
-                    placeholder="e.g. 246W"
                     value={voyageNumber}
                     onChange={(e) => setVoyageNumber(e.target.value)}
                     className="w-full bg-input-bg border border-divider rounded-lg px-3 py-2 text-content-primary font-mono focus:outline-none focus:border-brand-primary"
@@ -2086,7 +2080,7 @@ export function ContainerBayWorkspace({
           {/* Real-time SOLAS VGM Indicator Card */}
           <div className="p-4 bg-surface border border-divider rounded-2xl shadow-sm space-y-2">
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="text-content-secondary">Cargo Gross ({cargoGrossWeight.toLocaleString()} kg) + Tare ({activeContainer.tareWeightKg} kg)</span>
+              <span className="text-content-secondary">Cargo Gross ({cargoGrossWeight.toLocaleString()} kg) + Tare ({Number(activeContainer.tareWeightKg || 0).toLocaleString()} kg)</span>
               <span className="text-content-muted">=</span>
               <span className="text-state-success font-bold">VGM: {vgmWeightKg.toLocaleString()} kg</span>
             </div>
@@ -2597,7 +2591,7 @@ export function ContainerBayWorkspace({
                     .filter((p) => (p.id || p.palletNumber) !== (splitMoveState.sourcePallet?.id || splitMoveState.sourcePallet?.palletNumber))
                     .map((p) => (
                       <option key={p.id || p.palletNumber} value={p.id || p.palletNumber}>
-                        {p.palletNumber} ({p.boxCount || 0} u &bull; {p.grossWeightKg} kg)
+                        {p.palletNumber} ({p.boxCount || 0} Units &bull; {p.grossWeightKg} kg)
                       </option>
                     ))}
                 </select>
@@ -2623,11 +2617,11 @@ export function ContainerBayWorkspace({
                   </div>
                   <div className="flex justify-between text-content-secondary">
                     <span>Source {src.palletNumber} Remains:</span>
-                    <span className="font-semibold text-content-primary">{remU} u &bull; {remG} kg gross ({remN} kg net)</span>
+                    <span className="font-semibold text-content-primary">{remU} Units &bull; {remG} kg gross ({remN} kg net)</span>
                   </div>
                   <div className="flex justify-between text-content-secondary">
                     <span>Split / Moved:</span>
-                    <span className="font-semibold text-brand-primary">+{u} u &bull; {deltaG} kg gross ({deltaN} kg net)</span>
+                    <span className="font-semibold text-brand-primary">+{u} Units &bull; {deltaG} kg gross ({deltaN} kg net)</span>
                   </div>
                 </div>
               );

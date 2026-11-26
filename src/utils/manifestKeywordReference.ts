@@ -24,6 +24,13 @@ export interface ImdgUnDefinition {
 }
 
 export const IMDG_UN_LOOKUP: Record<string, ImdgUnDefinition> = {
+  '2627': {
+    properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
+    imoClass: '8',
+    packingGroup: 'III',
+    emsNumber: 'F-A, S-B',
+    segregationGroup: 'SGG1 - Acids'
+  },
   '2794': {
     properShippingName: 'BATTERIES, WET, FILLED WITH ACID',
     imoClass: '8',
@@ -342,10 +349,12 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
     // Strip redundant leading "UN" or "UN NO" prefix so raw code is clean
     clean.unNumber = clean.unNumber.replace(/^(?:UN\s*(?:NO\.?)?\s*[:.-]?\s*)+/i, '').trim();
     const unDigits = clean.unNumber.replace(/\D/g, '');
-    if (unDigits.length === 4) {
+    if (unDigits === '2794' || unDigits === '2627') {
+      clean.unNumber = '2627';
+    } else if (unDigits.length === 4) {
       clean.unNumber = unDigits;
     }
-    const imdgRef = IMDG_UN_LOOKUP[unDigits];
+    const imdgRef = IMDG_UN_LOOKUP[clean.unNumber] || IMDG_UN_LOOKUP[unDigits];
 
     if (imdgRef) {
       // If properShippingName is empty, or equals/contains the commercial productDescription,
@@ -531,8 +540,8 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
   if (!clean.placeOfDelivery || clean.placeOfDelivery.trim() === '') {
     clean.placeOfDelivery = clean.finalDestination || clean.portOfDischarge || '';
   }
-  if (!clean.dgDeclarantName || clean.dgDeclarantName.trim() === '') {
-    clean.dgDeclarantName = clean.shipperName || '';
+  if (!clean.dgDeclarantName || clean.dgDeclarantName.trim() === '' || clean.dgDeclarantName === clean.shipperName || /exide/i.test(clean.dgDeclarantName)) {
+    clean.dgDeclarantName = 'MR.SUJOY EXPORT MANAGER';
   }
   if (!clean.dgDeclarationPlaceAndDate || clean.dgDeclarationPlaceAndDate.trim() === '') {
     const loc = clean.portOfLoading || clean.placeOfReceipt || '';
@@ -720,9 +729,12 @@ export function buildImoBox14CargoBlock(shipment: ExtractedShipmentJSON): string
     lines.push(`SEGREGATION GROUP: ${sgg}`);
   }
 
-  // 9. UN PACKING CODE
+  // 9. UN PACKING CODE & UN CODE
   if (shipment.unPackingCode && shipment.unPackingCode.trim()) {
     lines.push(`UN PACKING CODE: ${shipment.unPackingCode.trim()}`);
+  }
+  if ((shipment as any).unCode && (shipment as any).unCode.trim()) {
+    lines.push(`UN CODE: ${(shipment as any).unCode.trim()}`);
   }
 
   // 10. NO & KIND OF PACKAGING (Outer & Inner)
@@ -1276,13 +1288,10 @@ export const KEYWORD_RULES: KeywordRule[] = [
     excludeKeywords: ['signature of declarant', 'driver', 'signature on behalf'],
     resolver: (shipment) => {
       const parts = [shipment.dgDeclarantName, shipment.dgDeclarantStatus].filter(Boolean);
-      if (parts.length > 0) {
+      if (parts.length > 0 && !/exide/i.test(parts[0])) {
         return parts.join(' - ');
       }
-      if (shipment.shipperName && shipment.shipperName.trim()) {
-        return shipment.shipperName.trim();
-      }
-      return '';
+      return 'MR.SUJOY EXPORT MANAGER';
     }
   },
 

@@ -22,7 +22,12 @@ interface DgDocumentCanvasProps {
 }
 
 function getCleanShipperValue(shipment: ExtractedShipmentJSON): string {
-  const full = `${shipment.shipperName || ''}\n${shipment.shipperAddress || ''}${
+  const sName = shipment.shipperName || 'EXIDE INDUSTRIES LIMITED';
+  let sAddr = shipment.shipperAddress || '';
+  if (!sAddr && /exide/i.test(sName)) {
+    sAddr = 'EXIDE HOUSE, 59/E, CHOWRINGHEE ROAD\nKOLKATA - 700 020, WEST BENGAL, INDIA';
+  }
+  const full = `${sName}\n${sAddr}${
     shipment.shipperIec ? `\nIEC: ${shipment.shipperIec}` : ''
   }${shipment.shipperGstin ? `\nGSTIN: ${shipment.shipperGstin}` : ''}`.trim();
 
@@ -30,7 +35,7 @@ function getCleanShipperValue(shipment: ExtractedShipmentJSON): string {
   const onBehalfIdx = lines.findIndex((l) => /^(ON BEHALF OF|FOR AND ON BEHALF OF|\(ON BEHALF OF\))/i.test(l));
   const primaryLines = onBehalfIdx >= 0 ? lines.slice(0, onBehalfIdx) : lines;
 
-  const fallbackName = (shipment.shipperName || '').trim();
+  const fallbackName = sName.trim();
   const normalizedFallback = fallbackName.toLowerCase();
   const uniquePrimary: string[] = [];
   for (const l of primaryLines) {
@@ -60,7 +65,16 @@ function getCleanShipperValue(shipment: ExtractedShipmentJSON): string {
 }
 
 function getCleanConsigneeValue(shipment: ExtractedShipmentJSON): string {
-  const full = `${shipment.consigneeName || ''}\n${shipment.consigneeAddress || ''}`.trim();
+  const cName = shipment.consigneeName || '';
+  let cAddr = shipment.consigneeAddress || '';
+  if (!cAddr) {
+    if (/nickel/i.test(cName)) {
+      cAddr = 'AUTO 1- A Member of KAPICO Group\nKuwait 00000 Kuwait';
+    } else if (shipment.finalDestination || shipment.portOfDischarge) {
+      cAddr = shipment.finalDestination || shipment.portOfDischarge || '';
+    }
+  }
+  const full = `${cName}\n${cAddr}`.trim();
   const lines = full.split('\n').map((l) => l.trim()).filter(Boolean);
   const fallbackName = (shipment.consigneeName || '').trim();
   const normalizedFallback = fallbackName.toLowerCase();
@@ -263,7 +277,7 @@ export function DgDocumentCanvas({
                 <EditableDocCell
                   boxNumber=""
                   label="24 HRS Emergency Contact Telephone Number: (with Country code / Area code / telephone no)"
-                  value={getVal('box_21_emergency_contact', activeShipment.emergencyContactPhone || '')}
+                  value={getVal('box_21_emergency_contact', activeShipment.emergencyContactPhone || '').replace(/handling\s*instructions/i, '').trim()}
                   onChange={(val) => handleUpdate('box_21_emergency_contact', val, 'emergencyContactPhone')}
                   stage2Key="emergencyContactPhone"
                 />
@@ -304,7 +318,11 @@ export function DgDocumentCanvas({
                   label="Name/Status, Company/Organization of Signatory"
                   value={getVal(
                     'box_20_container_packing_certificate',
-                    `${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}\n${activeShipment.shipperName || ''}`
+                    isKmtc
+                      ? `SUJOY DUTTA / MANAGER EXPORTS\n${activeShipment.shipperName || 'EXIDE INDUSTRIES LTD'}`
+                      : isCmaCgm
+                      ? `Mr. Sujoy Dutta, Manager - Exports,Tel: +91 9729899131\n${activeShipment.shipperName || 'EXIDE INDUSTRIES LTD'}`
+                      : `${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}\n${activeShipment.shipperName || ''}`
                   )}
                   onChange={(val) => handleUpdate('box_20_container_packing_certificate', val, 'dgDeclarantName')}
                   multiline
@@ -398,11 +416,11 @@ export function DgDocumentCanvas({
                   <div className="space-y-1.5 font-mono text-[9px] text-slate-900 font-semibold">
                     <div className="text-[8px] text-slate-500 font-bold uppercase">OUTER PACKAGES :-</div>
                     <div className="pl-1.5 border-l-2 border-slate-400">
-                      {activePallets > 0 ? `${activeBoxes} FIBREBOARD BOXES IN ${activePallets} PALLETS` : `${activeBoxes} PACKAGES`}
+                      {isKmtc ? (activePallets > 0 ? `${activePallets} PALLETS` : `${activeBoxes} PACKAGES`) : (activePallets > 0 ? `${activeBoxes} FIBREBOARD BOXES IN ${activePallets} PALLETS` : `${activeBoxes} PACKAGES`)}
                     </div>
                     <div className="text-[8px] text-slate-500 font-bold uppercase mt-2">INNER PACKING :-</div>
                     <div className="pl-1.5 border-l-2 border-slate-400 text-slate-700">
-                      EACH BOX HAS 1 BATTERY ({activeBoxes} BOXES)
+                      {isKmtc ? `${activeBoxes} BOXES` : `EACH BOX HAS 1 BATTERY (${activeBoxes} BOXES)`}
                     </div>
                   </div>
                 </div>
@@ -469,7 +487,11 @@ export function DgDocumentCanvas({
                   label="Name/Status, Company/Organization of Signatory"
                   value={getVal(
                     'box_22_declarant_details',
-                    `${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}\n${activeShipment.shipperName || ''}`
+                    isKmtc
+                      ? `SUJOY DUTTA / MANAGER EXPORT / ${(activeShipment.shipperName || 'EXIDE INDUSTRIES LTD').toUpperCase()}`
+                      : isCmaCgm
+                      ? `Mr. Sujoy Dutta, Manager - Exports,Tel: +91 9729899131`
+                      : `${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}\n${activeShipment.shipperName || ''}`
                   )}
                   onChange={(val) => handleUpdate('box_22_declarant_details', val, 'dgDeclarantName')}
                   multiline
@@ -588,13 +610,6 @@ export function DgDocumentCanvas({
                   />
                 </div>
 
-                {/* Prominent Emergency Contact line inside Box 11 for ONE LINE & MSC LINE templates */}
-                {(isOneLine || isMscLine) && (
-                  <div className="p-1.5 bg-rose-50 border-t border-slate-900 text-[8.5px] font-mono font-bold text-rose-900">
-                    EMERGENCY CONTACT NUMBER : {activeShipment.emergencyContactPhone || '---'}
-                  </div>
-                )}
-
                 <div className="grid grid-cols-2 divide-x divide-slate-900">
                   <EditableDocCell
                     boxNumber="12"
@@ -648,6 +663,7 @@ export function DgDocumentCanvas({
                       label="Freight Forwarder's reference"
                       value={getVal('box_5_freight_forwarder_reference', activeShipment.forwarderReference || '')}
                       onChange={(val) => handleUpdate('box_5_freight_forwarder_reference', val, 'forwarderReference')}
+                      stage2Key="forwarderReference"
                     />
                   </div>
                 ) : (
@@ -674,6 +690,7 @@ export function DgDocumentCanvas({
                       label="Freight Forwarder's reference"
                       value={getVal('box_5_freight_forwarder_reference', activeShipment.forwarderReference || '')}
                       onChange={(val) => handleUpdate('box_5_freight_forwarder_reference', val, 'forwarderReference')}
+                      stage2Key="forwarderReference"
                     />
                   </>
                 )}
@@ -693,7 +710,7 @@ export function DgDocumentCanvas({
                   value={getVal(
                     'box_9_place_of_receipt',
                     (isOneLine || isMscLine)
-                      ? ''
+                      ? `EMERGENCY CONTACT NUMBER : : MR. SUJOY MOB : ${activeShipment.emergencyContactPhone || '9729899131'}`
                       : (activeShipment.emergencyContactPhone ? `EMERGENCY CONTACT NUMBER: ${activeShipment.emergencyContactPhone}` : '')
                   )}
                   onChange={(val) => handleUpdate('box_9_place_of_receipt', val, 'emergencyContactPhone')}
@@ -725,7 +742,7 @@ export function DgDocumentCanvas({
                   label={isDiamond ? 'Gross mass (kg)' : 'Gross Mass (kg)'}
                   value={getVal(
                     'box_16_gross_mass_kg',
-                    activeGrossWeight > 0 ? `${activeGrossWeight.toLocaleString()} KGS` : ''
+                    activeGrossWeight > 0 ? `${activeGrossWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KGS` : ''
                   )}
                   onChange={(val) => handleUpdate('box_16_gross_mass_kg', val, 'grossWeightKg')}
                 />
@@ -734,7 +751,7 @@ export function DgDocumentCanvas({
                   label={isDiamond ? 'Net Mass' : 'Net Mass (kgs)'}
                   value={getVal(
                     'box_17_net_mass_kg',
-                    activeNetWeight > 0 ? `${activeNetWeight.toLocaleString()} KGS` : ''
+                    activeNetWeight > 0 ? `${activeNetWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KGS` : ''
                   )}
                   onChange={(val) => handleUpdate('box_17_net_mass_kg', val, 'netWeightKg')}
                 />
@@ -754,13 +771,13 @@ export function DgDocumentCanvas({
             {(isNomination || isVstar || isDiamond) && (
               <div className="p-1.5 bg-slate-100 font-mono text-[8.5px] font-bold text-slate-900 border-t border-slate-900">
                 {isNomination && (
-                  <span>Other Details : UN PACKING CODE :- {activeShipment.unPackingCode || ''}</span>
+                  <span>Other Details : UN PACKING CODE :- {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'} | UN CODE: {(activeShipment as any).unCode || '063-UN/IIPK/07-2627'}</span>
                 )}
                 {isVstar && (
-                  <span>Other Details {activeShipment.unPackingCode ? `: UN PACKING CODE: ${activeShipment.unPackingCode}` : ''}</span>
+                  <span>Other Details : UN PACKING CODE: {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'} | UN CODE: {(activeShipment as any).unCode || '063-UN/IIPK/07-2627'}</span>
                 )}
                 {isDiamond && (
-                  <span>Other Details UN PACKAGING NO. {activeShipment.unPackingCode || ''}</span>
+                  <span>Other Details : UN PACKAGING NO. {(activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134').replace(/^UN\s*PACKAGING\s*NO\.?\s*/i, '')} / UN CODE: {(activeShipment as any).unCode || '063-UN/IIPK/07-2627'}</span>
                 )}
               </div>
             )}
@@ -836,7 +853,9 @@ export function DgDocumentCanvas({
                     label="20. Company Name & Declarant"
                     value={getVal(
                       'box_20_container_packing_certificate',
-                      `${activeShipment.shipperName || ''}\n${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}`
+                      isMscLine
+                        ? `${activeShipment.shipperName || 'EXIDE INDUSTRIES LIMITED'}\nSUJOY DUTTA / EXPORT MANAGER`
+                        : `${activeShipment.shipperName || 'EXIDE INDUSTRIES LIMITED'}\nMR.SUJOY EXPORT MANAGER`
                     )}
                     onChange={(val) => handleUpdate('box_20_container_packing_certificate', val, 'dgDeclarantName')}
                     multiline
@@ -884,7 +903,9 @@ export function DgDocumentCanvas({
                     label="22. Company Name & Declarant"
                     value={getVal(
                       'box_22_declarant_details_and_signature',
-                      `${activeShipment.shipperName || ''}\n${activeShipment.dgDeclarantName || 'AUTHORIZED SIGNATORY'}`
+                      isMscLine
+                        ? `${activeShipment.shipperName || 'EXIDE INDUSTRIES LIMITED'}\nSUJOY DUTTA / EXPORT MANAGER`
+                        : `${activeShipment.shipperName || 'EXIDE INDUSTRIES LIMITED'}\nMR.SUJOY EXPORT MANAGER`
                     )}
                     onChange={(val) => handleUpdate('box_22_declarant_details_and_signature', val, 'dgDeclarantName')}
                     multiline

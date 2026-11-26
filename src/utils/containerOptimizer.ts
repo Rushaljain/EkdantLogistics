@@ -115,8 +115,8 @@ export function clusterLineItemsIntoPallets(
   const pallets: Pallet[] = [];
   const primaryItem = lineItems[0];
   const isBattery = lineItems.some(it => 
-    /(battery|batteries|lead[\s-]*acid|electric storage|un\s*2794)/i.test(it.description || '') ||
-    it.unNumber === 'UN 2794'
+    /(battery|batteries|lead[\s-]*acid|electric storage|un\s*(?:2627|2794))/i.test(it.description || '') ||
+    it.unNumber === 'UN 2627' || it.unNumber === 'UN 2794'
   );
 
   const defaultDescription = primaryItem?.description || (isBattery ? 'Industrial Wet Storage Batteries' : 'Commercial Merchandise');
@@ -155,7 +155,7 @@ export function clusterLineItemsIntoPallets(
         modelOrDescription: defaultDescription,
         isDangerousGoods: Boolean(dgItem || isBattery),
         imoClass: dgItem?.imoClass || (isBattery ? 'Class 8 (Corrosive)' : undefined),
-        unNumber: dgItem?.unNumber || (isBattery ? 'UN 2794' : undefined),
+        unNumber: dgItem?.unNumber || (isBattery ? 'UN 2627' : undefined),
         packingGroup: dgItem?.packingGroup || (isBattery ? 'III' : undefined),
         lineItemIds: lineItems.map(it => it.id)
       });
