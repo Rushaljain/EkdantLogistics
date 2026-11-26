@@ -1072,12 +1072,7 @@ export function WorkspacePage({
       <aside className="w-80 md:w-84 xl:w-96 border-l border-divider bg-surface flex flex-col shrink-0 overflow-y-auto z-20 shadow-xs divide-y divide-divider/60 font-sans">
         {/* Section 1: Document View & Container Scope */}
         <div className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider">Document</span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-primary-soft text-brand-primary border border-brand-primary/20">
-              {activeTab === 'dg_manifest' ? 'DG IMO-22' : activeTab === 'bl_manifest' ? 'Ocean B/L' : 'Bay Plan'}
-            </span>
-          </div>
+          <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">Document</span>
 
           {/* Primary Workspace View Selector Dropdown */}
           <div className="relative">
