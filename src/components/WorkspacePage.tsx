@@ -1280,47 +1280,18 @@ export function WorkspacePage({
               <span>{hasContainerSynced ? '✓ Synced to Manifests!' : 'Apply & Sync to Manifests'}</span>
             </button>
           ) : (
-            <div className="space-y-2">
-              {/* Export Document Dropdown */}
-              <div className="relative">
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (!val) return;
-                    const targetDoc: FormatDocumentType = activeTab === 'bl_manifest' ? 'BL' : 'DG';
-                    if (val === 'PDF') {
-                      checkContainerSpecsAndExecute('PRINT_PDF', targetDoc);
-                    } else if (val === 'Word') {
-                      checkContainerSpecsAndExecute('DOWNLOAD_DOCX', targetDoc, targetDoc === 'DG' ? activeFilteredDgShipment : undefined);
-                    }
-                  }}
-                  className="w-full bg-surface-secondary hover:bg-surface text-content-primary text-xs font-semibold border border-divider rounded-xl px-3 py-2.5 pr-8 focus:outline-none focus:border-brand-primary cursor-pointer transition-colors shadow-xs appearance-none"
-                >
-                  <option value="" disabled>
-                    Export Document ({activeTab === 'bl_manifest' ? 'BL' : 'DG'})
-                  </option>
-                  <option value="PDF">Print / Download PDF</option>
-                  <option value="Word">
-                    {activeTab !== 'bl_manifest' && (selectedDgFormatId === 'KMTC_DG' || selectedDgFormatId === 'CMA_CGM_DG')
-                      ? 'Master Excel (.xlsx)'
-                      : 'Master Word (.docx)'}
-                  </option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-
-              {/* Package ZIP button */}
-              <button
-                onClick={() => checkContainerSpecsAndExecute('DOWNLOAD_ZIP')}
-                disabled={isExportingZip}
-                className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all cursor-pointer"
-                title="Download Complete Shipment Package (.zip)"
-              >
-                <Package className={`w-4 h-4 ${isExportingZip ? 'animate-spin' : ''}`} />
-                <span>{isExportingZip ? 'Compiling Archive...' : 'Download Package (.zip)'}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const targetDoc: FormatDocumentType = activeTab === 'bl_manifest' ? 'BL' : 'DG';
+                checkContainerSpecsAndExecute('DOWNLOAD_DOCX', targetDoc, targetDoc === 'DG' ? activeFilteredDgShipment : undefined);
+              }}
+              className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text text-xs font-semibold shadow-sm transition-all cursor-pointer"
+              title={`Download ${activeTab === 'bl_manifest' ? 'Bill of Lading' : 'DG Manifest'}`}
+            >
+              <Download className="w-4 h-4" />
+              <span>Download</span>
+            </button>
           )}
         </div>
       </aside>
