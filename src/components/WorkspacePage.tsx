@@ -506,6 +506,14 @@ export function WorkspacePage({
 
   const populatedFieldsCount = auditEntries.filter((e) => !e.isBlank && e.key !== 'sourceFiles').length;
 
+  // Active shipment for sidebar metrics (respects container scope on DG manifest)
+  const activeMetricsShipment = activeTab === 'dg_manifest' ? activeFilteredDgShipment : shipmentJson;
+  const displayPallets = activeMetricsShipment.pallets?.length || activeMetricsShipment.totalPallets || 0;
+  const displayUnits = activeMetricsShipment.totalBoxes || activeMetricsShipment.totalPackages || activeMetricsShipment.innerPackageCount || (activeMetricsShipment.pallets ? activeMetricsShipment.pallets.reduce((s, p) => s + (p.boxCount || 0), 0) : 0);
+  const displayGross = activeMetricsShipment.grossWeightKg || (activeMetricsShipment.pallets ? activeMetricsShipment.pallets.reduce((s, p) => s + (p.grossWeightKg || 0), 0) : 0);
+  const displayNet = activeMetricsShipment.netWeightKg || (activeMetricsShipment.pallets ? activeMetricsShipment.pallets.reduce((s, p) => s + (p.netWeightKg || 0), 0) : 0);
+  const displayVgm = displayGross > 0 ? displayGross + (activeMetricsShipment.tareWeightKg || 0) : (calculatedVgm || 0);
+
   return (
     <div className="flex-1 flex flex-col h-full max-h-screen overflow-hidden bg-app text-content-primary relative">
       {/* =========================================================================
@@ -1247,19 +1255,47 @@ export function WorkspacePage({
         {/* Section 4: Manifest Metrics */}
         <div className="p-4 space-y-2.5">
           <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">Manifest Metrics</span>
-          <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-            <div className="p-2.5 bg-surface-secondary rounded-xl border border-divider">
-              <span className="text-[10px] text-content-muted block mb-0.5">Gross Mass</span>
-              <span className="font-semibold text-state-success truncate block">
-                {shipmentJson.grossWeightKg > 0 ? `${shipmentJson.grossWeightKg.toLocaleString()} kg` : '—'}
-              </span>
-            </div>
-            <div className="p-2.5 bg-surface-secondary rounded-xl border border-divider">
-              <span className="text-[10px] text-content-muted block mb-0.5">SOLAS VGM</span>
-              <span className="font-semibold text-state-success truncate block">
-                {calculatedVgm > 0 ? `${calculatedVgm.toLocaleString()} kg` : '—'}
-              </span>
-            </div>
+          <div className="border border-divider rounded-xl overflow-hidden bg-surface-secondary/40 shadow-xs">
+            <table className="w-full text-xs font-mono border-collapse">
+              <thead>
+                <tr className="bg-surface-secondary/80 border-b border-divider text-[10px] uppercase tracking-wider text-content-muted font-sans font-semibold">
+                  <th className="py-1.5 px-3 text-left">Metric</th>
+                  <th className="py-1.5 px-3 text-right">Value</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-divider/60 tabular-nums">
+                <tr className="hover:bg-surface-secondary/50 transition-colors">
+                  <td className="py-2 px-3 text-content-secondary font-medium font-sans">Net Wt.</td>
+                  <td className="py-2 px-3 text-right font-bold text-content-primary">
+                    {displayNet > 0 ? `${displayNet.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg` : '—'}
+                  </td>
+                </tr>
+                <tr className="hover:bg-surface-secondary/50 transition-colors">
+                  <td className="py-2 px-3 text-content-secondary font-medium font-sans">Gross Wt.</td>
+                  <td className="py-2 px-3 text-right font-bold text-content-primary">
+                    {displayGross > 0 ? `${displayGross.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg` : '—'}
+                  </td>
+                </tr>
+                <tr className="hover:bg-surface-secondary/50 transition-colors">
+                  <td className="py-2 px-3 text-content-secondary font-medium font-sans">VGM</td>
+                  <td className="py-2 px-3 text-right font-bold text-emerald-700 dark:text-emerald-400">
+                    {displayVgm > 0 ? `${displayVgm.toLocaleString(undefined, { maximumFractionDigits: 2 })} kg` : '—'}
+                  </td>
+                </tr>
+                <tr className="hover:bg-surface-secondary/50 transition-colors">
+                  <td className="py-2 px-3 text-content-secondary font-medium font-sans">Units</td>
+                  <td className="py-2 px-3 text-right font-bold text-content-primary">
+                    {displayUnits > 0 ? `${displayUnits.toLocaleString()} Units` : '—'}
+                  </td>
+                </tr>
+                <tr className="hover:bg-surface-secondary/50 transition-colors">
+                  <td className="py-2 px-3 text-content-secondary font-medium font-sans">Pallets</td>
+                  <td className="py-2 px-3 text-right font-bold text-content-primary">
+                    {displayPallets > 0 ? `${displayPallets.toLocaleString()} Plts` : '—'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
