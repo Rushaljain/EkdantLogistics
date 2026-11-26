@@ -1025,7 +1025,7 @@ export function WarehouseInventoryHub({
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
                     UNITS
                   </span>
-                  <span className="text-xl sm:text-2xl font-bold text-indigo-500 dark:text-indigo-400 leading-none">
+                  <span className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-content-primary leading-none">
                     {kpis.totalBalanceBatteries.toLocaleString()}
                   </span>
                 </div>
@@ -1058,7 +1058,7 @@ export function WarehouseInventoryHub({
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
                     UNITS
                   </span>
-                  <span className="text-xl sm:text-2xl font-bold text-indigo-500 dark:text-indigo-400 leading-none">
+                  <span className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-content-primary leading-none">
                     {kpis.totalStuffedBatteries.toLocaleString()}
                   </span>
                 </div>
@@ -1180,7 +1180,7 @@ export function WarehouseInventoryHub({
                   id="section-select"
                   value={activeSection}
                   onChange={(e) => setActiveSection(e.target.value as HubSection)}
-                  className="pl-3 pr-8 py-1.5 bg-surface-secondary border border-divider rounded-lg font-bold text-brand-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs appearance-none shadow-2xs"
+                  className="pl-3 pr-8 py-1.5 bg-surface-secondary border border-divider rounded-lg font-medium text-content-primary focus:outline-none focus:border-brand-primary cursor-pointer text-xs appearance-none shadow-2xs"
                 >
                   <option value="inventory">1. Inventory ({availablePalletUnits.length}p)</option>
                   <option value="status_logs">2. Status Logs ({filteredStatusLogInvoices.length})</option>
@@ -1848,14 +1848,14 @@ export function WarehouseInventoryHub({
                               {/* 8. Dispatched (Plts, Units) */}
                               <td className="p-2.5 border-r border-divider text-right text-content-secondary font-medium">
                                 {actualStuffedPlts > 0 ? (
-                                  <span className="text-blue-700 font-semibold">{actualStuffedPlts}</span>
+                                  <span className="text-content-primary font-semibold">{actualStuffedPlts}</span>
                                 ) : (
                                   <span className="text-content-muted">0</span>
                                 )}
                               </td>
                               <td className="p-2.5 border-r border-divider text-right text-content-secondary">
                                 {actualStuffedUnits > 0 ? (
-                                  <span className="text-blue-700 font-semibold">{actualStuffedUnits.toLocaleString()}</span>
+                                  <span className="text-content-primary font-semibold">{actualStuffedUnits.toLocaleString()}</span>
                                 ) : (
                                   <span className="text-content-muted">0</span>
                                 )}
@@ -1877,7 +1877,7 @@ export function WarehouseInventoryHub({
                               {/* 11. Container Nos */}
                               <td className="p-2.5 border-r border-divider whitespace-nowrap font-mono text-[11px]">
                                 {containerList.length > 0 ? (
-                                  <span className="font-bold text-blue-700">{containerList.join(', ')}</span>
+                                  <span className="font-semibold text-content-primary">{containerList.join(', ')}</span>
                                 ) : (
                                   <span className="text-content-muted">—</span>
                                 )}
@@ -2099,7 +2099,7 @@ export function WarehouseInventoryHub({
                                                   </td>
                                                   <td className="p-2 border-r border-divider whitespace-nowrap text-[11px]">
                                                     {t.containerNo ? (
-                                                      <span className="font-bold text-blue-700">Cont: {t.containerNo} {t.sealNo ? `(Seal: ${t.sealNo})` : ''}</span>
+                                                      <span className="font-semibold text-content-primary">Cont: {t.containerNo} {t.sealNo ? `(Seal: ${t.sealNo})` : ''}</span>
                                                     ) : t.vehicleNo ? (
                                                       <span>Truck: {t.vehicleNo}</span>
                                                     ) : (
@@ -2348,11 +2348,11 @@ export function WarehouseInventoryHub({
                         <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Stuffed Plt</th>
                         <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Stuffed Units</th>
                         <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Stuffing Date</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-bold text-blue-700">Container No.</th>
+                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-medium text-content-secondary">Container No.</th>
                         <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Seal No.</th>
                         <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">SB No.</th>
                         <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap text-emerald-700 font-bold">Bal Plt</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap text-indigo-700 font-bold">Bal Units</th>
+                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-content-secondary">Bal Units</th>
                         <th className="py-2 px-2.5 border-r border-divider text-center whitespace-nowrap">Days</th>
                         <th className="py-2 px-2.5 whitespace-nowrap">Remarks</th>
                       </tr>
@@ -2384,11 +2384,11 @@ export function WarehouseInventoryHub({
                             <td className="py-2 px-2.5 border-r border-divider text-right">{e.actualStuffedPallets || 0}</td>
                             <td className="py-2 px-2.5 border-r border-divider text-right">{(e.actualStuffedBatteries || 0).toLocaleString()}</td>
                             <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.stuffingDate || '—'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-bold text-blue-700">{e.containerNo || '—'}</td>
+                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-medium text-content-primary">{e.containerNo || '—'}</td>
                             <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.sealNo || '—'}</td>
                             <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.shippingBillNo || '—'}</td>
                             <td className="py-2 px-2.5 border-r border-divider text-right font-bold text-emerald-700">{e.balancePallets || 0}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right font-bold text-indigo-700">{(e.balanceBatteries || 0).toLocaleString()}</td>
+                            <td className="py-2 px-2.5 border-r border-divider text-right font-medium text-content-primary">{(e.balanceBatteries || 0).toLocaleString()}</td>
                             <td className="py-2 px-2.5 border-r border-divider text-center">{e.daysInCFS || 0}</td>
                             <td className="py-2 px-2.5 whitespace-nowrap text-content-secondary">{e.remarks || '—'}</td>
                           </tr>
