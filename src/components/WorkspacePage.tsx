@@ -1070,10 +1070,10 @@ export function WorkspacePage({
           RIGHT SIDEBAR (Blue Box: Controls, Formats, Metrics & Exports)
           ========================================================================= */}
       <aside className="w-80 md:w-84 xl:w-96 border-l border-divider bg-surface flex flex-col shrink-0 overflow-y-auto z-20 shadow-xs divide-y divide-divider/60 font-sans">
-        {/* Section 1: View Selection & Container Scope */}
+        {/* Section 1: Document View & Container Scope */}
         <div className="p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider">Document View</span>
+            <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider">Document</span>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-primary-soft text-brand-primary border border-brand-primary/20">
               {activeTab === 'dg_manifest' ? 'DG IMO-22' : activeTab === 'bl_manifest' ? 'Ocean B/L' : 'Bay Plan'}
             </span>
@@ -1137,7 +1137,47 @@ export function WorkspacePage({
           )}
         </div>
 
-        {/* Section 2: Missing Fields / Status Banner */}
+        {/* Section 2: Carrier Format Template (Shifted directly below Document) */}
+        {(activeTab === 'dg_manifest' || activeTab === 'bl_manifest') && (
+          <div className="p-4 space-y-2">
+            <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">
+              {activeTab === 'dg_manifest' ? 'DG Carrier Format' : 'BL Carrier Format'}
+            </span>
+            {activeTab === 'dg_manifest' ? (
+              <div className="relative">
+                <select
+                  value={selectedDgFormatId}
+                  onChange={(e) => onSelectDgFormat(e.target.value)}
+                  className="w-full bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary text-xs rounded-xl px-3 py-2.5 pr-8 focus:outline-none font-medium appearance-none cursor-pointer transition-colors shadow-xs"
+                >
+                  {dgFormats.map((fmt) => (
+                    <option key={fmt.formatId} value={fmt.formatId}>
+                      {fmt.formatName}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            ) : (
+              <div className="relative">
+                <select
+                  value={selectedBlFormatId}
+                  onChange={(e) => onSelectBlFormat(e.target.value)}
+                  className="w-full bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary text-xs rounded-xl px-3 py-2.5 pr-8 focus:outline-none font-medium appearance-none cursor-pointer transition-colors shadow-xs"
+                >
+                  {blFormats.map((fmt) => (
+                    <option key={fmt.formatId} value={fmt.formatId}>
+                      {fmt.formatName}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section 3: Missing Fields / Status Banner */}
         <div className="p-4 space-y-2">
           <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">Field Status</span>
           {activeTab === 'dg_manifest' ? (
@@ -1208,46 +1248,6 @@ export function WorkspacePage({
             </div>
           </div>
         </div>
-
-        {/* Section 3: Carrier Format Template */}
-        {(activeTab === 'dg_manifest' || activeTab === 'bl_manifest') && (
-          <div className="p-4 space-y-2">
-            <span className="text-[11px] font-bold text-content-secondary uppercase tracking-wider block">
-              {activeTab === 'dg_manifest' ? 'DG Carrier Format' : 'BL Carrier Format'}
-            </span>
-            {activeTab === 'dg_manifest' ? (
-              <div className="relative">
-                <select
-                  value={selectedDgFormatId}
-                  onChange={(e) => onSelectDgFormat(e.target.value)}
-                  className="w-full bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary text-xs rounded-xl px-3 py-2.5 pr-8 focus:outline-none font-medium appearance-none cursor-pointer transition-colors shadow-xs"
-                >
-                  {dgFormats.map((fmt) => (
-                    <option key={fmt.formatId} value={fmt.formatId}>
-                      {fmt.formatName}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-            ) : (
-              <div className="relative">
-                <select
-                  value={selectedBlFormatId}
-                  onChange={(e) => onSelectBlFormat(e.target.value)}
-                  className="w-full bg-surface-secondary hover:bg-surface border border-divider focus:border-brand-primary text-content-primary text-xs rounded-xl px-3 py-2.5 pr-8 focus:outline-none font-medium appearance-none cursor-pointer transition-colors shadow-xs"
-                >
-                  {blFormats.map((fmt) => (
-                    <option key={fmt.formatId} value={fmt.formatId}>
-                      {fmt.formatName}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 text-content-secondary absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Section 4: Manifest Metrics */}
         <div className="p-4 space-y-2.5">
