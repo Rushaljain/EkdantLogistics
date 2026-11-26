@@ -400,7 +400,7 @@ export function CompactInvoiceBlock({
   };
 
   return (
-    <tbody className="border-b border-divider font-sans">
+    <tbody id={`invoice-row-${entry.customInvoiceNo}`} className="border-b border-divider font-sans">
       {/* =========================================================================
           1. COLLAPSED INVOICE ROW (Reference Image Top Half)
           ========================================================================= */}

@@ -533,8 +533,14 @@ export function WarehouseInventoryHub({
   // Active Floor Stock Invoices (Strictly showing what is available on floor)
   const activeStockInvoices = useMemo(() => {
     return filteredEntries.filter((e) => {
+      // If actively searching for an invoice or viewing reference, always show match
+      if (searchQuery.trim()) {
+        return true;
+      }
       if (inventoryStatusFilter === 'ALL') {
-        return (e.balancePallets || 0) > 0;
+        const sfStats = getEntryShortfallStats(e, selectedMonth);
+        const hasOpenShortfall = sfStats.shortPlt > 0 || sfStats.shortBat > 0;
+        return (e.balancePallets || 0) > 0 || hasOpenShortfall;
       }
       if (inventoryStatusFilter === 'IN_WAREHOUSE') {
         const sfStats = getEntryShortfallStats(e, selectedMonth);
@@ -557,7 +563,7 @@ export function WarehouseInventoryHub({
       }
       return true;
     });
-  }, [filteredEntries, inventoryStatusFilter, selectedMonth]);
+  }, [filteredEntries, inventoryStatusFilter, selectedMonth, searchQuery]);
 
   // Master Invoices Status Logs Tracking for Section 2: Status Logs
   const filteredStatusLogInvoices = useMemo(() => {
@@ -713,6 +719,41 @@ export function WarehouseInventoryHub({
     if (updated) {
       showToast(`Confirmed receipt for ${updated.customInvoiceNo}`);
       reloadEntries();
+    }
+  };
+
+  // Action: Open and navigate directly to an invoice row in the inventory section
+  const handleViewInvoiceInInventory = (invoiceNo: string) => {
+    setShowShortfillsModal(false);
+    setShowVarianceModal(false);
+    setActiveSection('inventory');
+
+    const cleanNo = (invoiceNo || '').trim().replace(/^#/, '');
+    setSearchQuery(cleanNo);
+
+    const target = entries.find(
+      (e) => (e.customInvoiceNo || '').trim().toLowerCase() === cleanNo.toLowerCase()
+    );
+
+    if (target) {
+      setExpandedInventoryInvoiceIds((prev) => new Set(prev).add(target.id));
+
+      if (selectedMonth !== 'ALL' && target.month && target.month.toUpperCase() !== selectedMonth.toUpperCase()) {
+        setSelectedMonth('ALL');
+      }
+      if (customerFilter !== 'ALL' && target.customer && target.customer.toUpperCase() !== customerFilter.toUpperCase()) {
+        setCustomerFilter('ALL');
+      }
+      setDateFrom('');
+      setDateTo('');
+      setInventoryStatusFilter('ALL');
+
+      setTimeout(() => {
+        const el = document.getElementById(`invoice-row-${target.customInvoiceNo}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
     }
   };
 
@@ -2507,7 +2548,8 @@ export function WarehouseInventoryHub({
                           <th className="py-2.5 px-3 border-r border-divider text-right">Invoiced (Plt / Units)</th>
                           <th className="py-2.5 px-3 border-r border-divider text-right">Actual Received (Plt / Units)</th>
                           <th className="py-2.5 px-3 border-r border-divider text-right text-amber-600 font-bold">Variance / Shortfall</th>
-                          <th className="py-2.5 px-3">Status / Vehicle</th>
+                          <th className="py-2.5 px-3 border-r border-divider">Status / Vehicle</th>
+                          <th className="py-2.5 px-3 text-center">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-divider font-mono">
@@ -2540,12 +2582,22 @@ export function WarehouseInventoryHub({
                                   {pltDiff > 0 ? `+${pltDiff}` : pltDiff} plt / {unitDiff > 0 ? `+${unitDiff}` : unitDiff} units
                                 </span>
                               </td>
-                              <td className="py-2.5 px-3 font-sans text-content-secondary text-[11px]">
+                              <td className="py-2.5 px-3 border-r border-divider font-sans text-content-secondary text-[11px]">
                                 {e.vehicleNo ? (
                                   <span>Veh: <strong className="font-mono text-content-primary">{e.vehicleNo}</strong></span>
                                 ) : (
                                   <span className="italic text-content-muted">Pending Gate-In</span>
                                 )}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-sans">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewInvoiceInInventory(e.customInvoiceNo)}
+                                  className="px-2.5 py-1 text-[11px] font-semibold text-brand-primary hover:text-white hover:bg-brand-primary rounded border border-brand-primary/40 transition-colors cursor-pointer"
+                                  title={`View invoice #${e.customInvoiceNo} with shortfall in inventory`}
+                                >
+                                  View
+                                </button>
                               </td>
                             </tr>
                           );
@@ -2684,15 +2736,11 @@ export function WarehouseInventoryHub({
                             <td className="py-2.5 px-3 text-center font-sans">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setShowShortfillsModal(false);
-                                  setActiveSection('inventory');
-                                  setSearchQuery(it.targetInvoiceNo);
-                                }}
-                                className="px-2 py-1 text-[11px] font-semibold text-brand-primary hover:text-white hover:bg-brand-primary rounded border border-brand-primary/40 transition-colors cursor-pointer"
+                                onClick={() => handleViewInvoiceInInventory(it.targetInvoiceNo)}
+                                className="px-2.5 py-1 text-[11px] font-semibold text-brand-primary hover:text-white hover:bg-brand-primary rounded border border-brand-primary/40 transition-colors cursor-pointer"
                                 title={`Find invoice #${it.targetInvoiceNo} in inventory`}
                               >
-                                View Invoice
+                                View
                               </button>
                             </td>
                           </tr>
