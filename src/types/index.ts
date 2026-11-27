@@ -614,8 +614,23 @@ export interface MappedManifestField {
 
 export type PalletStockStatus = 'PENDING_GATE_IN' | 'IN_WAREHOUSE' | 'STUFFED_DISPATCHED';
 
-export type ReceiptMode = 'RECEIVED_FULL' | 'SHORT_FALL' | 'SHORT_FILL';
+export type ReceiptMode = 'RECEIVED_FULL' | 'SHORT_FALL' | 'SHORT_FILL' | 'PARTIAL_INWARD';
 export type ShortfallMode = 'PALLET' | 'UNITS';
+
+export type PalletRowReceiptStatus =
+  | 'RECEIVED'
+  | 'NOT_RECEIVED'
+  | 'PARTIALLY_RECEIVED'
+  | 'SHORTFALL'
+  | 'SHORTFILL';
+
+export interface PartialReceiptLog {
+  id: string;
+  arrivalDate: string;
+  unitsReceived: number;
+  recordedAt: string;
+  notes?: string;
+}
 
 export interface LinkedShortFill {
   shortFillInvoiceNo: string;
@@ -678,6 +693,10 @@ export interface PalletStockUnit {
   allocatedUnits?: number;
   remainingUnits?: number;
   mergedTransfers?: MergedTransfer[];
+  // Multi-Part Inward Tracking
+  receiptStatus?: PalletRowReceiptStatus;
+  partialReceipts?: PartialReceiptLog[];
+  pendingUnits?: number;
 }
 
 export interface CFSLedgerEntry {
@@ -715,6 +734,11 @@ export interface CFSLedgerEntry {
   // Gate-In & DG/BL Flags
   dgCreated?: boolean;
   blCreated?: boolean;
+
+  // Inward Completion Lifecycle (Multi-Part Arrivals)
+  inwardStatus?: 'COMPLETED' | 'PENDING_INWARD';
+  pendingInwardPallets?: number;
+  pendingInwardBatteries?: number;
 
   // Carting & Gate-In Logistics
   truckReportingDate?: string;

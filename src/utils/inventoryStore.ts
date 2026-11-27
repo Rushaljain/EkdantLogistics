@@ -11,6 +11,8 @@ import type {
   InventoryMovementStatus,
   PalletItem,
   PalletStockUnit,
+  PalletRowReceiptStatus,
+  PartialReceiptLog,
   ReceiptMode,
   ShortfallMode,
   ShortfallRecord,
@@ -3097,6 +3099,9 @@ export interface RecordManualInwardParams {
     receivedBatteries?: number;
     grossWeightKg?: number;
     netWeightKg?: number;
+    receiptStatus?: PalletRowReceiptStatus;
+    partialReceipts?: PartialReceiptLog[];
+    pendingUnits?: number;
   }[];
   shortfallInputs?: ManualInwardShortfallInput[];
   shortFillInputs?: ManualInwardShortFillInput[];
@@ -3192,19 +3197,65 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
   });
 
   // 1. Physically received stock enters active floor stock (IN_WAREHOUSE)
-  const finalPalletUnits: PalletStockUnit[] = resolvedRawPallets.map((p, idx) => ({
-    id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
-    palletNumber: p.palletNumber || idx + 1,
-    model: p.model || 'STANDARD',
-    brand: p.brand || '',
-    invoicedBatteries: p.invoicedBatteries,
-    receivedBatteries: p.receivedBatteries ?? p.invoicedBatteries,
-    remainingUnits: p.receivedBatteries ?? p.invoicedBatteries,
-    grossWeightKg: p.grossWeightKg,
-    netWeightKg: p.netWeightKg,
-    status: 'IN_WAREHOUSE' as const,
-    invoiceNumber: params.customInvoiceNo
-  }));
+  // Pallets marked NOT_RECEIVED stay in PENDING_GATE_IN with 0 floor units.
+  // Pallets marked PARTIALLY_RECEIVED occupy floor space with landed units and pro-rata weight.
+  const finalPalletUnits: PalletStockUnit[] = resolvedRawPallets.map((p, idx) => {
+    const rStatus: PalletRowReceiptStatus = p.receiptStatus || 'RECEIVED';
+    const invBat = p.invoicedBatteries || 0;
+    let recBat = invBat;
+    let pendUnits = 0;
+    let floorStatus: 'IN_WAREHOUSE' | 'PENDING_GATE_IN' = 'IN_WAREHOUSE';
+    let pGross = p.grossWeightKg;
+    let pNet = p.netWeightKg;
+
+    if (rStatus === 'NOT_RECEIVED') {
+      recBat = 0;
+      pendUnits = invBat;
+      floorStatus = 'PENDING_GATE_IN';
+      pGross = 0;
+      pNet = 0;
+    } else if (rStatus === 'PARTIALLY_RECEIVED') {
+      recBat = p.receivedBatteries !== undefined ? p.receivedBatteries : invBat;
+      pendUnits = Math.max(0, invBat - recBat);
+      floorStatus = 'IN_WAREHOUSE';
+      const ratio = invBat > 0 ? recBat / invBat : 1;
+      pGross = toExactWeight(p.grossWeightKg * ratio);
+      pNet = toExactWeight(p.netWeightKg * ratio);
+    } else if (rStatus === 'SHORTFALL') {
+      recBat = p.receivedBatteries !== undefined ? p.receivedBatteries : 0;
+      pendUnits = 0;
+      floorStatus = recBat > 0 ? 'IN_WAREHOUSE' : 'PENDING_GATE_IN';
+      const ratio = invBat > 0 ? recBat / invBat : 0;
+      pGross = toExactWeight(p.grossWeightKg * ratio);
+      pNet = toExactWeight(p.netWeightKg * ratio);
+    } else {
+      recBat = invBat;
+      pendUnits = 0;
+      floorStatus = 'IN_WAREHOUSE';
+    }
+
+    return {
+      id: `plt-${params.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}-${idx}`,
+      palletNumber: p.palletNumber || idx + 1,
+      model: p.model || 'STANDARD',
+      brand: p.brand || '',
+      invoicedBatteries: invBat,
+      receivedBatteries: recBat,
+      remainingUnits: recBat,
+      pendingUnits: pendUnits,
+      receiptStatus: rStatus,
+      partialReceipts: p.partialReceipts || (rStatus === 'PARTIALLY_RECEIVED' && recBat > 0 ? [{
+        id: `pr_${Date.now()}_${idx}`,
+        arrivalDate: params.cartingInDate || today,
+        unitsReceived: recBat,
+        recordedAt: new Date().toISOString()
+      }] : []),
+      grossWeightKg: pGross,
+      netWeightKg: pNet,
+      status: floorStatus,
+      invoiceNumber: params.customInvoiceNo
+    };
+  });
 
   const shortfallRecords: ShortfallRecord[] = [];
   let totalShortfallPallets = 0;
@@ -3383,13 +3434,18 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     ? toExactWeight(finalPalletUnits.filter((p) => p.status === 'IN_WAREHOUSE').reduce((sum, p) => sum + p.netWeightKg, 0))
     : undefined;
 
+  // Multi-part inward calculation: count pending units & pallets yet to land
+  const pendingInwardBatteries = finalPalletUnits.reduce((sum, p) => sum + (p.pendingUnits || 0), 0);
+  const pendingInwardPallets = finalPalletUnits.filter((p) => (p.pendingUnits || 0) > 0 || p.status === 'PENDING_GATE_IN').length;
+  const isInwardPending = pendingInwardBatteries > 0;
+
   const computedInvoicedPallets = Math.max(
     params.invoicedPallets || 0,
-    actualRecPallets + totalShortfallPallets
+    actualRecPallets + totalShortfallPallets + (isInwardPending ? pendingInwardPallets : 0)
   );
   const computedInvoicedBatteries = Math.max(
     params.invoicedBatteries || 0,
-    actualRecBatteries + totalShortfallBatteries
+    actualRecBatteries + totalShortfallBatteries + pendingInwardBatteries
   );
 
   const stuffedPallets = existingEntry ? existingEntry.actualStuffedPallets || 0 : 0;
@@ -3411,13 +3467,22 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     invoicedBatteries: computedInvoicedBatteries,
     invoicedGrossWeightKg: invoicedGrossKg,
     invoicedNetWeightKg: invoicedNetKg,
-    actualGrossWeightKg: totalShortfallBatteries > 0 ? actualRecGross : actualGrossKg,
-    actualNetWeightKg: totalShortfallBatteries > 0 ? actualRecNet : actualNetKg,
+    actualGrossWeightKg: (totalShortfallBatteries > 0 || isInwardPending) ? actualRecGross : actualGrossKg,
+    actualNetWeightKg: (totalShortfallBatteries > 0 || isInwardPending) ? actualRecNet : actualNetKg,
     actualReceivedPallets: actualRecPallets,
     actualReceivedBatteries: actualRecBatteries,
     shortfallPallets: totalShortfallPallets,
     shortfallBatteries: totalShortfallBatteries,
-    receiptMode: totalShortfallBatteries > 0 ? 'SHORT_FALL' : (params.shortFillInputs && params.shortFillInputs.length > 0 ? 'SHORT_FILL' : (params.receiptMode || 'RECEIVED_FULL')),
+    inwardStatus: isInwardPending ? 'PENDING_INWARD' : 'COMPLETED',
+    pendingInwardPallets: pendingInwardPallets,
+    pendingInwardBatteries: pendingInwardBatteries,
+    receiptMode: isInwardPending
+      ? 'PARTIAL_INWARD'
+      : (totalShortfallBatteries > 0
+          ? 'SHORT_FALL'
+          : (params.shortFillInputs && params.shortFillInputs.length > 0
+              ? 'SHORT_FILL'
+              : (params.receiptMode || 'RECEIVED_FULL'))),
     shortfalls: shortfallRecords,
     shortFillLinks: (() => {
       const inputs = params.shortFillInputs || [];
@@ -3462,12 +3527,103 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     pickupDate: existingEntry?.pickupDate || '',
     portGateInDate: existingEntry?.portGateInDate || '',
     daysInCFS: existingEntry?.daysInCFS || 0,
-    remarks: params.remarks || (existingEntry?.remarks) || (totalShortfallBatteries > 0 ? 'FACTORY SHORTFALL' : 'IN CFS - READY'),
+    remarks: params.remarks || (existingEntry?.remarks) || (isInwardPending ? 'Carting In-Progress' : (totalShortfallBatteries > 0 ? 'FACTORY SHORTFALL' : 'IN CFS - READY')),
     pallets: finalPalletUnits
   });
 
   addOrUpdateCFSEntry(newEntry);
   return newEntry;
+}
+
+/**
+ * Converts remaining pending unreceived units for an in-progress carting invoice into a formal
+ * ShortfallRecord (mode: 'PALLET' or 'UNITS') labeled "Shortfall - Factory Pending", closing the pending inward
+ * and immediately unlocking DG and BL document generation.
+ */
+export function convertPendingInwardToShortfall(
+  entryId: string,
+  remarksReason: string = 'Shortfall - Factory Pending'
+): CFSLedgerEntry | null {
+  const entries = getCFSLedgerEntries();
+  const entry = entries.find((e) => e.id === entryId);
+  if (!entry) return null;
+
+  const today = formatToDDMMYYYY(new Date());
+  const entryMonth = entry.month || getMonthFromDate(today);
+
+  const currentShortfalls: ShortfallRecord[] = entry.shortfalls ? [...entry.shortfalls] : [];
+  let addedShortfallBatteries = 0;
+  let addedShortfallPallets = 0;
+
+  const updatedPallets = (entry.pallets || []).map((p, idx) => {
+    const pend = p.pendingUnits || 0;
+    if (pend > 0 || p.status === 'PENDING_GATE_IN') {
+      const sfUnits = pend > 0 ? pend : (p.invoicedBatteries || 0);
+      const isFullPallet = (p.receivedBatteries || 0) === 0;
+
+      currentShortfalls.push({
+        id: `sf-${entry.customInvoiceNo}-${p.palletNumber || idx + 1}-${Date.now()}_${idx}`,
+        mode: isFullPallet ? 'PALLET' : 'UNITS',
+        palletNumber: p.palletNumber || idx + 1,
+        billedUnits: p.invoicedBatteries,
+        shortfallUnits: sfUnits,
+        remainingShortfallUnits: sfUnits,
+        openedDate: today,
+        openedMonth: entryMonth,
+        status: 'OPEN',
+        linkedShortFills: []
+      });
+
+      addedShortfallBatteries += sfUnits;
+      if (isFullPallet) addedShortfallPallets += 1;
+
+      return {
+        ...p,
+        pendingUnits: 0,
+        receiptStatus: 'SHORTFALL' as const,
+        status: (p.receivedBatteries || 0) > 0 ? ('IN_WAREHOUSE' as const) : ('PENDING_GATE_IN' as const)
+      };
+    }
+    return p;
+  });
+
+  const finalShortfallBat = (entry.shortfallBatteries || 0) + addedShortfallBatteries;
+  const finalShortfallPlt = (entry.shortfallPallets || 0) + addedShortfallPallets;
+
+  const updatedEntry = recomputeCFSDerivedFields({
+    ...entry,
+    inwardStatus: 'COMPLETED',
+    pendingInwardPallets: 0,
+    pendingInwardBatteries: 0,
+    shortfallBatteries: finalShortfallBat,
+    shortfallPallets: finalShortfallPlt,
+    shortfalls: currentShortfalls,
+    receiptMode: 'SHORT_FALL',
+    pallets: updatedPallets,
+    remarks: remarksReason,
+    updatedAt: new Date().toISOString()
+  });
+
+  addOrUpdateCFSEntry(updatedEntry);
+
+  recordMovementLog({
+    sourceLedgerId: entry.id,
+    receivedDate: entry.cartingInDate || today,
+    dispatchedDate: today,
+    movementDate: today,
+    status: 'IN_STOCK',
+    direction: 'STOCK_OUT',
+    customer: entry.customer,
+    customInvoiceNo: entry.customInvoiceNo,
+    modelDescription: 'Factory Pending Shortfall',
+    pallets: addedShortfallPallets,
+    batteries: addedShortfallBatteries,
+    remainingBalancePallets: entry.balancePallets || 0,
+    remainingBalanceBatteries: entry.balanceBatteries || 0,
+    remarks: `Converted ${addedShortfallBatteries} pending units to Shortfall - Factory Pending for DG/BL generation`
+  });
+
+  return updatedEntry;
 }
 
 // =========================================================================

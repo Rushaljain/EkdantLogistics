@@ -51,7 +51,8 @@ import {
   permanentlyDeleteCFSEntry,
   emptyCFSTrashBin,
   restoreDispatchedRecord,
-  getSuppliedShortFillsForInvoice
+  getSuppliedShortFillsForInvoice,
+  convertPendingInwardToShortfall
 } from '../utils/inventoryStore.ts';
 import { ManualInwardModal } from './ManualInwardModal.tsx';
 import { CompactInvoiceBlock } from './CompactInvoiceBlock.tsx';
@@ -182,6 +183,10 @@ export function WarehouseInventoryHub({
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
   const [showVarianceModal, setShowVarianceModal] = useState<boolean>(false);
   const [showShortfillsModal, setShowShortfillsModal] = useState<boolean>(false);
+  const [pendingInwardDgPrompt, setPendingInwardDgPrompt] = useState<{
+    entry: CFSLedgerEntry;
+    pallets: PalletStockUnit[];
+  } | null>(null);
   const [dispatchDetails, setDispatchDetails] = useState(() => {
     const today = formatToDDMMYYYY(new Date());
     return {
@@ -339,6 +344,23 @@ export function WarehouseInventoryHub({
     const totalShortfallPallets = entries.reduce((s, e) => s + getEntryShortfallStats(e).remainingPlt, 0);
     const totalShortfallBatteries = entries.reduce((s, e) => s + getEntryShortfallStats(e).remainingBat, 0);
 
+    // Carting Multi-Part Inward Tracking
+    const pendingInwardInvoices = entries.filter((e) => {
+      const pendingBat = (e.pendingInwardBatteries !== undefined)
+        ? e.pendingInwardBatteries
+        : (e.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+      return e.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
+    });
+    const cartingPendingInvoicesCount = pendingInwardInvoices.length;
+    const cartingPendingPalletsCount = pendingInwardInvoices.reduce((s, e) => {
+      if (e.pendingInwardPallets !== undefined) return s + e.pendingInwardPallets;
+      return s + (e.pallets?.filter((p) => (p.pendingUnits || 0) > 0 || p.status === 'PENDING_GATE_IN').length || 0);
+    }, 0);
+    const cartingPendingUnitsCount = pendingInwardInvoices.reduce((s, e) => {
+      if (e.pendingInwardBatteries !== undefined) return s + e.pendingInwardBatteries;
+      return s + (e.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+    }, 0);
+
     // Low Stock (< 22 Pallets or < 100 Units) and Nil Stock (0 Balance)
     const lowStockEntries = entries.filter((e) => (e.balancePallets || 0) > 0 && (e.balancePallets || 0) < 22);
     const nilStockEntries = entries.filter((e) => (e.balancePallets || 0) === 0 && (e.invoicedPallets || 0) > 0);
@@ -358,6 +380,9 @@ export function WarehouseInventoryHub({
       varianceCount: varianceEntries.length,
       totalShortfallPallets,
       totalShortfallBatteries,
+      cartingPendingInvoicesCount,
+      cartingPendingPalletsCount,
+      cartingPendingUnitsCount,
       lowStockEntries,
       lowStockCount: lowStockEntries.length,
       nilStockEntries,
@@ -1008,13 +1033,63 @@ export function WarehouseInventoryHub({
         {/* REFINED CLEAN STATS DECK (1:1 with Master Design) */}
         <div className="p-4 sm:p-5 bg-white dark:bg-surface border-b border-divider">
           <div className="flex flex-col lg:flex-row items-stretch divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-divider gap-4 lg:gap-0 font-sans">
-            {/* Column 1: Available Stock */}
-            <div className="flex-1 lg:pr-6 flex flex-col justify-between">
+            {/* Column 1: Carting (Multi-Part Inward Progress) */}
+            <div className="flex-1 lg:pr-5 flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-2.5">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-content-primary tracking-tight">
+                  Carting
+                </h3>
+                {kpis.cartingPendingInvoicesCount > 0 ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700 animate-pulse">
+                    Inprogress
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                    Completed
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center divide-x divide-slate-200 dark:divide-divider pt-0.5">
+                <div className="pr-3 sm:pr-4">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                    PENDING INVOICES
+                  </span>
+                  <span className={`text-xl sm:text-2xl font-bold leading-none ${
+                    kpis.cartingPendingInvoicesCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-content-primary'
+                  }`}>
+                    {kpis.cartingPendingInvoicesCount}
+                  </span>
+                </div>
+                <div className="px-3 sm:px-4">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                    PALLETS PENDING
+                  </span>
+                  <span className={`text-xl sm:text-2xl font-bold leading-none ${
+                    kpis.cartingPendingPalletsCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-content-primary'
+                  }`}>
+                    {kpis.cartingPendingPalletsCount}
+                  </span>
+                </div>
+                <div className="pl-3 sm:pl-4">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                    UNITS PENDING
+                  </span>
+                  <span className={`text-xl sm:text-2xl font-bold leading-none ${
+                    kpis.cartingPendingUnitsCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-content-primary'
+                  }`}>
+                    {kpis.cartingPendingUnitsCount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Column 2: Available Stock */}
+            <div className="flex-1 pt-4 lg:pt-0 lg:px-5 flex flex-col justify-between">
               <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-content-primary tracking-tight mb-2.5">
                 Available Stock
               </h3>
               <div className="flex items-center divide-x divide-slate-200 dark:divide-divider pt-0.5">
-                <div className="pr-4 sm:pr-5">
+                <div className="pr-3 sm:pr-4">
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
                     PALLETS
                   </span>
@@ -1022,7 +1097,7 @@ export function WarehouseInventoryHub({
                     {kpis.totalBalancePallets.toLocaleString()}
                   </span>
                 </div>
-                <div className="px-4 sm:px-5">
+                <div className="px-3 sm:px-4">
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
                     UNITS
                   </span>
@@ -1030,7 +1105,7 @@ export function WarehouseInventoryHub({
                     {kpis.totalBalanceBatteries.toLocaleString()}
                   </span>
                 </div>
-                <div className="pl-4 sm:pl-5">
+                <div className="pl-3 sm:pl-4">
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
                     WEIGHT (KG)
                   </span>
@@ -1041,8 +1116,8 @@ export function WarehouseInventoryHub({
               </div>
             </div>
 
-            {/* Column 2: Dispatched */}
-            <div className="flex-1 pt-4 lg:pt-0 lg:px-6 flex flex-col justify-between">
+            {/* Column 3: Dispatched */}
+            <div className="flex-1 pt-4 lg:pt-0 lg:px-5 flex flex-col justify-between">
               <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-content-primary tracking-tight mb-2.5">
                 Dispatched
               </h3>
@@ -1464,6 +1539,16 @@ export function WarehouseInventoryHub({
                             onNavigateToWorkspace();
                           }}
                           onGenerateDgBl={(invEntry, pallets) => {
+                            const pendingBat = (invEntry.pendingInwardBatteries !== undefined)
+                              ? invEntry.pendingInwardBatteries
+                              : (invEntry.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+                            const isPendingInward = invEntry.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
+
+                            if (isPendingInward) {
+                              setPendingInwardDgPrompt({ entry: invEntry, pallets });
+                              return;
+                            }
+
                             const targetPallets = pallets.length > 0 ? pallets : (invEntry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
                             if (targetPallets.length === 0) {
                               showToast('No ready pallets available for document generation.');
@@ -1744,6 +1829,7 @@ export function WarehouseInventoryHub({
                         const sfillUnits = suppliedFills.reduce((sum, s) => sum + (s.unitsFilled || 0), 0);
                         const hasShortfall = sfUnits > 0 || sfPlts > 0;
                         const hasShortfill = sfillUnits > 0;
+                        const isPendingInward = inv.inwardStatus === 'PENDING_INWARD' || (inv.pendingInwardBatteries || 0) > 0;
                         const isExpanded = expandedStatusLogInvoiceIds.has(inv.id);
 
                         // Collect unique containers for this invoice
@@ -1887,7 +1973,11 @@ export function WarehouseInventoryHub({
                               {/* 12. Status */}
                               <td className="p-2.5 border-r border-divider text-center whitespace-nowrap">
                                 <div className="flex flex-col items-center gap-1">
-                                  {isFullyDispatched ? (
+                                  {isPendingInward ? (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 uppercase tracking-tight" title="Multi-part inward: Remaining pallets/units pending arrival">
+                                      PENDING INWARD
+                                    </span>
+                                  ) : isFullyDispatched ? (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase">
                                       DISPATCHED
                                     </span>
@@ -1931,6 +2021,20 @@ export function WarehouseInventoryHub({
                                     >
                                       <Eye className="w-3 h-3 text-content-secondary" />
                                       <span>View</span>
+                                    </button>
+                                  ) : isPendingInward ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingInwardEntry(inv);
+                                        setShowManualInwardModal(true);
+                                      }}
+                                      className="px-2 py-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer shadow-2xs"
+                                      title={`Receive subsequent pending stock for Invoice #${inv.customInvoiceNo}`}
+                                    >
+                                      <Plus className="w-3 h-3 text-amber-700" />
+                                      <span>Receive Pending</span>
                                     </button>
                                   ) : (
                                     <button
@@ -2951,6 +3055,77 @@ export function WarehouseInventoryHub({
           </div>
         </div>
       )}
+      {/* Material Inward Incomplete / DG & BL Interception Modal */}
+      {pendingInwardDgPrompt && (() => {
+        const pEntry = pendingInwardDgPrompt.entry;
+        const pendBat = (pEntry.pendingInwardBatteries !== undefined)
+          ? pEntry.pendingInwardBatteries
+          : (pEntry.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+        const pendPlt = (pEntry.pendingInwardPallets !== undefined)
+          ? pEntry.pendingInwardPallets
+          : (pEntry.pallets?.filter((p) => (p.pendingUnits || 0) > 0 || p.status === 'PENDING_GATE_IN').length || 0);
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-surface border border-divider rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+              <div className="flex items-center space-x-3 pb-3 border-b border-divider">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-300">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-content-primary">Material Inward Incomplete</h3>
+                  <p className="text-xs text-content-secondary font-mono">Invoice #{pEntry.customInvoiceNo} has pending stock</p>
+                </div>
+              </div>
+
+              <div className="space-y-2.5 text-xs text-content-secondary leading-relaxed">
+                <p>
+                  Invoice <strong className="text-brand-primary">#{pEntry.customInvoiceNo}</strong> has{' '}
+                  <strong className="text-amber-700 font-mono font-bold">{pendBat} units</strong> ({pendPlt} pallets) that have not yet arrived in the warehouse.
+                </p>
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+                  ⚠️ <strong>Export Compliance Note:</strong> Container DG &amp; BL documents can only be generated for stock that is fully accounted for. Unreceived goods cannot be dispatched unless officially classified as Shortfall.
+                </div>
+                <p>
+                  Would you like to record these <strong className="font-mono">{pendBat} pending units</strong> as{' '}
+                  <strong className="text-content-primary">Shortfall - Factory Pending</strong> in the reconciliation logs and proceed with DG &amp; BL generation?
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-divider flex flex-col sm:flex-row items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingInwardDgPrompt(null)}
+                  className="w-full sm:w-auto px-4 py-2 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Wait for Inward
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = convertPendingInwardToShortfall(pEntry.id, 'Shortfall - Factory Pending');
+                    if (updated) {
+                      markLedgerDocumentCreated([updated.id], 'DG');
+                      markLedgerDocumentCreated([updated.id], 'BL');
+                      reloadEntries();
+                      const readyPallets = (updated.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE' && p.receivedBatteries > 0);
+                      const shipment = buildShipmentFromStockPallets(readyPallets, updated.customer, updated.pod, updated.exporterShipper);
+                      onLoadShipmentIntoWorkspace(shipment);
+                      onNavigateToWorkspace();
+                      showToast(`Recorded ${pendBat} units as Shortfall - Factory Pending. DG Manifest & BL ready!`);
+                    }
+                    setPendingInwardDgPrompt(null);
+                  }}
+                  className="w-full sm:w-auto px-4 py-2 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  Add to Shortfall &amp; Proceed
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {showManualInwardModal && (
         <ManualInwardModal
           isOpen={showManualInwardModal}

@@ -25,7 +25,9 @@ import {
 import type {
   CFSLedgerEntry,
   ReceiptMode,
-  ExtractedShipmentJSON
+  ExtractedShipmentJSON,
+  PalletRowReceiptStatus,
+  PartialReceiptLog
 } from '../types/index.ts';
 import {
   getCFSLedgerEntries,
@@ -35,7 +37,8 @@ import {
   type ManualInwardShortfallInput,
   type ManualInwardShortFillInput,
   type RecordManualInwardParams,
-  toExactWeight
+  toExactWeight,
+  formatToDDMMYYYY
 } from '../utils/inventoryStore.ts';
 import { parseDocumentsToJSON } from '../utils/documentParser.ts';
 
@@ -47,8 +50,6 @@ interface ManualInwardModalProps {
   initialShortfallInvoiceNo?: string;
 }
 
-export type PalletRowReceiptStatus = 'RECEIVED' | 'SHORTFALL' | 'SHORTFILL';
-
 export interface InwardPalletRow {
   id: string;
   palletNumber: string;
@@ -57,6 +58,10 @@ export interface InwardPalletRow {
   grossWeightKg?: number;
   netWeightKg?: number;
   receiptStatus: PalletRowReceiptStatus;
+  // Multi-part intake tracking
+  partialReceipts?: PartialReceiptLog[];
+  currentArrivalDate?: string;
+  currentReceivedUnits?: number | '';
   // Shortfall options
   isFullMissing?: boolean;
   shortfallUnits?: number | '';
@@ -246,7 +251,11 @@ export function ManualInwardModal({
 
           const bUnits = p.invoicedBatteries || p.receivedBatteries || 0;
 
-          if (sf) {
+          if (p.receiptStatus === 'NOT_RECEIVED' || (p.status === 'PENDING_GATE_IN' && !sf)) {
+            receiptStatus = 'NOT_RECEIVED';
+          } else if (p.receiptStatus === 'PARTIALLY_RECEIVED' || ((p.pendingUnits || 0) > 0 && !sf)) {
+            receiptStatus = 'PARTIALLY_RECEIVED';
+          } else if (sf) {
             receiptStatus = 'SHORTFALL';
             isFullMissing = sf.mode === 'PALLET';
             shortfallUnits = sf.shortfallUnits;
@@ -266,6 +275,9 @@ export function ManualInwardModal({
             grossWeightKg: p.grossWeightKg,
             netWeightKg: p.netWeightKg,
             receiptStatus,
+            partialReceipts: p.partialReceipts || [],
+            currentReceivedUnits: p.receivedBatteries || 0,
+            currentArrivalDate: editingEntry.cartingInDate || '',
             isFullMissing,
             shortfallUnits,
             priorInvoiceNo,
@@ -659,6 +671,8 @@ export function ManualInwardModal({
         totalInvoicedUnits: invBatteries,
         floorPallets: invPallets,
         floorUnits: invBatteries,
+        pendingPallets: 0,
+        pendingUnits: 0,
         shortfallPallets: 0,
         shortfallUnits: 0,
         shortfillPallets: 0,
@@ -672,6 +686,8 @@ export function ManualInwardModal({
     let invoicedUnitsSum = 0;
     let floorPalletsCount = 0;
     let floorUnitsSum = 0;
+    let pendingPalletsCount = 0;
+    let pendingUnitsSum = 0;
     let shortfallPalletsCount = 0;
     let shortfallUnitsSum = 0;
     let shortfillPalletsCount = 0;
@@ -696,6 +712,20 @@ export function ManualInwardModal({
       if (row.receiptStatus === 'RECEIVED') {
         floorPalletsCount += 1;
         floorUnitsSum += bUnits;
+      } else if (row.receiptStatus === 'NOT_RECEIVED') {
+        pendingPalletsCount += 1;
+        pendingUnitsSum += bUnits;
+      } else if (row.receiptStatus === 'PARTIALLY_RECEIVED') {
+        const landedUnits = row.partialReceipts && row.partialReceipts.length > 0
+          ? row.partialReceipts.reduce((sum, r) => sum + (r.unitsReceived || 0), 0)
+          : (typeof row.currentReceivedUnits === 'number' ? row.currentReceivedUnits : 0);
+        const pendUnits = Math.max(0, bUnits - landedUnits);
+        if (landedUnits > 0) floorPalletsCount += 1;
+        floorUnitsSum += landedUnits;
+        if (pendUnits > 0) {
+          pendingUnitsSum += pendUnits;
+          if (landedUnits === 0) pendingPalletsCount += 1;
+        }
       } else if (row.receiptStatus === 'SHORTFALL') {
         if (row.isFullMissing) {
           shortfallPalletsCount += 1;
@@ -730,6 +760,8 @@ export function ManualInwardModal({
       totalInvoicedUnits,
       floorPallets: floorPalletsCount,
       floorUnits: floorUnitsSum,
+      pendingPallets: pendingPalletsCount,
+      pendingUnits: pendingUnitsSum,
       shortfallPallets: shortfallPalletsCount,
       shortfallUnits: shortfallUnitsSum,
       shortfillPallets: shortfillPalletsCount,
@@ -782,7 +814,7 @@ export function ManualInwardModal({
           return;
         }
 
-        if (row.receiptStatus === 'RECEIVED') {
+        if (row.receiptStatus === 'RECEIVED' || row.receiptStatus === 'NOT_RECEIVED' || row.receiptStatus === 'PARTIALLY_RECEIVED') {
           if (typeof row.billedUnits !== 'number' || row.billedUnits <= 0) {
             setErrorMsg(`Pallet ${row.palletNumber}: Please enter valid Billed Units greater than 0.`);
             return;
@@ -845,6 +877,9 @@ export function ManualInwardModal({
       receivedBatteries: number;
       grossWeightKg?: number;
       netWeightKg?: number;
+      receiptStatus?: PalletRowReceiptStatus;
+      partialReceipts?: PartialReceiptLog[];
+      pendingUnits?: number;
     }[] = [];
 
     const shortfallInputs: ManualInwardShortfallInput[] = [];
@@ -862,7 +897,44 @@ export function ManualInwardModal({
             invoicedBatteries: bUnits,
             receivedBatteries: bUnits,
             grossWeightKg: row.grossWeightKg,
-            netWeightKg: row.netWeightKg
+            netWeightKg: row.netWeightKg,
+            receiptStatus: 'RECEIVED',
+            partialReceipts: [],
+            pendingUnits: 0
+          });
+        } else if (row.receiptStatus === 'NOT_RECEIVED') {
+          floorPallets.push({
+            palletNumber: pNum,
+            model: row.model || 'STANDARD',
+            invoicedBatteries: bUnits,
+            receivedBatteries: 0,
+            grossWeightKg: 0,
+            netWeightKg: 0,
+            receiptStatus: 'NOT_RECEIVED',
+            partialReceipts: [],
+            pendingUnits: bUnits
+          });
+        } else if (row.receiptStatus === 'PARTIALLY_RECEIVED') {
+          const landedUnits = row.partialReceipts && row.partialReceipts.length > 0
+            ? row.partialReceipts.reduce((sum, r) => sum + (r.unitsReceived || 0), 0)
+            : (typeof row.currentReceivedUnits === 'number' ? row.currentReceivedUnits : 0);
+          const pendUnits = Math.max(0, bUnits - landedUnits);
+
+          floorPallets.push({
+            palletNumber: pNum,
+            model: row.model || 'STANDARD',
+            invoicedBatteries: bUnits,
+            receivedBatteries: landedUnits,
+            grossWeightKg: row.grossWeightKg,
+            netWeightKg: row.netWeightKg,
+            receiptStatus: 'PARTIALLY_RECEIVED',
+            partialReceipts: row.partialReceipts || (landedUnits > 0 ? [{
+              id: `pr_${Date.now()}_${idx}`,
+              arrivalDate: row.currentArrivalDate || cartingInDate || formatToDDMMYYYY(new Date()),
+              unitsReceived: landedUnits,
+              recordedAt: new Date().toISOString()
+            }] : []),
+            pendingUnits: pendUnits
           });
         } else if (row.receiptStatus === 'SHORTFALL') {
           if (row.isFullMissing) {
@@ -941,7 +1013,9 @@ export function ManualInwardModal({
     const finalInvoicedBatteries = summaryMetrics.totalInvoicedUnits;
 
     let computedReceiptMode: ReceiptMode = 'RECEIVED_FULL';
-    if (shortfallInputs.length > 0) {
+    if (summaryMetrics.pendingUnits > 0) {
+      computedReceiptMode = 'PARTIAL_INWARD';
+    } else if (shortfallInputs.length > 0) {
       computedReceiptMode = 'SHORT_FALL';
     } else if (shortFillInputs.length > 0) {
       computedReceiptMode = 'SHORT_FILL';
@@ -1770,12 +1844,18 @@ export function ManualInwardModal({
                             className={`w-full px-2 py-1.5 rounded-lg font-semibold outline-none cursor-pointer border text-xs ${
                               row.receiptStatus === 'RECEIVED'
                                 ? 'bg-emerald-500/10 text-emerald-800 border-emerald-300'
+                                : row.receiptStatus === 'NOT_RECEIVED'
+                                ? 'bg-slate-500/10 text-slate-800 border-slate-300'
+                                : row.receiptStatus === 'PARTIALLY_RECEIVED'
+                                ? 'bg-indigo-500/10 text-indigo-800 border-indigo-300'
                                 : row.receiptStatus === 'SHORTFALL'
                                 ? 'bg-amber-500/10 text-amber-800 border-amber-400'
                                 : 'bg-blue-500/10 text-blue-800 border-blue-400'
                             }`}
                           >
                             <option value="RECEIVED">Received (Full Physical)</option>
+                            <option value="PARTIALLY_RECEIVED">Partially Received (Split Intake)</option>
+                            <option value="NOT_RECEIVED">Not Received (Arriving Later)</option>
                             <option value="SHORTFALL">Shortfall (Missing / Partial)</option>
                             <option value="SHORTFILL">Shortfill (Reconcile Prior)</option>
                           </select>
@@ -1820,6 +1900,159 @@ export function ManualInwardModal({
                           <span className="font-mono font-semibold">0 missing</span>
                         </div>
                       )}
+
+                      {/* 2. NOT RECEIVED (ARRIVING LATER) */}
+                      {row.receiptStatus === 'NOT_RECEIVED' && (
+                        <div className="px-2.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] flex items-center justify-between">
+                          <span className="flex items-center space-x-1.5 font-medium">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>
+                              <strong>Not Received Yet:</strong> Pallet arriving in a future shipment • <strong>0 units</strong> on floor now • <strong>{bUnits} units</strong> pending arrival.
+                            </span>
+                          </span>
+                          <span className="font-mono font-bold text-amber-800 bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded text-[10px]">
+                            PENDING INWARD
+                          </span>
+                        </div>
+                      )}
+
+                      {/* 3. PARTIALLY RECEIVED (SPLIT INTAKE) */}
+                      {row.receiptStatus === 'PARTIALLY_RECEIVED' && (() => {
+                        const pastReceipts = row.partialReceipts || [];
+                        const pastTotalUnits = pastReceipts.reduce((s, r) => s + (r.unitsReceived || 0), 0);
+                        const totalLandedUnits = pastReceipts.length > 0 ? pastTotalUnits : (typeof row.currentReceivedUnits === 'number' ? row.currentReceivedUnits : 0);
+                        const pendingUnits = Math.max(0, bUnits - totalLandedUnits);
+
+                        return (
+                          <div className="p-3 rounded-lg bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 space-y-2.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-indigo-950 dark:text-indigo-200 flex items-center space-x-1.5">
+                                <Boxes className="w-4 h-4 text-indigo-600 shrink-0" />
+                                <span>Partially Received Pallet (Split Intake Across Trucks / Dates)</span>
+                              </span>
+                              <div className="text-[11px] font-mono flex items-center space-x-2">
+                                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                                  Landed: {totalLandedUnits} u
+                                </span>
+                                <span className={`px-2 py-0.5 rounded font-bold ${pendingUnits > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                  {pendingUnits > 0 ? `Pending: ${pendingUnits} u` : 'Fully Landed'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Intake Controls */}
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end pt-1 bg-surface p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+                              <div className="sm:col-span-4">
+                                <label className="block text-[10px] text-content-secondary font-medium mb-1">
+                                  Date of Arrival
+                                </label>
+                                <DateInput
+                                  value={row.currentArrivalDate || cartingInDate || ''}
+                                  onChange={(d) => handleUpdatePalletRow(row.id, { currentArrivalDate: d })}
+                                />
+                              </div>
+
+                              <div className="sm:col-span-4">
+                                <label className="block text-[10px] text-content-secondary font-medium mb-1">
+                                  Quantity Received (Units)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={pendingUnits > 0 ? pendingUnits : bUnits}
+                                  step="1"
+                                  value={row.currentReceivedUnits !== undefined ? row.currentReceivedUnits : ''}
+                                  placeholder={pendingUnits > 0 ? `Max ${pendingUnits}` : 'Units'}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1);
+                                    handleUpdatePalletRow(row.id, { currentReceivedUnits: val });
+                                  }}
+                                  onWheel={(e) => e.currentTarget.blur()}
+                                  className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-indigo-200 text-indigo-900 outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                                />
+                              </div>
+
+                              <div className="sm:col-span-4 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const val = typeof row.currentReceivedUnits === 'number' ? row.currentReceivedUnits : 0;
+                                    if (val <= 0) {
+                                      setErrorMsg(`Pallet ${row.palletNumber}: Please enter Quantity Received greater than 0.`);
+                                      return;
+                                    }
+                                    if (val > pendingUnits && pastReceipts.length > 0) {
+                                      setErrorMsg(`Pallet ${row.palletNumber}: Received units cannot exceed remaining pending ${pendingUnits} units.`);
+                                      return;
+                                    }
+                                    const arrDate = row.currentArrivalDate || cartingInDate || formatToDDMMYYYY(new Date());
+                                    const newLog: PartialReceiptLog = {
+                                      id: `pr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                                      arrivalDate: arrDate,
+                                      unitsReceived: val,
+                                      recordedAt: new Date().toISOString()
+                                    };
+                                    const updatedLogs = [...pastReceipts, newLog];
+                                    handleUpdatePalletRow(row.id, {
+                                      partialReceipts: updatedLogs,
+                                      currentReceivedUnits: '',
+                                      isSaved: true
+                                    });
+                                    setErrorMsg(null);
+                                  }}
+                                  className="w-full px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Log Intake Batch</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Past Intake Logs Table */}
+                            {pastReceipts.length > 0 && (
+                              <div className="space-y-1.5">
+                                <span className="text-[10px] font-bold text-content-secondary uppercase tracking-wider block">
+                                  Recorded Intake Logs ({pastReceipts.length}):
+                                </span>
+                                <div className="border border-indigo-100 dark:border-indigo-900/40 rounded-lg overflow-hidden bg-surface">
+                                  <table className="w-full text-[11px] font-mono">
+                                    <thead className="bg-indigo-50/60 dark:bg-indigo-950/40 text-content-secondary text-[10px]">
+                                      <tr>
+                                        <th className="py-1 px-2 text-left">#</th>
+                                        <th className="py-1 px-2 text-left">Date of Arrival</th>
+                                        <th className="py-1 px-2 text-right">Units Received</th>
+                                        <th className="py-1 px-2 text-right">Action</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-indigo-50 dark:divide-indigo-950/40">
+                                      {pastReceipts.map((log, lIdx) => (
+                                        <tr key={log.id}>
+                                          <td className="py-1 px-2 text-content-muted">{lIdx + 1}</td>
+                                          <td className="py-1 px-2 font-medium">{log.arrivalDate}</td>
+                                          <td className="py-1 px-2 text-right font-bold text-emerald-700">+{log.unitsReceived} u</td>
+                                          <td className="py-1 px-2 text-right">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updatedLogs = pastReceipts.filter((_, idx) => idx !== lIdx);
+                                                handleUpdatePalletRow(row.id, { partialReceipts: updatedLogs });
+                                              }}
+                                              className="text-red-500 hover:text-red-700 p-0.5 cursor-pointer"
+                                              title="Remove this intake log"
+                                            >
+                                              <Trash2 className="w-3 h-3 inline" />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* 2. SHORTFALL (MISSING) */}
                       {row.receiptStatus === 'SHORTFALL' && (
@@ -2236,8 +2469,10 @@ export function ManualInwardModal({
             </div>
           </div>
 
-          {/* LIVE SUMMARY FOOTER STRIP (4-Card Dashboard) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-xl bg-surface-secondary/70 border border-divider">
+          {/* LIVE SUMMARY FOOTER STRIP */}
+          <div className={`grid gap-2.5 p-3 rounded-xl bg-surface-secondary/70 border border-divider ${
+            summaryMetrics.pendingUnits > 0 ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'
+          }`}>
             {/* 1. TOTAL INVOICED */}
             <div className="p-2.5 rounded-lg bg-surface border border-divider">
               <span className="text-[10px] text-content-secondary font-semibold uppercase tracking-wider block">
@@ -2258,7 +2493,19 @@ export function ManualInwardModal({
               </span>
             </div>
 
-            {/* 3. SHORTFALL TO BACKLOG */}
+            {/* 3. PENDING ARRIVAL (IN-PROGRESS CARTING) */}
+            {summaryMetrics.pendingUnits > 0 && (
+              <div className="p-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                <span className="text-[10px] text-indigo-700 font-semibold uppercase tracking-wider block">
+                  Pending Arrival
+                </span>
+                <span className="text-xs sm:text-sm font-bold font-mono text-indigo-800">
+                  {summaryMetrics.pendingPallets} Plts • {summaryMetrics.pendingUnits} Units
+                </span>
+              </div>
+            )}
+
+            {/* 4. SHORTFALL TO BACKLOG */}
             <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <span className="text-[10px] text-amber-700 font-semibold uppercase tracking-wider block">
                 Shortfall to Backlog
@@ -2268,7 +2515,7 @@ export function ManualInwardModal({
               </span>
             </div>
 
-            {/* 4. SHORTFILL RECONCILED */}
+            {/* 5. SHORTFILL RECONCILED */}
             <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
               <span className="text-[10px] text-blue-700 font-semibold uppercase tracking-wider block">
                 Shortfill Reconciled
@@ -2278,6 +2525,16 @@ export function ManualInwardModal({
               </span>
             </div>
           </div>
+
+          {/* Pending Inward Notice */}
+          {summaryMetrics.pendingUnits > 0 && (
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-center space-x-2 shadow-2xs">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Partial Inward In-Progress:</strong> {summaryMetrics.pendingUnits} units ({summaryMetrics.pendingPallets} pallets) are pending arrival in future shipments. This invoice will be marked <strong>Pending Inward</strong>. Future deliveries can be logged directly into this invoice anytime.
+              </span>
+            </div>
+          )}
           </fieldset>
 
           {/* ACTION BUTTONS */}
