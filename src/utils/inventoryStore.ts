@@ -14,6 +14,7 @@ import type {
   ReceiptMode,
   ShortfallMode,
   ShortfallRecord,
+  ShortFillLink,
   LinkedShortFill,
   MergedTransfer,
   TrashBinItem
@@ -517,10 +518,14 @@ export function reconcileShortfallsWithActiveInwards(entries: CFSLedgerEntry[]):
         const match = !link.palletNumber || sfPalletClean === sfiPalletClean || (singleOpen && sf.id === singleOpen.id);
         if (!match) return sf;
 
-        const existingLink = (sf.linkedShortFills || []).find(
-          (lsf) => (lsf.shortFillLedgerId && lsf.shortFillLedgerId === supplierEntry.id) ||
-                   (supplierInvClean && cleanInvoiceNumber(lsf.shortFillInvoiceNo) === supplierInvClean)
-        );
+        const existingLink = (sf.linkedShortFills || []).find((lsf) => {
+          const idMatch = (lsf.shortFillLedgerId && lsf.shortFillLedgerId === supplierEntry.id) ||
+                          (supplierInvClean && cleanInvoiceNumber(lsf.shortFillInvoiceNo) === supplierInvClean);
+          if (!idMatch) return false;
+          const unitsMatch = lsf.unitsFilled === link.unitsFilled;
+          const palletMatch = !link.palletNumber || cleanPalletNumber(lsf.palletNumber || sf.palletNumber) === sfiPalletClean;
+          return unitsMatch && palletMatch;
+        });
 
         if (!existingLink) {
           sfChanged = true;
@@ -536,7 +541,7 @@ export function reconcileShortfallsWithActiveInwards(entries: CFSLedgerEntry[]):
             palletNumber: sf.palletNumber,
             arrivedPalletNumber: link.arrivedPalletNumber,
             unitsFilled: fillAmt,
-            filledDate: supplierEntry.invoiceDate || supplierEntry.cartingInDate || '',
+            filledDate: link.filledDate || link.date || supplierEntry.invoiceDate || supplierEntry.cartingInDate || '',
             filledMonth: supplierEntry.month || ''
           };
 
@@ -587,7 +592,128 @@ export function reconcileShortfallsWithActiveInwards(entries: CFSLedgerEntry[]):
     });
   });
 
+  // Backward Reconciliation & Supplier ShortFillLinks Synchronization:
+  // Traverses all linkedShortFills across all target shortfall entries and ensures the supplying
+  // inward entry's shortFillLinks contains every single fulfilled part (so no partial fill is lost or hidden).
+  reconciled.forEach((targetEntry) => {
+    (targetEntry.shortfalls || []).forEach((sf) => {
+      (sf.linkedShortFills || []).forEach((lsf) => {
+        const supplierClean = cleanInvoiceNumber(lsf.shortFillInvoiceNo);
+        if (!supplierClean && !lsf.shortFillLedgerId) return;
+
+        const supplierIndex = reconciled.findIndex(
+          (e) => (lsf.shortFillLedgerId && e.id === lsf.shortFillLedgerId) ||
+                 (supplierClean && cleanInvoiceNumber(e.customInvoiceNo) === supplierClean)
+        );
+        if (supplierIndex === -1) return;
+
+        const supplier = reconciled[supplierIndex];
+        const targetClean = cleanInvoiceNumber(targetEntry.customInvoiceNo);
+        const lsfPalletClean = cleanPalletNumber(lsf.palletNumber || sf.palletNumber);
+
+        const currentLinks: ShortFillLink[] = supplier.shortFillLinks ? [...supplier.shortFillLinks] : [];
+        const linkMatch = currentLinks.some(
+          (link) =>
+            cleanInvoiceNumber(link.priorShortfallInvoiceNo) === targetClean &&
+            cleanPalletNumber(link.palletNumber) === lsfPalletClean &&
+            link.unitsFilled === lsf.unitsFilled &&
+            (!link.date || !lsf.filledDate || link.date === lsf.filledDate)
+        );
+
+        if (!linkMatch) {
+          hasChanges = true;
+          const isTargetDispatched = Boolean(
+            lsf.dispatched ||
+            (targetEntry.actualStuffedPallets || 0) > 0 ||
+            (targetEntry.pallets && targetEntry.pallets.every((p) => p.status === 'STUFFED_DISPATCHED')) ||
+            (targetEntry.balancePallets === 0 && (targetEntry.actualStuffedBatteries || 0) > 0)
+          );
+
+          currentLinks.push({
+            priorShortfallInvoiceNo: targetEntry.customInvoiceNo,
+            priorShortfallLedgerId: targetEntry.id,
+            palletNumber: lsf.palletNumber || sf.palletNumber,
+            arrivedPalletNumber: lsf.arrivedPalletNumber,
+            unitsFilled: lsf.unitsFilled,
+            date: lsf.filledDate || supplier.invoiceDate || '',
+            filledDate: lsf.filledDate || supplier.invoiceDate || '',
+            dispatched: isTargetDispatched
+          });
+
+          reconciled[supplierIndex] = {
+            ...supplier,
+            shortFillLinks: currentLinks
+          };
+        }
+      });
+    });
+  });
+
   return { reconciled, changed: hasChanges };
+}
+
+/**
+ * Returns all shortfill allocations supplied by an inward entry.
+ * Combines direct shortFillLinks on the entry with all linkedShortFills found
+ * across any other entries in the active ledger that reference this inward entry,
+ * ensuring no multi-part or historical fulfillment is ever missed.
+ */
+export function getSuppliedShortFillsForInvoice(
+  entry: CFSLedgerEntry,
+  allEntries?: CFSLedgerEntry[]
+): ShortFillLink[] {
+  const result: ShortFillLink[] = [];
+  const addedKeys = new Set<string>();
+
+  // 1. Direct shortFillLinks on this entry
+  (entry.shortFillLinks || []).forEach((link) => {
+    const key = `${cleanInvoiceNumber(link.priorShortfallInvoiceNo)}_${cleanPalletNumber(link.palletNumber)}_${link.unitsFilled}_${link.date || link.filledDate || ''}`;
+    if (!addedKeys.has(key)) {
+      addedKeys.add(key);
+      result.push(link);
+    }
+  });
+
+  // 2. Shortfalls across allEntries referencing this entry
+  if (allEntries && allEntries.length > 0) {
+    const supplierClean = cleanInvoiceNumber(entry.customInvoiceNo);
+    allEntries.forEach((targetEntry) => {
+      if (targetEntry.id === entry.id) return;
+      const targetClean = cleanInvoiceNumber(targetEntry.customInvoiceNo);
+      (targetEntry.shortfalls || []).forEach((sf) => {
+        (sf.linkedShortFills || []).forEach((lsf) => {
+          const isMatch =
+            (lsf.shortFillLedgerId && lsf.shortFillLedgerId === entry.id) ||
+            (supplierClean && cleanInvoiceNumber(lsf.shortFillInvoiceNo) === supplierClean);
+
+          if (isMatch) {
+            const key = `${targetClean}_${cleanPalletNumber(lsf.palletNumber || sf.palletNumber)}_${lsf.unitsFilled}_${lsf.filledDate || ''}`;
+            if (!addedKeys.has(key)) {
+              addedKeys.add(key);
+              const isTargetDispatched = Boolean(
+                lsf.dispatched ||
+                (targetEntry.actualStuffedPallets || 0) > 0 ||
+                (targetEntry.pallets && targetEntry.pallets.every((p) => p.status === 'STUFFED_DISPATCHED')) ||
+                (targetEntry.balancePallets === 0 && (targetEntry.actualStuffedBatteries || 0) > 0)
+              );
+              result.push({
+                priorShortfallInvoiceNo: targetEntry.customInvoiceNo,
+                priorShortfallLedgerId: targetEntry.id,
+                palletNumber: lsf.palletNumber || sf.palletNumber,
+                arrivedPalletNumber: lsf.arrivedPalletNumber,
+                unitsFilled: lsf.unitsFilled,
+                dispatched: isTargetDispatched,
+                date: lsf.filledDate || entry.invoiceDate || '',
+                filledDate: lsf.filledDate || entry.invoiceDate || ''
+              });
+            }
+          }
+        });
+      });
+    });
+  }
+
+  return result;
 }
 
 /**
@@ -3289,13 +3415,31 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     shortfallBatteries: totalShortfallBatteries,
     receiptMode: totalShortfallBatteries > 0 ? 'SHORT_FALL' : (params.shortFillInputs && params.shortFillInputs.length > 0 ? 'SHORT_FILL' : (params.receiptMode || 'RECEIVED_FULL')),
     shortfalls: shortfallRecords,
-    shortFillLinks: params.shortFillInputs?.map((sfi) => ({
-      priorShortfallInvoiceNo: sfi.priorShortfallInvoiceNo,
-      priorShortfallLedgerId: sfi.priorShortfallLedgerId || '',
-      palletNumber: sfi.palletNumber,
-      arrivedPalletNumber: sfi.arrivedPalletNumber,
-      unitsFilled: sfi.unitsFilled
-    })),
+    shortFillLinks: (() => {
+      const inputs = params.shortFillInputs || [];
+      const newLinks: ShortFillLink[] = inputs.map((sfi) => ({
+        priorShortfallInvoiceNo: sfi.priorShortfallInvoiceNo,
+        priorShortfallLedgerId: sfi.priorShortfallLedgerId || '',
+        palletNumber: sfi.palletNumber,
+        arrivedPalletNumber: sfi.arrivedPalletNumber,
+        unitsFilled: sfi.unitsFilled,
+        date: today,
+        filledDate: today
+      }));
+      const existing = existingEntry?.shortFillLinks || [];
+      existing.forEach((ex) => {
+        const overwritten = newLinks.some(
+          (nl) =>
+            cleanInvoiceNumber(nl.priorShortfallInvoiceNo) === cleanInvoiceNumber(ex.priorShortfallInvoiceNo) &&
+            cleanPalletNumber(nl.palletNumber) === cleanPalletNumber(ex.palletNumber) &&
+            nl.unitsFilled === ex.unitsFilled
+        );
+        if (!overwritten) {
+          newLinks.push(ex);
+        }
+      });
+      return newLinks;
+    })(),
     dgCreated: existingEntry ? existingEntry.dgCreated : false,
     blCreated: existingEntry ? existingEntry.blCreated : false,
     cartingInDate: params.cartingInDate || (existingEntry?.cartingInDate) || today,

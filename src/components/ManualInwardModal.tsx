@@ -31,6 +31,7 @@ import {
   getCFSLedgerEntries,
   recordManualInward,
   cleanInvoiceNumber,
+  getSuppliedShortFillsForInvoice,
   type ManualInwardShortfallInput,
   type ManualInwardShortFillInput,
   type RecordManualInwardParams,
@@ -1571,10 +1572,12 @@ export function ManualInwardModal({
                   const totalAttachedUnits = attachedFills.reduce((sum, f) => sum + (f.unitsFilled || 0), 0);
 
                   // Check if this pallet was received as a shortfill supply for another invoice
-                  const supplierShortFill = editingEntry?.shortFillLinks?.find(
-                    (s) => String(s.palletNumber).trim() === String(row.palletNumber).trim() ||
-                           String(s.arrivedPalletNumber).trim() === String(row.palletNumber).trim()
-                  );
+                  const supplierShortFills = editingEntry
+                    ? getSuppliedShortFillsForInvoice(editingEntry, allPriorInvoices).filter(
+                        (s) => String(s.palletNumber).trim() === String(row.palletNumber).trim() ||
+                               String(s.arrivedPalletNumber).trim() === String(row.palletNumber).trim()
+                      )
+                    : [];
 
                   return (
                     <div
@@ -1605,21 +1608,24 @@ export function ManualInwardModal({
                         </div>
                       )}
 
-                      {/* Shortfill Supplier Banner (when this pallet was inwarded to supply another invoice's shortfall) */}
-                      {supplierShortFill && (
-                        <div className="px-3 py-2 rounded-lg bg-blue-100/70 border border-blue-200 text-blue-950 text-xs flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                      {/* Shortfill Supplier Banners (when this pallet was inwarded to supply another invoice's shortfall) */}
+                      {supplierShortFills.map((supplierShortFill, sIdx) => (
+                        <div key={sIdx} className="px-3 py-2 rounded-lg bg-blue-100/70 border border-blue-200 text-blue-950 text-xs flex flex-wrap items-center justify-between gap-2 shadow-2xs">
                           <div className="flex items-center space-x-1.5 font-medium">
                             <Boxes className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                             <span>
                               <strong>Shortfill Supplier:</strong> Supplies {supplierShortFill.unitsFilled} Units to Inward{' '}
                               <strong>#{supplierShortFill.priorShortfallInvoiceNo}</strong> (Target PLT #{supplierShortFill.palletNumber})
+                              {(supplierShortFill.filledDate || supplierShortFill.date) && (
+                                <span className="text-blue-800 font-normal ml-1">on {supplierShortFill.filledDate || supplierShortFill.date}</span>
+                              )}
                             </span>
                           </div>
                           <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-blue-200 text-blue-900 font-mono">
                             Earmarked Recovery Stock
                           </span>
                         </div>
-                      )}
+                      ))}
 
                       {/* ROW TOP HEADER: Pallet No, Model, Billed Units, Net kg, Gross kg, Pallet Wt, Status, Delete */}
                       <div className="grid grid-cols-12 gap-2.5 items-center">
@@ -1630,7 +1636,7 @@ export function ManualInwardModal({
                               +SF
                             </span>
                           )}
-                          {supplierShortFill && (
+                          {supplierShortFills.length > 0 && (
                             <span className="text-[8px] font-bold uppercase px-1 py-0.2 rounded bg-blue-100 text-blue-800 font-mono tracking-tight mt-0.5 w-fit" title="Supplies Shortfill">
                               SUPPLY
                             </span>

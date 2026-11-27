@@ -25,7 +25,8 @@ import type {
 } from '../types/index.ts';
 import {
   toExactWeight,
-  formatToDDMMYYYY
+  formatToDDMMYYYY,
+  getSuppliedShortFillsForInvoice
 } from '../utils/inventoryStore.ts';
 
 interface CompactInvoiceBlockProps {
@@ -161,7 +162,8 @@ export function CompactInvoiceBlock({
     shortfallsList.length > 0
       ? shortfallsList.some((s) => s.status !== 'CLEARED' && s.status !== 'FULFILLED' && (s.remainingShortfallUnits ?? s.shortfallUnits) > 0)
       : (entry.shortfallBatteries || 0) > 0 || (entry.shortfallPallets || 0) > 0;
-  const isShortFillReconciled = (entry.shortFillLinks || []).length > 0;
+  const suppliedShortFills = getSuppliedShortFillsForInvoice(entry);
+  const isShortFillReconciled = suppliedShortFills.length > 0;
   const isFullyDispatched = entry.balancePallets === 0 && (entry.balanceBatteries === 0 || entry.balanceBatteries === undefined) && ((entry.actualStuffedPallets || 0) > 0 || (entry.actualStuffedBatteries || 0) > 0);
   const isPartiallyDispatched = ((entry.actualStuffedBatteries || 0) > 0 || (entry.actualStuffedPallets || 0) > 0) && ((entry.balanceBatteries || 0) > 0 || (entry.balancePallets || 0) > 0);
 
@@ -222,7 +224,7 @@ export function CompactInvoiceBlock({
               const shortfillSources = linkedFills.map((l) => `#${l.shortFillInvoiceNo}`).join(', ');
 
               // Check if this pallet is a shortfill supplier (supplies units to a prior shortfall)
-              const supplierLink = (entry.shortFillLinks || []).find(
+              const supplierLink = (suppliedShortFills || []).find(
                 (sfl) => String(sfl.arrivedPalletNumber || sfl.palletNumber).trim() === String(displayPalletNum).trim() ||
                         String(sfl.arrivedPalletNumber || sfl.palletNumber).trim() === String(pallet.palletNumber).trim()
               );
@@ -799,7 +801,7 @@ export function CompactInvoiceBlock({
                   )}
 
                   {/* Reconciled Short Fill Link (if this invoice filled a prior invoice) */}
-                  {(entry.shortFillLinks || []).map((link, idx) => (
+                  {(suppliedShortFills || []).map((link, idx) => (
                     <div
                       key={idx}
                       className="px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center space-x-1.5"
@@ -807,6 +809,9 @@ export function CompactInvoiceBlock({
                       <CheckCircle2 className="w-3 h-3 text-blue-600 shrink-0" />
                       <span>
                         Fulfills <strong>{link.unitsFilled} Units</strong> on Inv <strong>#{link.priorShortfallInvoiceNo}</strong>
+                        {(link.filledDate || link.date) && (
+                          <span className="text-blue-700 ml-1">({link.filledDate || link.date})</span>
+                        )}
                       </span>
                     </div>
                   ))}

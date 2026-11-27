@@ -50,7 +50,8 @@ import {
   restoreDeletedCFSEntry,
   permanentlyDeleteCFSEntry,
   emptyCFSTrashBin,
-  restoreDispatchedRecord
+  restoreDispatchedRecord,
+  getSuppliedShortFillsForInvoice
 } from '../utils/inventoryStore.ts';
 import { ManualInwardModal } from './ManualInwardModal.tsx';
 import { CompactInvoiceBlock } from './CompactInvoiceBlock.tsx';
@@ -547,7 +548,7 @@ export function WarehouseInventoryHub({
         return (e.balancePallets || 0) > 0 && e.actualReceivedPallets >= e.invoicedPallets && !hasOpenShortfall;
       }
       if (inventoryStatusFilter === 'SHORTFILL') {
-        const hasLinkedShortFill = (e.shortFillLinks || []).length > 0;
+        const hasLinkedShortFill = getSuppliedShortFillsForInvoice(e, entries).length > 0;
         const hasShortfallWithShortFill = (e.shortfalls || []).some(
           (sf) => (sf.linkedShortFills || []).length > 0
         );
@@ -562,7 +563,7 @@ export function WarehouseInventoryHub({
       }
       return true;
     });
-  }, [filteredEntries, inventoryStatusFilter, selectedMonth, searchQuery]);
+  }, [filteredEntries, inventoryStatusFilter, selectedMonth, searchQuery, entries]);
 
   // Master Invoices Status Logs Tracking for Section 2: Status Logs
   const filteredStatusLogInvoices = useMemo(() => {
@@ -571,7 +572,7 @@ export function WarehouseInventoryHub({
       const isFullyDispatched = balPlt === 0 && (inv.actualStuffedPallets || 0) > 0;
       const isPartialDispatch = balPlt > 0 && (inv.actualStuffedPallets || 0) > 0;
       const hasShortfall = (inv.shortfallBatteries || 0) > 0 || (inv.shortfallPallets || 0) > 0;
-      const hasShortfill = (inv.shortFillLinks || []).length > 0;
+      const hasShortfill = getSuppliedShortFillsForInvoice(inv, entries).length > 0;
 
       if (statusLogFilter === 'IN_WAREHOUSE') return balPlt > 0;
       if (statusLogFilter === 'PARTIAL_DISPATCH') return isPartialDispatch;
@@ -580,7 +581,7 @@ export function WarehouseInventoryHub({
       if (statusLogFilter === 'SHORTFILL') return hasShortfill;
       return true;
     });
-  }, [filteredEntries, statusLogFilter]);
+  }, [filteredEntries, statusLogFilter, entries]);
 
   // Available Pallet Units for Picking
   const availablePalletUnits = useMemo(() => {
@@ -813,8 +814,9 @@ export function WarehouseInventoryHub({
 
   const promptDeleteInvoice = (entry: CFSLedgerEntry) => {
     let warningNotes = '';
-    if (entry.shortFillLinks && entry.shortFillLinks.length > 0) {
-      const summaryList = entry.shortFillLinks
+    const suppliedFills = getSuppliedShortFillsForInvoice(entry, entries);
+    if (suppliedFills.length > 0) {
+      const summaryList = suppliedFills
         .map((l) => `${l.unitsFilled} units on #${l.priorShortfallInvoiceNo}`)
         .join(', ');
       warningNotes += `\n\n⚠️ SHORTFALL ROLLBACK NOTICE: This inward fulfilled prior shortfalls (${summaryList}). Deleting this inward will automatically roll back those fulfilled units and restore the open shortfall on the original invoice(s).`;
@@ -1253,7 +1255,7 @@ export function WarehouseInventoryHub({
                     <option value="PARTIAL_DISPATCH">Partial Dispatch ({filteredEntries.filter((e) => (e.balancePallets || 0) > 0 && (e.actualStuffedPallets || 0) > 0).length})</option>
                     <option value="DISPATCHED">Fully Dispatched ({filteredEntries.filter((e) => (e.balancePallets || 0) === 0 && (e.actualStuffedPallets || 0) > 0).length})</option>
                     <option value="SHORTFALL">Shortfall Recorded ({filteredEntries.filter((e) => (e.shortfallBatteries || 0) > 0 || (e.shortfallPallets || 0) > 0).length})</option>
-                    <option value="SHORTFILL">Shortfill Linked ({filteredEntries.filter((e) => (e.shortFillLinks || []).length > 0).length})</option>
+                    <option value="SHORTFILL">Shortfill Linked ({filteredEntries.filter((e) => getSuppliedShortFillsForInvoice(e, entries).length > 0).length})</option>
                   </select>
                   <ChevronDown className="w-3.5 h-3.5 text-content-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
@@ -1738,9 +1740,8 @@ export function WarehouseInventoryHub({
                         const sfUnits = (inv.shortfalls && inv.shortfalls.length > 0)
                           ? inv.shortfalls.reduce((sum, s) => sum + (s.shortfallUnits || 0), 0)
                           : (inv.shortfallBatteries || 0);
-                        const sfillUnits = (inv.shortFillLinks && inv.shortFillLinks.length > 0)
-                          ? inv.shortFillLinks.reduce((sum, s) => sum + (s.unitsFilled || 0), 0)
-                          : 0;
+                        const suppliedFills = getSuppliedShortFillsForInvoice(inv, entries);
+                        const sfillUnits = suppliedFills.reduce((sum, s) => sum + (s.unitsFilled || 0), 0);
                         const hasShortfall = sfUnits > 0 || sfPlts > 0;
                         const hasShortfill = sfillUnits > 0;
                         const isExpanded = expandedStatusLogInvoiceIds.has(inv.id);
@@ -2212,21 +2213,30 @@ export function WarehouseInventoryHub({
                                           ) : null}
 
                                           {/* Shortfills Supplied from this Invoice to Prior Shipments */}
-                                          {inv.shortFillLinks && inv.shortFillLinks.length > 0 ? (
-                                            <div className="space-y-1.5 pt-1">
-                                              <span className="text-[10px] font-semibold text-content-secondary uppercase tracking-wider block">Stock Diverted for Shortfall Fulfillment:</span>
-                                              {inv.shortFillLinks.map((link, lIdx) => (
-                                                <div key={lIdx} className="p-2 rounded bg-purple-50/50 border border-purple-200 text-xs flex items-center justify-between">
-                                                  <span className="text-purple-800 font-medium">
-                                                    → <span className="font-bold">+{link.unitsFilled} units</span> from this inward were allocated to resolve shortfall on <span className="font-bold">Invoice #{link.priorShortfallInvoiceNo}</span> (Pallet #{link.palletNumber})
-                                                  </span>
-                                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${link.dispatched ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                                    {link.dispatched ? 'Dispatched with Target' : 'On Active Floor'}
-                                                  </span>
-                                                </div>
-                                              ))}
-                                            </div>
-                                          ) : null}
+                                          {(() => {
+                                            const suppliedFills = getSuppliedShortFillsForInvoice(inv, entries);
+                                            if (suppliedFills.length === 0) return null;
+                                            return (
+                                              <div className="space-y-1.5 pt-1">
+                                                <span className="text-[10px] font-semibold text-content-secondary uppercase tracking-wider block">
+                                                  Stock Diverted for Shortfall Fulfillment:
+                                                </span>
+                                                {suppliedFills.map((link, lIdx) => (
+                                                  <div key={lIdx} className="p-2 rounded bg-purple-50/50 border border-purple-200 text-xs flex items-center justify-between">
+                                                    <span className="text-purple-800 font-medium">
+                                                      → <span className="font-bold">+{link.unitsFilled} units</span> from this inward were allocated to resolve shortfall on <span className="font-bold">Invoice #{link.priorShortfallInvoiceNo}</span> (Pallet #{link.palletNumber})
+                                                      {(link.filledDate || link.date) && (
+                                                        <span className="text-purple-600 font-normal ml-1.5 text-[11px]">on {link.filledDate || link.date}</span>
+                                                      )}
+                                                    </span>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${link.dispatched ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                                      {link.dispatched ? 'Dispatched with Target' : 'On Active Floor'}
+                                                    </span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            );
+                                          })()}
 
                                           {/* No Shortfall / Shortfill clean notice */}
                                           {!hasShortfall && !hasShortfill && (
@@ -2862,7 +2872,8 @@ export function WarehouseInventoryHub({
               ) : (
                 trashBinItems.map((item) => {
                   const entry = item.entry;
-                  const hasShortFill = (entry.shortFillLinks || []).length > 0;
+                  const suppliedFills = getSuppliedShortFillsForInvoice(entry, entries);
+                  const hasShortFill = suppliedFills.length > 0;
                   const hasShortfall = (entry.shortfalls || []).length > 0;
 
                   return (
@@ -2893,7 +2904,7 @@ export function WarehouseInventoryHub({
                         </div>
                         {hasShortFill && (
                           <div className="text-[10px] text-purple-700 font-mono">
-                            Filled: {entry.shortFillLinks?.map((l) => `${l.unitsFilled} Units on #${l.priorShortfallInvoiceNo}`).join(', ')}
+                            Filled: {suppliedFills.map((l) => `${l.unitsFilled} Units on #${l.priorShortfallInvoiceNo}`).join(', ')}
                           </div>
                         )}
                       </div>

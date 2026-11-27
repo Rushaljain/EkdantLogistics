@@ -648,6 +648,17 @@ export interface ShortfallRecord {
   linkedShortFills: LinkedShortFill[];
 }
 
+export interface ShortFillLink {
+  priorShortfallInvoiceNo: string;
+  priorShortfallLedgerId: string;
+  palletNumber?: string | number;
+  arrivedPalletNumber?: string | number;
+  unitsFilled: number;
+  dispatched?: boolean;
+  date?: string;
+  filledDate?: string;
+}
+
 export interface PalletStockUnit {
   id: string;
   palletNumber: number | string;
@@ -699,7 +710,7 @@ export interface CFSLedgerEntry {
   shortfallBatteries: number;
   receiptMode?: ReceiptMode;
   shortfalls?: ShortfallRecord[];
-  shortFillLinks?: { priorShortfallInvoiceNo: string; priorShortfallLedgerId: string; palletNumber?: string | number; arrivedPalletNumber?: string | number; unitsFilled: number; dispatched?: boolean }[];
+  shortFillLinks?: ShortFillLink[];
 
   // Gate-In & DG/BL Flags
   dgCreated?: boolean;
