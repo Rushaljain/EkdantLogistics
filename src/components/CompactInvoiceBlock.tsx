@@ -229,16 +229,23 @@ export function CompactInvoiceBlock({
                         String(sfl.arrivedPalletNumber || sfl.palletNumber).trim() === String(pallet.palletNumber).trim()
               );
 
-              // Determine Pallet Type: "Shortfall" | "Shortfill" | "Full"
+              // Determine Pallet Type: "Shortfall" | "Shortfill" | "Partial" | "Pending" | "Full"
               const isShortfillType = hasAttachedShortFill || Boolean(supplierLink);
-              const isShortfallType = !isShortfillType && (
-                Boolean(matchingShortfall && (matchingShortfall.shortfallUnits > 0 || matchingShortfall.remainingShortfallUnits > 0)) ||
-                Boolean((pallet.receivedBatteries || 0) < (pallet.invoicedBatteries || 0))
-              );
-              const palletType: 'Full' | 'Shortfall' | 'Shortfill' = isShortfillType
+              const hasExplicitShortfall = Boolean(
+                matchingShortfall && (matchingShortfall.shortfallUnits > 0 || matchingShortfall.remainingShortfallUnits > 0)
+              ) || pallet.receiptStatus === 'SHORTFALL';
+
+              const isPartialType = pallet.receiptStatus === 'PARTIALLY_RECEIVED';
+              const isPendingType = pallet.receiptStatus === 'NOT_RECEIVED' || pallet.status === 'PENDING_GATE_IN';
+
+              const palletType: 'Full' | 'Shortfall' | 'Shortfill' | 'Partial' | 'Pending' = isShortfillType
                 ? 'Shortfill'
-                : isShortfallType
+                : hasExplicitShortfall
                 ? 'Shortfall'
+                : isPartialType
+                ? 'Partial'
+                : isPendingType
+                ? 'Pending'
                 : 'Full';
 
               return (
@@ -312,6 +319,10 @@ export function CompactInvoiceBlock({
                           ? 'bg-purple-100 text-purple-800 border border-purple-200'
                           : palletType === 'Shortfall'
                           ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                          : palletType === 'Partial'
+                          ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                          : palletType === 'Pending'
+                          ? 'bg-slate-100 text-slate-800 border border-slate-300'
                           : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       }`}
                       title={
@@ -321,6 +332,10 @@ export function CompactInvoiceBlock({
                             : `Shortfill Supplier (Supplies #${supplierLink?.priorShortfallInvoiceNo})`
                           : palletType === 'Shortfall'
                           ? `Shortfall recorded: missing ${matchingShortfall?.remainingShortfallUnits ?? matchingShortfall?.shortfallUnits} units`
+                          : palletType === 'Partial'
+                          ? `Partially Received: ${pallet.receivedBatteries} units landed, ${pallet.pendingUnits || 0} units pending in future deliveries`
+                          : palletType === 'Pending'
+                          ? `Not Received Yet: Pallet arriving in future delivery`
                           : 'Full Physical Inward Received'
                       }
                     >
@@ -773,7 +788,7 @@ export function CompactInvoiceBlock({
             </div>
 
             {/* B. SHORTFALL & SHORT-FILL TRACEABILITY STRIP */}
-            {(shortfallsList.length > 0 || isShortFillReconciled || (entry.shortfallBatteries || 0) > 0) && (
+            {(shortfallsList.length > 0 || isShortFillReconciled) && (
               <div className="bg-amber-50/50 border border-amber-200/80 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <div className="flex items-center space-x-1.5 font-bold text-amber-900">

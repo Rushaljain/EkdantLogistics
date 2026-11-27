@@ -110,6 +110,21 @@ function getEntryShortfallStats(entry: CFSLedgerEntry, targetMonth?: string) {
     };
   }
 
+  // If entry is actively carting in (pending inward), unreceived units are NOT a shortfall until explicitly shifted
+  const isPendingCarting = entry.inwardStatus === 'PENDING_INWARD' ||
+    (entry.pendingInwardBatteries || 0) > 0 ||
+    Boolean(entry.pallets && entry.pallets.some((p) => p.receiptStatus === 'NOT_RECEIVED' || p.receiptStatus === 'PARTIALLY_RECEIVED'));
+
+  if (isPendingCarting) {
+    return {
+      shortPlt: 0,
+      remainingPlt: 0,
+      shortBat: 0,
+      remainingBat: 0,
+      records: []
+    };
+  }
+
   // Fallback for legacy records without `shortfalls` array
   const legacyPlt = entry.shortfallPallets || 0;
   const legacyBat = entry.shortfallBatteries || 0;
@@ -335,9 +350,15 @@ export function WarehouseInventoryHub({
 
     // Invoices with variance between Invoiced vs Actual Received Quantity or recorded shortfalls
     const varianceEntries = entries.filter((e) => {
+      const isPendingCarting = e.inwardStatus === 'PENDING_INWARD' ||
+        (e.pendingInwardBatteries || 0) > 0 ||
+        Boolean(e.pallets && e.pallets.some((p) => p.receiptStatus === 'NOT_RECEIVED' || p.receiptStatus === 'PARTIALLY_RECEIVED'));
+      const sfStats = getEntryShortfallStats(e);
+      if (isPendingCarting) {
+        return sfStats.shortPlt > 0 || sfStats.shortBat > 0;
+      }
       const palletDiff = Math.abs((e.invoicedPallets || 0) - (e.actualReceivedPallets || 0));
       const batteryDiff = Math.abs((e.invoicedBatteries || 0) - (e.actualReceivedBatteries || 0));
-      const sfStats = getEntryShortfallStats(e);
       return (palletDiff > 0 || batteryDiff > 0 || sfStats.shortPlt > 0 || sfStats.shortBat > 0);
     });
 

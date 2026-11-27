@@ -289,8 +289,8 @@ export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry
     }
   }
 
-  let shortfallPallets = Math.max(0, invPallets - recPallets);
-  let shortfallBatteries = Math.max(0, invBatteries - recBatteries);
+  let shortfallPallets = 0;
+  let shortfallBatteries = 0;
 
   if (entry.shortfalls && entry.shortfalls.length > 0) {
     const remUnits = entry.shortfalls.reduce(
@@ -300,6 +300,15 @@ export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry
     const remPlts = entry.shortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0).length;
     shortfallBatteries = remUnits;
     shortfallPallets = remPlts;
+  } else {
+    const isPendingCarting = entry.inwardStatus === 'PENDING_INWARD' ||
+      (entry.pendingInwardBatteries || 0) > 0 ||
+      Boolean(entry.pallets && entry.pallets.some((p) => p.receiptStatus === 'NOT_RECEIVED' || p.receiptStatus === 'PARTIALLY_RECEIVED'));
+
+    if (!isPendingCarting) {
+      shortfallPallets = Math.max(0, invPallets - recPallets);
+      shortfallBatteries = Math.max(0, invBatteries - recBatteries);
+    }
   }
 
   const isFullyDispatched = (stfPallets > 0 && recPallets <= stfPallets) || Boolean(entry.pallets && entry.pallets.length > 0 && entry.pallets.every((p) => p.status === 'STUFFED_DISPATCHED'));
