@@ -510,7 +510,7 @@ function normalizeExtractedJSON(
   if (clean.unPackingCode.includes('19700007')) {
     clean.unPackingCode = clean.unPackingCode.replace('19700007', '19700134');
   }
-  clean.unCode = str((raw as any).unCode) || '063-UN/IIPK/07-2627';
+  clean.unCode = str((raw as any).unCode) || '';
   clean.emergencyContactName = str(raw.emergencyContactName);
   clean.emergencyContactPhone = str(raw.emergencyContactPhone);
   clean.dgDeclarantName = str(raw.dgDeclarantName);

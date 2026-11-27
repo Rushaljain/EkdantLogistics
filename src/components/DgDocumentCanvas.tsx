@@ -416,7 +416,7 @@ export function DgDocumentCanvas({
                   <div className="space-y-1.5 font-mono text-[9px] text-slate-900 font-semibold">
                     <div className="text-[8px] text-slate-500 font-bold uppercase">OUTER PACKAGES :-</div>
                     <div className="pl-1.5 border-l-2 border-slate-400">
-                      {isKmtc ? (activePallets > 0 ? `${activePallets} PALLETS` : `${activeBoxes} PACKAGES`) : (activePallets > 0 ? `${activeBoxes} FIBREBOARD BOXES IN ${activePallets} PALLETS` : `${activeBoxes} PACKAGES`)}
+                      {(isKmtc || isCmaCgm) ? (activePallets > 0 ? `${activePallets} PALLETS` : `${activeBoxes} PACKAGES`) : (activePallets > 0 ? `${activeBoxes} FIBREBOARD BOXES IN ${activePallets} PALLETS` : `${activeBoxes} PACKAGES`)}
                     </div>
                     <div className="text-[8px] text-slate-500 font-bold uppercase mt-2">INNER PACKING :-</div>
                     <div className="pl-1.5 border-l-2 border-slate-400 text-slate-700">
@@ -760,27 +760,43 @@ export function DgDocumentCanvas({
                   label={isDiamond ? 'Total cube (m3)' : 'Cube (m³)'}
                   value={getVal(
                     'box_18_cube_m3',
-                    activeShipment.volumeCbm > 0 ? `${activeShipment.volumeCbm.toFixed(3)} M³` : ''
+                    (activeShipment.volumeCbm && activeShipment.volumeCbm > 0)
+                      ? `${activeShipment.volumeCbm} CBM`
+                      : (activePallets > 0 ? `${Number((activePallets * 1.15).toFixed(1))} CBM` : '')
                   )}
                   onChange={(val) => handleUpdate('box_18_cube_m3', val, 'volumeCbm')}
                 />
               </div>
             </div>
 
-            {/* Extra "Other Details" Horizontal Bar for Nomination, V-Star, and Diamond Maritime */}
-            {(isNomination || isVstar || isDiamond) && (
-              <div className="p-1.5 bg-slate-100 font-mono text-[8.5px] font-bold text-slate-900 border-t border-slate-900">
-                {isNomination && (
-                  <span>Other Details : UN PACKING CODE :- {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'} | UN CODE: {(activeShipment as any).unCode || '063-UN/IIPK/07-2627'}</span>
+            {/* Total cube (m3) Bar */}
+            <div className="px-3 py-1 bg-white border-t border-slate-900 flex items-center justify-between font-mono text-[8.5px] font-bold text-slate-900">
+              <span className="ml-auto mr-6 uppercase text-slate-700">Total cube (m3)</span>
+              <span>
+                {getVal(
+                  'box_18_cube_m3',
+                  (activeShipment.volumeCbm && activeShipment.volumeCbm > 0)
+                    ? `${activeShipment.volumeCbm} CBM`
+                    : (activePallets > 0 ? `${Number((activePallets * 1.15).toFixed(1))} CBM` : '')
                 )}
-                {isVstar && (
-                  <span>Other Details : UN PACKING CODE: {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'} | UN CODE: {(activeShipment as any).unCode || '063-UN/IIPK/07-2627'}</span>
-                )}
-                {isDiamond && (
-                  <span>Other Details : UN PACKAGING NO. {(activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134').replace(/^UN\s*PACKAGING\s*NO\.?\s*/i, '')} / UN CODE: {(activeShipment as any).unCode || '063-UN/IIPK/07-2627'}</span>
-                )}
-              </div>
-            )}
+              </span>
+            </div>
+
+            {/* Extra "Other Details" Horizontal Bar */}
+            <div className="p-1.5 bg-slate-100 font-mono text-[8.5px] font-bold text-slate-900 border-t border-slate-900">
+              {isNomination && (
+                <span>Other Details : UN PACKING CODE :- {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'}</span>
+              )}
+              {isVstar && (
+                <span>Other Details : UN PACKING CODE: {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'}</span>
+              )}
+              {isDiamond && (
+                <span>Other Details : UN PACKAGING NO. {(activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134').replace(/^UN\s*PACKAGING\s*NO\.?\s*/i, '')}</span>
+              )}
+              {!isNomination && !isVstar && !isDiamond && (
+                <span>Other Details : UN PACKING CODE: {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'}</span>
+              )}
+            </div>
 
             {/* Official IMO Equipment Row (Boxes 15, 16, 17, 18, 19) */}
             <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-y md:divide-y-0 divide-slate-900 bg-slate-50">

@@ -282,13 +282,31 @@ export function buildTemplateCargoBlock(
     rawUnPkg = rawUnPkg.replace('19700007', '19700134');
   }
   const unPkg = rawUnPkg;
-  const unCode = ((shipment as any).unCode || '063-UN/IIPK/07-2627').trim();
   const sgg = (shipment.segregationGroup || imdg?.segregationGroup || 'SGG1').trim();
   const emergencyContactPhone = (shipment.emergencyContactPhone || '').trim() || '9729899131';
   const emergencyContactName = (shipment.emergencyContactName || '').trim() || 'MR. SUJOY';
 
   const outerCount = shipment.outerPackagingCount || shipment.totalPallets || shipment.pallets?.length || 0;
   const innerCount = shipment.innerPackageCount || shipment.totalBoxes || shipment.totalPackages || 0;
+
+  const rawMarks = (shipment.shippingMarks || '').trim();
+  const cleanMarks = (() => {
+    if (rawMarks) {
+      const filtered = rawMarks
+        .split('\n')
+        .filter((l) => !/^(?:PALLET\s*NOS?|PALLET\s*NO|PALLETS?|\d+\s*TO\s*\d+)/i.test(l.trim()))
+        .join('\n')
+        .trim();
+      if (filtered && !/un\s*(?:no|number)|proper\s*shipping|class\s*8|imdg\s*code/i.test(filtered)) {
+        return filtered;
+      }
+    }
+    const parts = [
+      shipment.consigneeName?.trim(),
+      shipment.portOfDischarge?.trim() || shipment.finalDestination?.trim()
+    ].filter(Boolean);
+    return parts.join('\n');
+  })();
 
   const blockText = (() => {
     switch (templateId) {
@@ -329,7 +347,6 @@ export function buildTemplateCargoBlock(
         `EMS: ${cleanEms}`,
         'MARINE POLLUTANT: NA',
         `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
-        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
         `OUTER: ${outerCount} PALLETS`,
         `INNER: ${innerCount} CORRUGATED BOXES`,
@@ -354,7 +371,6 @@ export function buildTemplateCargoBlock(
         `EMS: ${cleanEms}`,
         'MARINE POLLUTANT: NA',
         `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
-        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
         `OUTER: ${outerCount} PALLETS`,
         `INNER: ${innerCount} CORRUGATED BOXES`,
@@ -378,7 +394,6 @@ export function buildTemplateCargoBlock(
         `EMS: ${cleanEms}`,
         'MARINE POLLUTANT: NA',
         `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
-        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
         `NO & KIND OF PACKAGING: ${outerCount} PALLETS`,
         `OUTER: ${outerCount} PALLETS`,
         `INNER: ${innerCount} CORRUGATED BOXES`,
@@ -469,7 +484,6 @@ export function buildTemplateCargoBlock(
         `EMS: ${cleanEms}`,
         'MARINE POLLUTANT : NA',
         `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
-        `UN CODE: ${unCode || '063-UN/IIPK/07-2627'}`,
         'PG (Packaging Group) : N.A',
         `OUTER: ${outerCount} PALLETS`,
         `INNER: ${innerCount} CORRUGATED BOXES`,
@@ -483,7 +497,11 @@ export function buildTemplateCargoBlock(
   }
   })();
 
-  return deduplicateMultiLineText(blockText);
+  const fullBlock = cleanMarks && (templateId === 'NOMINATION_DG' || templateId === 'COMMON_DG' || templateId === 'VSTAR_DG' || templateId === 'ONE_LINE_DG' || templateId === 'MSC_LINE_DG' || templateId === 'DIAMOND_MARITIME_DG')
+    ? `${cleanMarks}\n\n${blockText}`
+    : blockText;
+
+  return deduplicateMultiLineText(fullBlock);
 }
 
 /**

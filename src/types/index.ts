@@ -363,7 +363,7 @@ export function createEmptyShipmentJSON(mode: UploadMode = 'SINGLE_INVOICE'): Ex
     emsNumber: '',
     segregationGroup: '',
     unPackingCode: '4G/Z 30/S/**IND/K/19700134',
-    unCode: '063-UN/IIPK/07-2627',
+    unCode: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
     dgDeclarantName: '',

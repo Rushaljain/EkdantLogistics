@@ -1759,6 +1759,7 @@ export function buildShipmentFromStockPallets(
     invoiceNumbers: uniqueInvoices.length > 0 ? uniqueInvoices : [primaryInvoice],
     invoiceDates: [formatToDDMMYYYY(new Date())],
     shipperReference: primaryInvoice,
+    forwarderReference: src?.forwarderReference || '',
     shippingBillNumbers: shippingBillNumbers || src?.shippingBillNumbers || '',
     vesselName: src?.vesselName || '',
     voyageNumber: src?.voyageNumber || '',
@@ -1840,6 +1841,9 @@ export function buildShipmentFromInventoryInvoices(
       source.volumeCbm = Number((filteredPallets.length * 1.15).toFixed(2));
     }
 
+    source.shipperReference = source.shipperReference || entry.customInvoiceNo || source.invoiceNumbers?.[0] || '';
+    source.forwarderReference = source.forwarderReference || '';
+    source.volumeCbm = source.volumeCbm || Number(((source.pallets?.length || 1) * 1.15).toFixed(2));
     source.sourceLedgerIds = [entry.id];
     source.selectedPalletIds = availableStockPallets.map((p) => p.id);
     source.isDispatched = false;
