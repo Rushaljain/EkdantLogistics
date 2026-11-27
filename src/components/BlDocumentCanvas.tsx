@@ -2,22 +2,7 @@ import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ExtractedShipmentJSON, ExtractedPallet } from '../types/index.ts';
 import { EditableDocCell } from './EditableDocCell.tsx';
-
-// Integer to English Words helper for standard maritime documentation (e.g. 20 -> TWENTY)
-function integerToWords(num: number): string {
-  if (num <= 0) return 'ZERO';
-  const ones = [
-    '', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
-    'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'
-  ];
-  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
-
-  if (num < 20) return ones[num];
-  if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? '-' + ones[num % 10] : '');
-  if (num < 1000) return ones[Math.floor(num / 100)] + ' HUNDRED' + (num % 100 !== 0 ? ' ' + integerToWords(num % 100) : '');
-  if (num < 1000000) return integerToWords(Math.floor(num / 1000)) + ' THOUSAND' + (num % 1000 !== 0 ? ' ' + integerToWords(num % 1000) : '');
-  return String(num);
-}
+import { cleanTechnicalName } from '../utils/dgTemplates.ts';
 
 // Builds the standard clean BL commodity & package description without hardcoded values
 export const buildStandardBlCargoDescription = (s: ExtractedShipmentJSON): string => {
@@ -32,13 +17,12 @@ export const buildStandardBlCargoDescription = (s: ExtractedShipmentJSON): strin
   const headerLines = [`${contCount} X ${contType} SAID TO CONTAIN`];
   if (pCount > 0) {
     headerLines.push(`TOTAL ${pCount} PALLETS`);
-    headerLines.push(`(TOTAL ${integerToWords(pCount)} PALLETS ONLY)`);
   }
   sections.push(headerLines.join('\n'));
 
-  sections.push(s.productDescription || 'LEAD ACID STORAGE BATTERIES');
+  sections.push(cleanTechnicalName(s.productDescription) || 'LEAD ACID STORAGE BATTERIES');
 
-  if (brand) {
+  if (brand && !/dynex|matrix|max/i.test(brand)) {
     sections.push(`BRAND: ${brand}`);
   }
   const hs = s.hsnCode || (s as any).hsCode || '85071000';
@@ -409,7 +393,14 @@ export function BlDocumentCanvas({
             <div className="md:col-span-3">
               <EditableDocCell
                 label="Container Nos. Marks & Numbers"
-                value={getVal('marks_and_numbers', shipmentJson.shippingMarks || '')}
+                value={(() => {
+                  const raw = getVal('marks_and_numbers', shipmentJson.shippingMarks || '');
+                  const cName = (shipmentJson.consigneeName || '').trim();
+                  if (cName) {
+                    return raw.split('\n').filter(l => l.trim().toLowerCase() !== cName.toLowerCase()).join('\n');
+                  }
+                  return raw;
+                })()}
                 onChange={(val) => handleUpdate('marks_and_numbers', val, 'shippingMarks')}
                 multiline
                 rows={16}
@@ -492,7 +483,7 @@ export function BlDocumentCanvas({
             />
             <EditableDocCell
               label="Freight:"
-              value={getVal('freight_terms', shipmentJson.freightTerms || 'FREIGHT PREPAID')}
+              value={getVal('freight_terms', '')}
               onChange={(val) => handleUpdate('freight_terms', val, 'freightTerms')}
             />
           </div>

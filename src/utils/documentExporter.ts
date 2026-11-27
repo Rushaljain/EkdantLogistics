@@ -11,6 +11,7 @@ import {
   type DgTemplateId,
   DG_TEMPLATE_DEFINITIONS,
   buildTemplateCargoBlock,
+  cleanTechnicalName,
   detectRecommendedDgTemplate
 } from './dgTemplates.ts';
 
@@ -699,22 +700,6 @@ function generateDgManifestHtml(
 </html>`;
 }
 
-// Integer to English Words helper for standard maritime documentation (e.g. 20 -> TWENTY)
-function integerToWords(num: number): string {
-  if (num <= 0) return 'ZERO';
-  const ones = [
-    '', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE',
-    'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN', 'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN'
-  ];
-  const tens = ['', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY', 'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY'];
-
-  if (num < 20) return ones[num];
-  if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? '-' + ones[num % 10] : '');
-  if (num < 1000) return ones[Math.floor(num / 100)] + ' HUNDRED' + (num % 100 !== 0 ? ' ' + integerToWords(num % 100) : '');
-  if (num < 1000000) return integerToWords(Math.floor(num / 1000)) + ' THOUSAND' + (num % 1000 !== 0 ? ' ' + integerToWords(num % 1000) : '');
-  return String(num);
-}
-
 // Builds the standard clean BL commodity & package description without hardcoded customer data
 function buildStandardBlCargoDescription(s: ExtractedShipmentJSON): string {
   const contCount = s.containers && s.containers.length > 0 ? s.containers.length : 1;
@@ -728,13 +713,12 @@ function buildStandardBlCargoDescription(s: ExtractedShipmentJSON): string {
   const headerLines = [`${contCount} X ${contType} SAID TO CONTAIN`];
   if (pCount > 0) {
     headerLines.push(`TOTAL ${pCount} PALLETS`);
-    headerLines.push(`(TOTAL ${integerToWords(pCount)} PALLETS ONLY)`);
   }
   sections.push(headerLines.join('\n'));
 
-  sections.push(s.productDescription || 'LEAD ACID STORAGE BATTERIES');
+  sections.push(cleanTechnicalName(s.productDescription) || 'LEAD ACID STORAGE BATTERIES');
 
-  if (brand) {
+  if (brand && !/dynex|matrix|max/i.test(brand)) {
     sections.push(`BRAND: ${brand}`);
   }
   const hs = s.hsnCode || (s as any).hsCode || '85071000';
@@ -802,7 +786,11 @@ function generateBlManifestHtml(
     shipment.placeOfDelivery || shipment.finalDestination || shipment.portOfDischarge || '';
 
   const rawMarks = val((id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers')) || shipment.shippingMarks || '';
-  const marksAndNumbers = deduplicateMultiLineText(rawMarks);
+  let marksAndNumbers = deduplicateMultiLineText(rawMarks);
+  const cName = (shipment.consigneeName || '').trim();
+  if (cName) {
+    marksAndNumbers = marksAndNumbers.split('\n').filter(l => l.trim().toLowerCase() !== cName.toLowerCase()).join('\n');
+  }
   const rawCargoDesc = val((id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars')) || buildStandardBlCargoDescription(shipment);
   const cargoDesc = deduplicateMultiLineText(rawCargoDesc);
 
@@ -812,7 +800,7 @@ function generateBlManifestHtml(
   const contCount = shipment.containers && shipment.containers.length > 0 ? shipment.containers.length : 1;
   const pCount = shipment.pallets?.length || shipment.totalPallets || 1;
   const movement = val((id, lbl) => id.includes('movement') || lbl.includes('movement type')) || shipment.movementType || 'FCL / CY';
-  const freightTerms = val((id, lbl) => id.includes('freight_term') || lbl.includes('freight terms')) || shipment.freightTerms || 'FREIGHT PREPAID';
+  const freightTerms = '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1483,7 +1471,11 @@ export async function generatePopulatedBlDocxBlob(
       (id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers'),
       shipment.shippingMarks || ''
     );
-    const marksAndNumbers = deduplicateMultiLineText(rawMarks);
+    let marksAndNumbers = deduplicateMultiLineText(rawMarks);
+    const rawConsigneeName = (shipment.consigneeName || '').trim();
+    if (rawConsigneeName) {
+      marksAndNumbers = marksAndNumbers.split('\n').filter(l => l.trim().toLowerCase() !== rawConsigneeName.toLowerCase()).join('\n');
+    }
     const rawCargoDesc = val(
       (id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars'),
       buildStandardBlCargoDescription(shipment)
@@ -1496,8 +1488,7 @@ export async function generatePopulatedBlDocxBlob(
     const contCount = shipment.containers && shipment.containers.length > 0 ? shipment.containers.length : 1;
     const pCount = shipment.pallets?.length || shipment.totalPallets || 1;
     const movement = val((id, lbl) => id.includes('movement') || lbl.includes('movement type'), shipment.movementType || 'FCL / CY');
-    const rawFreight = val((id, lbl) => id.includes('freight_term') || lbl.includes('freight terms'), shipment.freightTerms || 'FREIGHT COLLECT');
-    const freight = rawFreight.toUpperCase().includes('FREIGHT') ? rawFreight.toUpperCase() : `FREIGHT ${rawFreight.toUpperCase()}`;
+    const freight = '';
 
     const totalContainersPackages = `${String(contCount).padStart(2, '0')} / ${pCount} PLTS`;
 
@@ -1952,7 +1943,11 @@ export async function exportManifestToDocx(
       shipment.placeOfDelivery || shipment.finalDestination || shipment.portOfDischarge || '';
 
     const rawMarks = val((id, lbl) => id.includes('shipping_marks') || lbl.includes('marks & nos') || lbl.includes('marks and numbers')) || shipment.shippingMarks || '';
-    const marksAndNumbers = deduplicateMultiLineText(rawMarks);
+    let marksAndNumbers = deduplicateMultiLineText(rawMarks);
+    const cName = (shipment.consigneeName || '').trim();
+    if (cName) {
+      marksAndNumbers = marksAndNumbers.split('\n').filter(l => l.trim().toLowerCase() !== cName.toLowerCase()).join('\n');
+    }
     const rawCargoDesc = val((id, lbl) => id.includes('cargo_description') || lbl.includes('description of goods') || lbl.includes('particulars')) || buildStandardBlCargoDescription(shipment);
     const cargoDesc = deduplicateMultiLineText(rawCargoDesc);
 
@@ -1962,7 +1957,7 @@ export async function exportManifestToDocx(
     const contCount = shipment.containers && shipment.containers.length > 0 ? shipment.containers.length : 1;
     const pCount = shipment.pallets?.length || shipment.totalPallets || 1;
     const movement = val((id, lbl) => id.includes('movement') || lbl.includes('movement type')) || shipment.movementType || 'FCL / CY';
-    const freightTerms = val((id, lbl) => id.includes('freight_term') || lbl.includes('freight terms')) || shipment.freightTerms || 'FREIGHT PREPAID';
+    const freightTerms = '';
 
     // Standard 5-column grid matching official BL_DRAFT.docx (Total: 10319 dxa)
     tableGridXml = `

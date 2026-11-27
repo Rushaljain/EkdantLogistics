@@ -2,6 +2,7 @@
 // Matches ExtractedShipmentJSON against FormatSchemaJSON and provides two-way sync between DG & BL manifests
 
 import type { ExtractedShipmentJSON, FormatSchemaJSON, MappedManifestField } from '../types/index.ts';
+import { cleanTechnicalName } from './dgTemplates.ts';
 import {
   resolveFieldValueByKeywords,
   buildCombinedDgCargoBlock,
@@ -372,20 +373,21 @@ export function buildMappedManifest(
       const innerCount = shipment.innerPackageCount > 0 ? shipment.innerPackageCount : (shipment.totalBoxes > 0 ? shipment.totalBoxes : shipment.totalPackages);
       const innerType = shipment.innerPackageType ? shipment.innerPackageType.trim() : 'BOXES';
 
-      if (outerCount > 0 && innerCount > 0) {
-        descLines.push(`TOTAL ${outerCount} ${outerType} (${innerCount} ${innerType})`);
-      } else if (outerCount > 0) {
+      if (outerCount > 0) {
         descLines.push(`TOTAL ${outerCount} ${outerType}`);
       } else if (innerCount > 0) {
         descLines.push(`TOTAL ${innerCount} ${innerType}`);
       }
 
       if (shipment.productDescription && shipment.productDescription.trim()) {
-        descLines.push(shipment.productDescription.trim());
+        const cleanDesc = cleanTechnicalName(shipment.productDescription);
+        if (cleanDesc) {
+          descLines.push(cleanDesc);
+        }
       }
       const existingText = descLines.join(' ');
       const hasBrandMention = /brand\s*name|brand\s*:/i.test(existingText);
-      if (shipment.brandName && shipment.brandName.trim() && !hasBrandMention && !existingText.toLowerCase().includes(shipment.brandName.toLowerCase())) {
+      if (shipment.brandName && shipment.brandName.trim() && !hasBrandMention && !/dynex|matrix|max/i.test(shipment.brandName) && !existingText.toLowerCase().includes(shipment.brandName.toLowerCase())) {
         descLines.push(`BRAND: ${shipment.brandName.trim()}`);
       }
       if (shipment.hsnCode && shipment.hsnCode.trim()) {
@@ -445,17 +447,34 @@ export function buildMappedManifest(
       labelLower.includes('marks & nos') ||
       labelLower.includes('marks and numbers');
 
-    if (isMarksField && shipment.pallets && shipment.pallets.length > 0) {
-      const palletRanges = synthesizePalletRanges(shipment.pallets);
-      if (palletRanges.length > 0) {
-        const firstRange = palletRanges[0];
-        if (!resolvedValue.includes(firstRange)) {
-          resolvedValue = resolvedValue.replace(/(?:\r?\n)?PALLET\s*NOS?:\s*[^\r\n]*/gi, '').trim();
-          const palletStr = `PALLET NOS: ${palletRanges.join(', ')}`;
-          resolvedValue = resolvedValue.trim() ? `${resolvedValue.trim()}\n${palletStr}` : palletStr;
+    if (isMarksField) {
+      if (format.documentType === 'BL') {
+        const cName = (shipment.consigneeName || '').trim();
+        if (cName) {
+          const lines = resolvedValue.split('\n').filter(l => l.trim().toLowerCase() !== cName.toLowerCase());
+          resolvedValue = lines.join('\n');
         }
       }
-      resolvedValue = deduplicateMultiLineText(resolvedValue);
+      if (shipment.pallets && shipment.pallets.length > 0) {
+        const palletRanges = synthesizePalletRanges(shipment.pallets);
+        if (palletRanges.length > 0) {
+          const firstRange = palletRanges[0];
+          if (!resolvedValue.includes(firstRange)) {
+            resolvedValue = resolvedValue.replace(/(?:\r?\n)?PALLET\s*NOS?:\s*[^\r\n]*/gi, '').trim();
+            const palletStr = `PALLET NOS: ${palletRanges.join(', ')}`;
+            resolvedValue = resolvedValue.trim() ? `${resolvedValue.trim()}\n${palletStr}` : palletStr;
+          }
+        }
+        resolvedValue = deduplicateMultiLineText(resolvedValue);
+      }
+    }
+
+    // BL Freight Box: keep blank as freight terms are already stated in Description of Goods
+    const isBlFreightBox =
+      format.documentType === 'BL' &&
+      (fieldIdLower === 'bl_freight_terms' || fieldIdLower === 'freight' || fieldIdLower.includes('freight_term') || labelLower === 'freight:' || labelLower === 'freight');
+    if (isBlFreightBox) {
+      resolvedValue = '';
     }
 
     // 10. Container & Seal combined box
