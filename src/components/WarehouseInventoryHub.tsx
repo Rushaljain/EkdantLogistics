@@ -2332,76 +2332,83 @@ export function WarehouseInventoryHub({
               </div>
             </div>
 
-            {/* Master Report Table (25 Columns) */}
+            {/* Master Report Table (22 Columns) */}
             <div className="bg-surface border border-divider rounded-xl shadow-xs overflow-hidden">
               <div className="overflow-x-auto max-h-[720px]">
                 <table className="w-full text-xs font-mono border-collapse select-text">
                   <thead className="bg-surface-secondary sticky top-0 z-10 border-b border-divider text-left text-[11px] font-semibold text-content-secondary">
-                    <tr>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Sr.</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Month</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Invoice No.</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap min-w-[140px]">Customer</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Vehicle No.</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Gate-In Date</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Inv Plt</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Inv Units</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Inv Gross (kg)</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Recd Plt</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Recd Units</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Shortfall Plt</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Shortfall Units</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Stuffed Plt</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap">Stuffed Units</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Stuffing Date</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-medium text-content-secondary">Container No.</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">Seal No.</th>
-                        <th className="py-2 px-2.5 border-r border-divider whitespace-nowrap">SB No.</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap text-emerald-700 font-bold">Bal Plt</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-content-secondary">Bal Units</th>
-                        <th className="py-2 px-2.5 border-r border-divider text-center whitespace-nowrap">Days</th>
-                        <th className="py-2 px-2.5 whitespace-nowrap">Remarks</th>
+                    {/* Row 1: Merged Category Headers */}
+                    <tr className="border-b border-divider/60">
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Customer</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Custom Invoice No</th>
+                      <th colSpan={2} className="py-2 px-2.5 border-r border-divider text-center font-semibold bg-slate-100/80 text-content-primary">As received from EIL-</th>
+                      <th colSpan={2} className="py-2 px-2.5 border-r border-divider text-center font-semibold bg-slate-100/80 text-content-primary">Actual Received from</th>
+                      <th colSpan={2} className="py-2 px-2.5 border-r border-divider text-center font-semibold bg-rose-50 text-rose-800">Short fall</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Carting in Date</th>
+                      <th colSpan={2} className="py-2 px-2.5 border-r border-divider text-center font-semibold bg-slate-100/80 text-content-primary">Actual Stuffed Qty</th>
+                      <th colSpan={2} className="py-2 px-2.5 border-r border-divider text-center font-semibold bg-emerald-50 text-emerald-800">Balance Qty</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Shipping Bill No</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Date</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Container No</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Seal No</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Stuffing Date</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Pick-up Date</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider whitespace-nowrap align-bottom font-semibold text-content-primary">Gate-in Date</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 border-r border-divider text-center whitespace-nowrap align-bottom font-semibold text-content-primary">No of Days in CFS</th>
+                      <th rowSpan={2} className="py-2.5 px-2.5 whitespace-nowrap align-bottom font-semibold text-content-primary">Remark</th>
+                    </tr>
+                    {/* Row 2: Sub-column Headers */}
+                    <tr className="border-b border-divider">
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px]">No of Pallets</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px]">No of Batteries</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px]">No of Pallets</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px]">No of Batteries</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px] text-rose-700">No of Pallets</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px] text-rose-700">No of Batteries</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px]">No of Pallets</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px]">No of Batteries</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px] text-emerald-700">No of Pallets</th>
+                      <th className="py-1.5 px-2.5 border-r border-divider text-right whitespace-nowrap font-medium text-[10px] text-emerald-700">No of Batteries</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-divider/60 tabular-nums">
+                    {filteredEntries.length === 0 ? (
+                      <tr>
+                        <td colSpan={22} className="p-12 text-center text-content-muted">
+                          <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p>No invoices match the selected monthly report criteria.</p>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-divider/60 tabular-nums">
-                      {filteredEntries.length === 0 ? (
-                        <tr>
-                          <td colSpan={23} className="p-12 text-center text-content-muted">
-                            <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                            <p>No invoices match the selected monthly report criteria.</p>
-                          </td>
+                    ) : (
+                      filteredEntries.map((e) => (
+                        <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary">{e.customer}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-bold text-brand-primary">#{e.customInvoiceNo}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right">{e.invoicedPallets}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right">{e.invoicedBatteries.toLocaleString()}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right font-semibold text-emerald-800">{e.actualReceivedPallets || e.invoicedPallets}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right font-semibold text-emerald-800">{(e.actualReceivedBatteries || e.invoicedBatteries).toLocaleString()}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right text-rose-700">{e.shortfallPallets || 0}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right text-rose-700">{e.shortfallBatteries || 0}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.cartingInDate || e.invoiceDate || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right">{e.actualStuffedPallets || 0}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right">{(e.actualStuffedBatteries || 0).toLocaleString()}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right font-bold text-emerald-700">{e.balancePallets || 0}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-right font-medium text-content-primary">{(e.balanceBatteries || 0).toLocaleString()}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.shippingBillNo || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.shippingBillDate || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-medium text-content-primary">{e.containerNo || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.sealNo || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.stuffingDate || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.pickupDate || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.portGateInDate || '—'}</td>
+                          <td className="py-2 px-2.5 border-r border-divider text-center">{e.daysInCFS || 0}</td>
+                          <td className="py-2 px-2.5 whitespace-nowrap text-content-secondary">{e.remarks || '—'}</td>
                         </tr>
-                      ) : (
-                        filteredEntries.map((e, idx) => (
-                          <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap text-content-muted">{idx + 1}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap text-content-secondary font-semibold">{e.month || 'OCT'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-bold text-brand-primary">#{e.customInvoiceNo}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-sans font-medium text-content-primary">{e.customer}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.vehicleNo || '—'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.cartingInDate || e.invoiceDate || '—'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right">{e.invoicedPallets}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right">{e.invoicedBatteries.toLocaleString()}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right">{(e.invoicedGrossWeightKg || 0).toLocaleString()}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right font-semibold text-emerald-800">{e.actualReceivedPallets || e.invoicedPallets}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right font-semibold text-emerald-800">{(e.actualReceivedBatteries || e.invoicedBatteries).toLocaleString()}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right text-rose-700">{e.shortfallPallets || 0}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right text-rose-700">{e.shortfallBatteries || 0}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right">{e.actualStuffedPallets || 0}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right">{(e.actualStuffedBatteries || 0).toLocaleString()}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.stuffingDate || '—'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap font-medium text-content-primary">{e.containerNo || '—'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.sealNo || '—'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider whitespace-nowrap">{e.shippingBillNo || '—'}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right font-bold text-emerald-700">{e.balancePallets || 0}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-right font-medium text-content-primary">{(e.balanceBatteries || 0).toLocaleString()}</td>
-                            <td className="py-2 px-2.5 border-r border-divider text-center">{e.daysInCFS || 0}</td>
-                            <td className="py-2 px-2.5 whitespace-nowrap text-content-secondary">{e.remarks || '—'}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

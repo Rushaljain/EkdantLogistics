@@ -2255,13 +2255,13 @@ export function exportCFSStockReportXlsx(entries: CFSLedgerEntry[], targetMonth:
   const buildSheetForRows = (rows: CFSLedgerEntry[]) => {
     const wsData: any[][] = [];
 
-    // Row 1: Merged Group Headers
+    // Row 1: Merged Group Headers (Matching Client Specification)
     wsData.push([
       '', // Col A (Customer)
       '', // Col B (Custom Invoice No)
-      'As received from EIL-Export', // Col C-D
+      'As received from EIL-', // Col C-D
       '',
-      'Actual Received from Factory', // Col E-F
+      'Actual Received from', // Col E-F
       '',
       'Short fall', // Col G-H
       '',
@@ -2270,7 +2270,7 @@ export function exportCFSStockReportXlsx(entries: CFSLedgerEntry[], targetMonth:
       '',
       'Balance Qty', // Col L-M
       '',
-      '', // Col N (Shipping Bill No.)
+      '', // Col N (Shipping Bill No)
       '', // Col O (Date)
       '', // Col P (Container No)
       '', // Col Q (Seal No)
@@ -2278,10 +2278,10 @@ export function exportCFSStockReportXlsx(entries: CFSLedgerEntry[], targetMonth:
       '', // Col S (Pick-up Date)
       '', // Col T (Gate-in Date)
       '', // Col U (No of Days in CFS)
-      '' // Col V (Remarks)
+      '' // Col V (Remark)
     ]);
 
-    // Row 2: Detailed 22 Columns
+    // Row 2: Detailed 22 Columns (Matching Client Specification)
     wsData.push([
       'Customer', // 1
       'Custom Invoice No', // 2
@@ -2296,7 +2296,7 @@ export function exportCFSStockReportXlsx(entries: CFSLedgerEntry[], targetMonth:
       'No of Batteries', // 11 (K)
       'No of Pallets', // 12 (L = E - J)
       'No of Batteries', // 13 (M = F - K)
-      'Shipping Bill No.', // 14 (N)
+      'Shipping Bill No', // 14 (N)
       'Date', // 15 (O)
       'Container No', // 16 (P)
       'Seal No', // 17 (Q)
@@ -2304,7 +2304,7 @@ export function exportCFSStockReportXlsx(entries: CFSLedgerEntry[], targetMonth:
       'Pick-up Date', // 19 (S)
       'Gate-in Date', // 20 (T)
       'No of Days in CFS', // 21 (U = T - I)
-      'Remarks' // 22 (V)
+      'Remark' // 22 (V)
     ]);
 
     // Row 3+: Data Rows with Live Formulas
