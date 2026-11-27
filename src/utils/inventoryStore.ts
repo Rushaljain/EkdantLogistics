@@ -266,12 +266,28 @@ export function cleanPalletNumber(plt?: string | number): string {
 }
 
 export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry {
-  const invPallets = Number(entry.invoicedPallets) || 0;
-  const invBatteries = Number(entry.invoicedBatteries) || 0;
-  const recPallets = Number(entry.actualReceivedPallets) || 0;
-  const recBatteries = Number(entry.actualReceivedBatteries) || 0;
+  let invPallets = Number(entry.invoicedPallets) || 0;
+  let invBatteries = Number(entry.invoicedBatteries) || 0;
+  let recPallets = Number(entry.actualReceivedPallets) || 0;
+  let recBatteries = Number(entry.actualReceivedBatteries) || 0;
   const stfPallets = Number(entry.actualStuffedPallets) || 0;
   const stfBatteries = Number(entry.actualStuffedBatteries) || 0;
+
+  // Strict physical reconciliation: if pallets array exists, prevent double-counting
+  if (entry.pallets && entry.pallets.length > 0) {
+    if (invPallets > entry.pallets.length && (entry.shortfalls || []).length === 0) {
+      invPallets = entry.pallets.length;
+    }
+    const pendingBat = (entry.pendingInwardBatteries !== undefined)
+      ? entry.pendingInwardBatteries
+      : entry.pallets.reduce((s, p) => s + (p.pendingUnits || 0), 0);
+
+    if (pendingBat > 0 || entry.inwardStatus === 'PENDING_INWARD') {
+      const warehousePallets = entry.pallets.filter((p) => p.status === 'IN_WAREHOUSE');
+      recPallets = warehousePallets.length;
+      recBatteries = warehousePallets.reduce((s, p) => s + (p.receivedBatteries || 0), 0);
+    }
+  }
 
   let shortfallPallets = Math.max(0, invPallets - recPallets);
   let shortfallBatteries = Math.max(0, invBatteries - recBatteries);
@@ -867,7 +883,23 @@ export function getCFSLedgerEntries(): CFSLedgerEntry[] {
     const raw = window.localStorage.getItem(CFS_LEDGER_STORAGE_KEY);
     if (!raw) return [];
     const parsed: CFSLedgerEntry[] = JSON.parse(raw);
-    const recomputed = parsed.map((e) => recomputeCFSDerivedFields(e));
+    let valuesHealed = false;
+    const recomputed = parsed.map((e) => {
+      const rec = recomputeCFSDerivedFields(e);
+      if (
+        rec.invoicedPallets !== e.invoicedPallets ||
+        rec.actualReceivedPallets !== e.actualReceivedPallets ||
+        rec.balancePallets !== e.balancePallets ||
+        rec.balanceBatteries !== e.balanceBatteries
+      ) {
+        valuesHealed = true;
+      }
+      return rec;
+    });
+
+    if (valuesHealed) {
+      saveCFSLedgerEntries(recomputed);
+    }
 
     // Self-healing check: automatically detect and restore orphaned shortfalls
     const { reconciled, changed } = reconcileShortfallsWithActiveInwards(recomputed);
@@ -3439,14 +3471,12 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
   const pendingInwardPallets = finalPalletUnits.filter((p) => (p.pendingUnits || 0) > 0 || p.status === 'PENDING_GATE_IN').length;
   const isInwardPending = pendingInwardBatteries > 0;
 
-  const computedInvoicedPallets = Math.max(
-    params.invoicedPallets || 0,
-    actualRecPallets + totalShortfallPallets + (isInwardPending ? pendingInwardPallets : 0)
-  );
-  const computedInvoicedBatteries = Math.max(
-    params.invoicedBatteries || 0,
-    actualRecBatteries + totalShortfallBatteries + pendingInwardBatteries
-  );
+  const computedInvoicedPallets = params.invoicedPallets > 0
+    ? params.invoicedPallets
+    : finalPalletUnits.length;
+  const computedInvoicedBatteries = params.invoicedBatteries > 0
+    ? params.invoicedBatteries
+    : finalPalletUnits.reduce((sum, p) => sum + (p.invoicedBatteries || p.receivedBatteries || 0), 0);
 
   const stuffedPallets = existingEntry ? existingEntry.actualStuffedPallets || 0 : 0;
   const stuffedBatteries = existingEntry ? existingEntry.actualStuffedBatteries || 0 : 0;

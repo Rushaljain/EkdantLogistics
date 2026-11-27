@@ -471,8 +471,13 @@ export function CompactInvoiceBlock({
               </span>
             )}
 
-            {/* 100% Received / Gate-In Pending */}
-            {entry.actualReceivedPallets < entry.invoicedPallets ? (
+            {/* 100% Received / Gate-In Pending / Pending Inward */}
+            {(entry.inwardStatus === 'PENDING_INWARD' || (entry.pendingInwardBatteries || 0) > 0) ? (
+              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-medium flex items-center space-x-1 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span>Pending Inward ({entry.actualReceivedPallets}/{entry.invoicedPallets}p)</span>
+              </span>
+            ) : entry.actualReceivedPallets < entry.invoicedPallets ? (
               <button
                 type="button"
                 onClick={(e) => {
