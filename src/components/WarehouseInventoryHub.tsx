@@ -4,7 +4,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Boxes,
-  Download,
   CheckCircle2,
   ArrowRight,
   Search,
@@ -18,8 +17,7 @@ import {
   ChevronDown,
   RotateCcw,
   Layers,
-  FileSpreadsheet,
-  Printer
+  FileSpreadsheet
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -39,7 +37,6 @@ import {
   confirmStuffingDispatch,
   buildShipmentFromStockPallets,
   exportCFSMasterReportXlsx,
-  exportCFSStockReportXlsx,
   importCFSExcel,
   formatToDDMMYYYY,
   getDerivedInventoryMovements,
@@ -2292,8 +2289,8 @@ export function WarehouseInventoryHub({
                 </div>
               </div>
 
-              {/* Right: Export & Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2">
+              {/* Right: Export Button */}
+              <div className="flex items-center">
                 <button
                   type="button"
                   onClick={() => exportCFSMasterReportXlsx(filteredEntries, selectedMonth)}
@@ -2302,26 +2299,6 @@ export function WarehouseInventoryHub({
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Export Master Report (.xlsx)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => exportCFSStockReportXlsx(filteredEntries, selectedMonth)}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer text-xs"
-                  title="Export 22-column CFS Stock Report"
-                >
-                  <Download className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Export Stock (.xlsx)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider font-medium flex items-center space-x-1.5 transition-colors shadow-xs cursor-pointer text-xs"
-                  title="Print report / Save to PDF"
-                >
-                  <Printer className="w-3.5 h-3.5 text-slate-700" />
-                  <span>Print / PDF</span>
                 </button>
               </div>
             </div>
