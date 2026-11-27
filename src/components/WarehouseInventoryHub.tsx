@@ -1056,20 +1056,9 @@ export function WarehouseInventoryHub({
           <div className="flex flex-col lg:flex-row items-stretch divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-divider gap-4 lg:gap-0 font-sans">
             {/* Column 1: Carting (Multi-Part Inward Progress) */}
             <div className="flex-1 lg:pr-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-2.5">
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-content-primary tracking-tight">
-                  Carting
-                </h3>
-                {kpis.cartingPendingInvoicesCount > 0 ? (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700 animate-pulse">
-                    Inprogress
-                  </span>
-                ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
-                    Completed
-                  </span>
-                )}
-              </div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-content-primary tracking-tight mb-2.5">
+                Carting
+              </h3>
               <div className="flex items-center divide-x divide-slate-200 dark:divide-divider pt-0.5">
                 <div className="pr-3 sm:pr-4">
                   <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
