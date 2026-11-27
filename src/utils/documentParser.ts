@@ -255,6 +255,7 @@ export async function parseDocumentsToJSON(
   const models = [
     'gemini-3.5-flash-lite',
     'gemini-flash-lite-latest',
+    'gemini-3.5-flash',
     'gemini-flash-latest',
     'gemini-3.8-flash'
   ];
