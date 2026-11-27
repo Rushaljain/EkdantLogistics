@@ -157,9 +157,9 @@ export function CompactInvoiceBlock({
   // Shortfalls & Short-fills
   const shortfallsList: ShortfallRecord[] = entry.shortfalls || [];
   const hasOpenShortfall =
-    shortfallsList.some((s) => s.status !== 'CLEARED' && s.remainingShortfallUnits > 0) ||
-    (entry.shortfallBatteries || 0) > 0 ||
-    (entry.shortfallPallets || 0) > 0;
+    shortfallsList.length > 0
+      ? shortfallsList.some((s) => s.status !== 'CLEARED' && s.status !== 'FULFILLED' && (s.remainingShortfallUnits ?? s.shortfallUnits) > 0)
+      : (entry.shortfallBatteries || 0) > 0 || (entry.shortfallPallets || 0) > 0;
   const isShortFillReconciled = (entry.shortFillLinks || []).length > 0;
   const isFullyDispatched = entry.balancePallets === 0 && (entry.balanceBatteries === 0 || entry.balanceBatteries === undefined) && ((entry.actualStuffedPallets || 0) > 0 || (entry.actualStuffedBatteries || 0) > 0);
   const isPartiallyDispatched = ((entry.actualStuffedBatteries || 0) > 0 || (entry.actualStuffedPallets || 0) > 0) && ((entry.balanceBatteries || 0) > 0 || (entry.balancePallets || 0) > 0);

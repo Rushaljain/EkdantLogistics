@@ -29,6 +29,7 @@ import type {
 import {
   getCFSLedgerEntries,
   recordManualInward,
+  cleanInvoiceNumber,
   type ManualInwardShortfallInput,
   type ManualInwardShortFillInput,
   type RecordManualInwardParams,
@@ -41,6 +42,7 @@ interface ManualInwardModalProps {
   onClose: () => void;
   onSuccess: (newEntry: CFSLedgerEntry) => void;
   editingEntry?: CFSLedgerEntry | null;
+  initialShortfallInvoiceNo?: string;
 }
 
 export type PalletRowReceiptStatus = 'RECEIVED' | 'SHORTFALL' | 'SHORTFILL';
@@ -72,7 +74,8 @@ export function ManualInwardModal({
   isOpen,
   onClose,
   onSuccess,
-  editingEntry
+  editingEntry,
+  initialShortfallInvoiceNo
 }: ManualInwardModalProps): React.JSX.Element | null {
   // Fresh entries fetched whenever modal opens
   const existingEntries = useMemo(() => {
@@ -269,6 +272,47 @@ export function ManualInwardModal({
       }
     }
   }, [isOpen, editingEntry]);
+
+  // Pre-configure shortfill row when launched specifically to record a shortfill for a prior invoice
+  useEffect(() => {
+    if (!isOpen || editingEntry || !initialShortfallInvoiceNo) return;
+    const cleanTarget = cleanInvoiceNumber(initialShortfallInvoiceNo);
+    const targetEntry = allPriorInvoices.find(
+      (e) => cleanInvoiceNumber(e.customInvoiceNo) === cleanTarget
+    );
+    if (!targetEntry) return;
+
+    const openPlts = getOpenPalletsForInvoice(targetEntry.customInvoiceNo);
+    const firstPlt = openPlts[0];
+    const remUnits = firstPlt
+      ? (firstPlt.remainingShortfallUnits ?? firstPlt.shortfallUnits)
+      : (targetEntry.shortfallBatteries || 0);
+
+    setCustomer(targetEntry.customer || '');
+    setConsigneeAddress(targetEntry.consigneeAddress || '');
+    setExporterShipper(targetEntry.exporterShipper || '');
+    setPod(targetEntry.pod || '');
+
+    setPalletRows([
+      {
+        id: `plt_row_${Date.now()}_shortfill_0`,
+        palletNumber: firstPlt ? String(firstPlt.palletNumber) : '1',
+        model: 'STANDARD',
+        billedUnits: remUnits,
+        receiptStatus: 'SHORTFILL',
+        isFullMissing: false,
+        shortfallUnits: '',
+        priorInvoiceNo: targetEntry.customInvoiceNo,
+        priorShortfallPalletNumber: firstPlt ? String(firstPlt.palletNumber) : '1',
+        shortfillEntirePallet: true,
+        shortfillUnits: remUnits,
+        regularUnits: 0,
+        palletNumberChanged: false,
+        arrivedPalletNumber: '',
+        isSaved: true
+      }
+    ]);
+  }, [isOpen, editingEntry, initialShortfallInvoiceNo, allPriorInvoices]);
 
   const handleClose = () => {
     resetForm();
@@ -559,8 +603,9 @@ export function ManualInwardModal({
   // Helper to get open shortfall pallets for a specific prior invoice
   const getOpenPalletsForInvoice = (invNo?: string) => {
     if (!invNo) return [];
+    const targetClean = cleanInvoiceNumber(invNo);
     const entry = allPriorInvoices.find(
-      (e) => e.customInvoiceNo.trim().toUpperCase() === invNo.trim().toUpperCase()
+      (e) => cleanInvoiceNumber(e.customInvoiceNo) === targetClean
     );
     if (!entry) return [];
 
@@ -862,8 +907,9 @@ export function ManualInwardModal({
           }
 
           if (row.priorInvoiceNo && fillUnits > 0) {
+            const targetClean = cleanInvoiceNumber(row.priorInvoiceNo);
             const priorEntry = allPriorInvoices.find(
-              (e) => e.customInvoiceNo.trim().toUpperCase() === row.priorInvoiceNo!.trim().toUpperCase()
+              (e) => cleanInvoiceNumber(e.customInvoiceNo) === targetClean
             );
             shortFillInputs.push({
               priorShortfallInvoiceNo: row.priorInvoiceNo,

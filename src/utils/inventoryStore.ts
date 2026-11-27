@@ -252,6 +252,16 @@ export function safeDiffDays(startDateStr?: string, endDateStr?: string): number
  * - daysInCFS (safe non-negative day difference)
  * - remarks
  */
+export function cleanInvoiceNumber(inv?: string): string {
+  if (!inv) return '';
+  return inv.trim().replace(/^#+/, '').toUpperCase();
+}
+
+export function cleanPalletNumber(plt?: string | number): string {
+  if (plt === undefined || plt === null) return '';
+  return String(plt).trim().replace(/^PLT\s*#?/i, '').replace(/^#/, '');
+}
+
 export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry {
   const invPallets = Number(entry.invoicedPallets) || 0;
   const invBatteries = Number(entry.invoicedBatteries) || 0;
@@ -264,13 +274,18 @@ export function recomputeCFSDerivedFields(entry: CFSLedgerEntry): CFSLedgerEntry
   let shortfallBatteries = Math.max(0, invBatteries - recBatteries);
 
   if (entry.shortfalls && entry.shortfalls.length > 0) {
-    const remUnits = entry.shortfalls.reduce((sum, sf) => sum + (sf.remainingShortfallUnits ?? sf.shortfallUnits), 0);
+    const remUnits = entry.shortfalls.reduce(
+      (sum, sf) => sum + (sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' ? (sf.remainingShortfallUnits ?? sf.shortfallUnits) : 0),
+      0
+    );
     const remPlts = entry.shortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0).length;
     shortfallBatteries = remUnits;
     shortfallPallets = remPlts;
   }
-  const balancePallets = Math.max(0, recPallets - stfPallets);
-  const balanceBatteries = Math.max(0, recBatteries - stfBatteries);
+
+  const isFullyDispatched = (stfPallets > 0 && recPallets <= stfPallets) || Boolean(entry.pallets && entry.pallets.length > 0 && entry.pallets.every((p) => p.status === 'STUFFED_DISPATCHED'));
+  const balancePallets = isFullyDispatched ? 0 : Math.max(0, recPallets - stfPallets);
+  const balanceBatteries = isFullyDispatched ? 0 : Math.max(0, recBatteries - stfBatteries);
 
   const daysInCFS = safeDiffDays(entry.cartingInDate, entry.portGateInDate);
 
@@ -454,6 +469,121 @@ export function reconcileShortfallsWithActiveInwards(entries: CFSLedgerEntry[]):
       shortfallPallets: newShortfallPallets,
       receiptMode: newShortfallBatteries > 0 ? 'SHORT_FALL' : entry.receiptMode,
       updatedAt: new Date().toISOString()
+    });
+  });
+
+  // Forward Reconciliation & Dynamic Multi-Fill Synchronization:
+  // Traverses all active shortFillLinks across all inward entries and dynamically reconciles
+  // them against the target shortfall invoices, updating remainingShortfallUnits and clearing completed shortfalls.
+  entries.forEach((supplierEntry) => {
+    (supplierEntry.shortFillLinks || []).forEach((link) => {
+      const targetClean = cleanInvoiceNumber(link.priorShortfallInvoiceNo);
+      if (!targetClean) return;
+
+      const targetIndex = reconciled.findIndex(
+        (e) => (link.priorShortfallLedgerId && e.id === link.priorShortfallLedgerId) ||
+               cleanInvoiceNumber(e.customInvoiceNo) === targetClean
+      );
+      if (targetIndex === -1) return;
+
+      const targetEntry = reconciled[targetIndex];
+      const sfiPalletClean = cleanPalletNumber(link.palletNumber);
+      const supplierInvClean = cleanInvoiceNumber(supplierEntry.customInvoiceNo);
+      let sfs = targetEntry.shortfalls ? [...targetEntry.shortfalls] : [];
+
+      if (sfs.length === 0 && (targetEntry.shortfallBatteries || 0) > 0) {
+        sfs.push({
+          id: `sf-${targetEntry.customInvoiceNo}-${link.palletNumber || '1'}-${targetEntry.id}`,
+          mode: (targetEntry.shortfallPallets || 0) > 0 ? 'PALLET' : 'UNITS',
+          palletNumber: link.palletNumber || '1',
+          billedUnits: targetEntry.shortfallBatteries || link.unitsFilled,
+          shortfallUnits: targetEntry.shortfallBatteries || link.unitsFilled,
+          remainingShortfallUnits: targetEntry.shortfallBatteries || link.unitsFilled,
+          status: 'OPEN',
+          openedDate: targetEntry.invoiceDate || targetEntry.cartingInDate || '',
+          openedMonth: targetEntry.month || '',
+          linkedShortFills: []
+        });
+      }
+
+      let sfChanged = false;
+      const openSfs = sfs.filter(
+        (s) => s.status !== 'CLEARED' && s.status !== 'FULFILLED' && (s.remainingShortfallUnits ?? s.shortfallUnits) > 0
+      );
+      const singleOpen = openSfs.length === 1 ? openSfs[0] : null;
+
+      sfs = sfs.map((sf) => {
+        const sfPalletClean = cleanPalletNumber(sf.palletNumber);
+        const match = !link.palletNumber || sfPalletClean === sfiPalletClean || (singleOpen && sf.id === singleOpen.id);
+        if (!match) return sf;
+
+        const existingLink = (sf.linkedShortFills || []).find(
+          (lsf) => (lsf.shortFillLedgerId && lsf.shortFillLedgerId === supplierEntry.id) ||
+                   (supplierInvClean && cleanInvoiceNumber(lsf.shortFillInvoiceNo) === supplierInvClean)
+        );
+
+        if (!existingLink) {
+          sfChanged = true;
+          hasChanges = true;
+          const remUnits = sf.remainingShortfallUnits ?? sf.shortfallUnits;
+          const fillAmt = Math.min(link.unitsFilled, remUnits);
+          const newRemaining = Math.max(0, remUnits - fillAmt);
+          const isCleared = newRemaining === 0;
+
+          const lsf: LinkedShortFill = {
+            shortFillInvoiceNo: supplierEntry.customInvoiceNo,
+            shortFillLedgerId: supplierEntry.id,
+            palletNumber: sf.palletNumber,
+            arrivedPalletNumber: link.arrivedPalletNumber,
+            unitsFilled: fillAmt,
+            filledDate: supplierEntry.invoiceDate || supplierEntry.cartingInDate || '',
+            filledMonth: supplierEntry.month || ''
+          };
+
+          return {
+            ...sf,
+            remainingShortfallUnits: newRemaining,
+            status: isCleared ? 'CLEARED' : 'PARTIAL_FILL',
+            clearedDate: isCleared ? (supplierEntry.invoiceDate || '') : sf.clearedDate,
+            clearedMonth: isCleared ? (supplierEntry.month || '') : sf.clearedMonth,
+            linkedShortFills: [...(sf.linkedShortFills || []), lsf]
+          };
+        } else if (sf.status !== 'CLEARED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) <= 0) {
+          sfChanged = true;
+          hasChanges = true;
+          return {
+            ...sf,
+            remainingShortfallUnits: 0,
+            status: 'CLEARED'
+          };
+        }
+        return sf;
+      });
+
+      if (sfChanged) {
+        const isDispatched = Boolean(
+          (targetEntry.actualStuffedPallets || 0) > 0 ||
+          (targetEntry.pallets && targetEntry.pallets.length > 0 && targetEntry.pallets.every((p) => p.status === 'STUFFED_DISPATCHED')) ||
+          (targetEntry.balancePallets === 0 && (targetEntry.actualStuffedBatteries || 0) > 0)
+        );
+        const newRemUnits = sfs.reduce(
+          (sum, sf) => sum + (sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' ? (sf.remainingShortfallUnits ?? sf.shortfallUnits) : 0),
+          0
+        );
+        const newRemPlts = sfs.filter(
+          (sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0
+        ).length;
+
+        reconciled[targetIndex] = recomputeCFSDerivedFields({
+          ...targetEntry,
+          shortfalls: sfs,
+          shortfallBatteries: newRemUnits,
+          shortfallPallets: newRemPlts,
+          balancePallets: isDispatched ? 0 : targetEntry.balancePallets,
+          balanceBatteries: isDispatched ? 0 : targetEntry.balanceBatteries,
+          updatedAt: new Date().toISOString()
+        });
+      }
     });
   });
 
@@ -2984,7 +3114,7 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     // Group short fill inputs by prior invoice so all rows update prior invoice atomically
     const inputsByPriorInvoice = new Map<string, ManualInwardShortFillInput[]>();
     shortFillInputs.forEach((sfi) => {
-      const key = (sfi.priorShortfallLedgerId || sfi.priorShortfallInvoiceNo || '').trim().toUpperCase();
+      const key = cleanInvoiceNumber(sfi.priorShortfallInvoiceNo) || (sfi.priorShortfallLedgerId || '').trim();
       if (!key) return;
       const list = inputsByPriorInvoice.get(key) || [];
       list.push(sfi);
@@ -2994,9 +3124,10 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
     inputsByPriorInvoice.forEach((sfInputs) => {
       const allLedger = getCFSLedgerEntries();
       const firstInput = sfInputs[0];
+      const targetClean = cleanInvoiceNumber(firstInput.priorShortfallInvoiceNo);
       const priorEntry = allLedger.find(
         (e) => (firstInput.priorShortfallLedgerId && e.id === firstInput.priorShortfallLedgerId) ||
-               (e.customInvoiceNo && e.customInvoiceNo.trim().toUpperCase() === firstInput.priorShortfallInvoiceNo.trim().toUpperCase())
+               (targetClean && cleanInvoiceNumber(e.customInvoiceNo) === targetClean)
       );
 
       if (!priorEntry) return;
@@ -3010,14 +3141,22 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
         totalUnitsAllocated += unitsToAllocate;
 
         if (currentShortfalls.length > 0) {
+          const sfiPalletClean = cleanPalletNumber(sfi.palletNumber);
+          const openShortfalls = currentShortfalls.filter(
+            (sf) => sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0
+          );
+          const singleOpenMatch = openShortfalls.length === 1 ? openShortfalls[0] : null;
+
           currentShortfalls = currentShortfalls.map((sf) => {
             if (unitsToAllocate <= 0 || sf.status === 'CLEARED' || sf.status === 'FULFILLED') return sf;
-            const matchPallet = !sfi.palletNumber || String(sf.palletNumber).trim() === String(sfi.palletNumber).trim();
+            const sfPalletClean = cleanPalletNumber(sf.palletNumber);
+            const matchPallet = !sfi.palletNumber || sfPalletClean === sfiPalletClean || (singleOpenMatch && sf.id === singleOpenMatch.id);
             if (!matchPallet) return sf;
 
-            const fillAmt = Math.min(unitsToAllocate, sf.remainingShortfallUnits);
+            const remUnits = sf.remainingShortfallUnits ?? sf.shortfallUnits;
+            const fillAmt = Math.min(unitsToAllocate, remUnits);
             unitsToAllocate -= fillAmt;
-            const newRemaining = Math.max(0, sf.remainingShortfallUnits - fillAmt);
+            const newRemaining = Math.max(0, remUnits - fillAmt);
             const isCleared = newRemaining === 0;
             if (sf.mode === 'PALLET' && isCleared) {
               totalPalletsAllocated += 1;
@@ -3043,27 +3182,58 @@ export function recordManualInward(params: RecordManualInwardParams): CFSLedgerE
             };
           });
         } else {
-          // Fallback for legacy records without shortfalls array
-          if (sfi.palletNumber || (priorEntry.shortfallPallets || 0) > 0) {
-            totalPalletsAllocated += 1;
-          }
+          // Prior entry had no shortfalls array, synthesize a shortfall record and fulfill it
+          const sfUnits = Math.min(unitsToAllocate, priorEntry.shortfallBatteries || unitsToAllocate);
+          const isPalletMode = (priorEntry.shortfallPallets || 0) > 0;
+          if (isPalletMode) totalPalletsAllocated += 1;
+
+          const linked: LinkedShortFill = {
+            shortFillInvoiceNo: params.customInvoiceNo,
+            shortFillLedgerId: entryId,
+            palletNumber: sfi.palletNumber || '1',
+            arrivedPalletNumber: sfi.arrivedPalletNumber,
+            unitsFilled: sfUnits,
+            filledDate: today,
+            filledMonth: entryMonth
+          };
+
+          currentShortfalls.push({
+            id: `sf-${priorEntry.customInvoiceNo}-${sfi.palletNumber || '1'}-${Date.now()}`,
+            mode: isPalletMode ? 'PALLET' : 'UNITS',
+            palletNumber: sfi.palletNumber || '1',
+            billedUnits: sfUnits,
+            shortfallUnits: sfUnits,
+            remainingShortfallUnits: 0,
+            status: 'CLEARED',
+            openedDate: priorEntry.invoiceDate || today,
+            openedMonth: priorEntry.month || entryMonth,
+            clearedDate: today,
+            clearedMonth: entryMonth,
+            linkedShortFills: [linked]
+          });
         }
       });
 
-      const remainingShortfallBatteries = currentShortfalls.length > 0
-        ? currentShortfalls.reduce((sum, sf) => sum + sf.remainingShortfallUnits, 0)
-        : Math.max(0, (priorEntry.shortfallBatteries || 0) - totalUnitsAllocated);
-      const remainingShortfallPallets = currentShortfalls.length > 0
-        ? currentShortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED').length
-        : Math.max(0, (priorEntry.shortfallPallets || 0) - totalPalletsAllocated);
+      const isPriorDispatched = Boolean(
+        (priorEntry.actualStuffedPallets || 0) > 0 ||
+        (priorEntry.pallets && priorEntry.pallets.length > 0 && priorEntry.pallets.every((p) => p.status === 'STUFFED_DISPATCHED')) ||
+        (priorEntry.balancePallets === 0 && (priorEntry.actualStuffedBatteries || 0) > 0)
+      );
 
-      // Cleanly update prior entry's recd plt and recd bat in monthly live reports
+      const remainingShortfallBatteries = currentShortfalls.length > 0
+        ? currentShortfalls.reduce((sum, sf) => sum + (sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' ? (sf.remainingShortfallUnits ?? sf.shortfallUnits) : 0), 0)
+        : 0;
+      const remainingShortfallPallets = currentShortfalls.length > 0
+        ? currentShortfalls.filter((sf) => sf.mode === 'PALLET' && sf.status !== 'CLEARED' && sf.status !== 'FULFILLED' && (sf.remainingShortfallUnits ?? sf.shortfallUnits) > 0).length
+        : 0;
+
+      // Cleanly update prior entry's received metrics and cleared shortfalls
       const updatedPriorEntry = recomputeCFSDerivedFields({
         ...priorEntry,
         actualReceivedPallets: (priorEntry.actualReceivedPallets || 0) + totalPalletsAllocated,
         actualReceivedBatteries: (priorEntry.actualReceivedBatteries || 0) + totalUnitsAllocated,
-        balancePallets: (priorEntry.balancePallets || 0) + totalPalletsAllocated,
-        balanceBatteries: (priorEntry.balanceBatteries || 0) + totalUnitsAllocated,
+        balancePallets: isPriorDispatched ? 0 : Math.max(0, (priorEntry.balancePallets || 0) + totalPalletsAllocated),
+        balanceBatteries: isPriorDispatched ? 0 : Math.max(0, (priorEntry.balanceBatteries || 0) + totalUnitsAllocated),
         shortfalls: currentShortfalls,
         shortfallBatteries: remainingShortfallBatteries,
         shortfallPallets: remainingShortfallPallets,

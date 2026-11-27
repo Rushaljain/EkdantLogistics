@@ -176,6 +176,7 @@ export function WarehouseInventoryHub({
   // Stuffing & Dispatch Modal State
   const [showManualInwardModal, setShowManualInwardModal] = useState<boolean>(false);
   const [editingInwardEntry, setEditingInwardEntry] = useState<CFSLedgerEntry | null>(null);
+  const [shortfallTargetInvoiceNo, setShortfallTargetInvoiceNo] = useState<string | undefined>(undefined);
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
   const [showVarianceModal, setShowVarianceModal] = useState<boolean>(false);
   const [showShortfillsModal, setShowShortfillsModal] = useState<boolean>(false);
@@ -536,12 +537,12 @@ export function WarehouseInventoryHub({
       }
       if (inventoryStatusFilter === 'ALL') {
         const sfStats = getEntryShortfallStats(e, selectedMonth);
-        const hasOpenShortfall = sfStats.shortPlt > 0 || sfStats.shortBat > 0;
+        const hasOpenShortfall = sfStats.remainingPlt > 0 || sfStats.remainingBat > 0;
         return (e.balancePallets || 0) > 0 || hasOpenShortfall;
       }
       if (inventoryStatusFilter === 'IN_WAREHOUSE') {
         const sfStats = getEntryShortfallStats(e, selectedMonth);
-        const hasOpenShortfall = sfStats.shortPlt > 0 || sfStats.shortBat > 0;
+        const hasOpenShortfall = sfStats.remainingPlt > 0 || sfStats.remainingBat > 0;
         return (e.balancePallets || 0) > 0 && e.actualReceivedPallets >= e.invoicedPallets && !hasOpenShortfall;
       }
       if (inventoryStatusFilter === 'SHORTFILL') {
@@ -556,7 +557,7 @@ export function WarehouseInventoryHub({
       }
       if (inventoryStatusFilter === 'SHORTFALL') {
         const sfStats = getEntryShortfallStats(e, selectedMonth);
-        return sfStats.shortPlt > 0 || sfStats.shortBat > 0;
+        return sfStats.remainingPlt > 0 || sfStats.remainingBat > 0;
       }
       return true;
     });
@@ -1474,7 +1475,8 @@ export function WarehouseInventoryHub({
                             showToast(`DG Manifest & BL generated for #${invEntry.customInvoiceNo}!`);
                           }}
                           onRecordShortFill={(invEntry) => {
-                            setEditingInwardEntry(invEntry);
+                            setEditingInwardEntry(null);
+                            setShortfallTargetInvoiceNo(invEntry.customInvoiceNo);
                             setShowManualInwardModal(true);
                           }}
                           onDeleteInvoice={(invEntry) => promptDeleteInvoice(invEntry)}
@@ -2920,8 +2922,10 @@ export function WarehouseInventoryHub({
           onClose={() => {
             setShowManualInwardModal(false);
             setEditingInwardEntry(null);
+            setShortfallTargetInvoiceNo(undefined);
           }}
           editingEntry={editingInwardEntry}
+          initialShortfallInvoiceNo={shortfallTargetInvoiceNo}
           onSuccess={(newEntry) => {
             reloadEntries();
             showToast(
@@ -2930,6 +2934,7 @@ export function WarehouseInventoryHub({
                 : `Inward recorded: #${newEntry.customInvoiceNo} (${newEntry.actualReceivedPallets} Plts, ${newEntry.actualReceivedBatteries} Units)`
             );
             setEditingInwardEntry(null);
+            setShortfallTargetInvoiceNo(undefined);
           }}
         />
       )}
