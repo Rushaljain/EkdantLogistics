@@ -19,7 +19,8 @@ import {
   Loader2,
   Check,
   Pencil,
-  Layers
+  Layers,
+  Lock
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -82,6 +83,14 @@ export function ManualInwardModal({
     if (!isOpen) return [];
     return getCFSLedgerEntries();
   }, [isOpen]);
+
+  const isReadOnly = Boolean(
+    editingEntry && (
+      (editingEntry.actualStuffedPallets || 0) > 0 ||
+      (editingEntry.pallets && editingEntry.pallets.length > 0 && editingEntry.pallets.every((p) => p.status === 'STUFFED_DISPATCHED')) ||
+      (editingEntry.balancePallets === 0 && (editingEntry.actualStuffedBatteries || 0) > 0)
+    )
+  );
 
   // Distinct known customers
   const knownCustomers = useMemo(() => {
@@ -1048,10 +1057,22 @@ export function ManualInwardModal({
             </div>
             <div className="min-w-0">
               <h2 className="text-sm sm:text-base font-bold text-content-primary tracking-tight flex items-center space-x-2">
-                <span className="truncate">{editingEntry ? 'Edit Inward Entry & Verification' : 'Stock-In / Inward Entry & Verification'}</span>
+                <span className="truncate">
+                  {isReadOnly
+                    ? 'View Inward Entry & Details'
+                    : editingEntry
+                    ? 'Edit Inward Entry & Verification'
+                    : 'Stock-In / Inward Entry & Verification'}
+                </span>
                 {editingEntry && (
                   <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-brand-primary/10 text-brand-primary border border-brand-primary/30 shrink-0">
                     #{editingEntry.customInvoiceNo}
+                  </span>
+                )}
+                {isReadOnly && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shrink-0 flex items-center space-x-1">
+                    <Lock className="w-3 h-3 text-amber-600" />
+                    <span>DISPATCHED (LOCKED)</span>
                   </span>
                 )}
               </h2>
@@ -1206,6 +1227,18 @@ export function ManualInwardModal({
             isDragOver ? 'bg-brand-primary/5 ring-2 ring-brand-primary ring-inset rounded-b-2xl' : ''
           }`}
         >
+          {/* Dispatched Lock Banner */}
+          {isReadOnly && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-950 flex items-center justify-between gap-3 animate-fade-in font-sans">
+              <div className="flex items-center space-x-2.5">
+                <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>
+                  <strong>Dispatched Shipment (Read-Only):</strong> This invoice has been stuffed into containers and dispatched. All fields are locked. To edit inward details, undo the dispatch first in <strong>Section 2: Status Logs</strong>.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Error Banner */}
           {errorMsg && (
             <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 text-xs flex items-start space-x-2 animate-fade-in">
@@ -1213,6 +1246,8 @@ export function ManualInwardModal({
               <span>{errorMsg}</span>
             </div>
           )}
+
+          <fieldset disabled={isReadOnly} className="contents">
 
           {/* SECTION 1: COMMERCIAL IDENTITY & CONSIGNEE */}
           <div className="space-y-2.5">
@@ -2237,29 +2272,42 @@ export function ManualInwardModal({
               </span>
             </div>
           </div>
+          </fieldset>
 
           {/* ACTION BUTTONS */}
           <div className="pt-2 border-t border-divider flex items-center justify-end space-x-2.5">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary hover:text-content-primary text-xs font-semibold transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>
-                {isSubmitting
-                  ? (editingEntry ? 'Updating Inward...' : 'Recording Inward...')
-                  : (editingEntry ? 'Save & Update Inward' : 'Confirm Stock-Inward')}
-              </span>
-            </button>
+            {isReadOnly ? (
+              <button
+                type="button"
+                onClick={handleClose}
+                className="px-5 py-2 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Close View
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary hover:text-content-primary text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>
+                    {isSubmitting
+                      ? (editingEntry ? 'Updating Inward...' : 'Recording Inward...')
+                      : (editingEntry ? 'Save & Update Inward' : 'Confirm Stock-Inward')}
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         </form>
       </div>

@@ -17,7 +17,8 @@ import {
   ChevronDown,
   RotateCcw,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Eye
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -1916,19 +1917,35 @@ export function WarehouseInventoryHub({
                               {/* 13. Action */}
                               <td className="p-2.5 text-center whitespace-nowrap">
                                 <div className="flex items-center justify-center space-x-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingInwardEntry(inv);
-                                      setShowManualInwardModal(true);
-                                    }}
-                                    className="px-2 py-1 rounded bg-surface hover:bg-surface-secondary text-brand-primary border border-divider text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
-                                    title={`Edit Inward for Invoice #${inv.customInvoiceNo}`}
-                                  >
-                                    <Pencil className="w-3 h-3" />
-                                    <span>Edit</span>
-                                  </button>
+                                  {isFullyDispatched ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingInwardEntry(inv);
+                                        setShowManualInwardModal(true);
+                                      }}
+                                      className="px-2 py-1 rounded bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                                      title={`View Inward Details for Invoice #${inv.customInvoiceNo} (Dispatched - Locked)`}
+                                    >
+                                      <Eye className="w-3 h-3 text-content-secondary" />
+                                      <span>View</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingInwardEntry(inv);
+                                        setShowManualInwardModal(true);
+                                      }}
+                                      className="px-2 py-1 rounded bg-surface hover:bg-surface-secondary text-brand-primary border border-divider text-xs font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                                      title={`Edit Inward for Invoice #${inv.customInvoiceNo}`}
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                      <span>Edit</span>
+                                    </button>
+                                  )}
                                   {balPlt > 0 && (
                                     <button
                                       type="button"

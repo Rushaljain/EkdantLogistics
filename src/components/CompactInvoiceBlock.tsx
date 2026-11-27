@@ -15,7 +15,8 @@ import {
   Calendar,
   MoreVertical,
   Pencil,
-  ArrowRight
+  ArrowRight,
+  Eye
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -606,8 +607,17 @@ export function CompactInvoiceBlock({
                     }}
                     className="w-full px-3 py-2 hover:bg-surface-secondary text-content-primary flex items-center space-x-2 text-xs transition-colors cursor-pointer"
                   >
-                    <Pencil className="w-3.5 h-3.5 text-brand-primary" />
-                    <span>Edit Inward</span>
+                    {isFullyDispatched ? (
+                      <>
+                        <Eye className="w-3.5 h-3.5 text-content-secondary" />
+                        <span>View Inward</span>
+                      </>
+                    ) : (
+                      <>
+                        <Pencil className="w-3.5 h-3.5 text-brand-primary" />
+                        <span>Edit Inward</span>
+                      </>
+                    )}
                   </button>
                 )}
                 {onLoadDispatchTool && (entry.balancePallets || 0) > 0 && (
