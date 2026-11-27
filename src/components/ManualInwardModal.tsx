@@ -276,7 +276,7 @@ export function ManualInwardModal({
             netWeightKg: p.netWeightKg,
             receiptStatus,
             partialReceipts: p.partialReceipts || [],
-            currentReceivedUnits: p.receivedBatteries || 0,
+            currentReceivedUnits: (p.partialReceipts && p.partialReceipts.length > 0) ? '' : (p.receivedBatteries || ''),
             currentArrivalDate: editingEntry.cartingInDate || '',
             isFullMissing,
             shortfallUnits,
@@ -1836,11 +1836,14 @@ export function ManualInwardModal({
                           </label>
                           <select
                             value={row.receiptStatus}
-                            onChange={(e) =>
-                              handleUpdatePalletRow(row.id, {
-                                receiptStatus: e.target.value as PalletRowReceiptStatus
-                              })
-                            }
+                            onChange={(e) => {
+                              const val = e.target.value as PalletRowReceiptStatus;
+                              const updates: Partial<InwardPalletRow> = { receiptStatus: val };
+                              if (val === 'PARTIALLY_RECEIVED' || val === 'SHORTFALL' || val === 'SHORTFILL') {
+                                updates.isSaved = false;
+                              }
+                              handleUpdatePalletRow(row.id, updates);
+                            }}
                             className={`w-full px-2 py-1.5 rounded-lg font-semibold outline-none cursor-pointer border text-xs ${
                               row.receiptStatus === 'RECEIVED'
                                 ? 'bg-emerald-500/10 text-emerald-800 border-emerald-300'
@@ -1924,133 +1927,197 @@ export function ManualInwardModal({
                         const pendingUnits = Math.max(0, bUnits - totalLandedUnits);
 
                         return (
-                          <div className="p-3 rounded-lg bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 space-y-2.5">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                              <span className="text-xs font-semibold text-indigo-950 dark:text-indigo-200 flex items-center space-x-1.5">
-                                <Boxes className="w-4 h-4 text-indigo-600 shrink-0" />
-                                <span>Partially Received Pallet (Split Intake Across Trucks / Dates)</span>
-                              </span>
-                              <div className="text-[11px] font-mono flex items-center space-x-2">
-                                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
-                                  Landed: {totalLandedUnits} u
+                          <>
+                            {/* When Pallet is Saved: Show Clean Info Banner */}
+                            {row.isSaved ? (
+                              <div className="px-3 py-2 rounded-lg bg-indigo-500/10 text-indigo-950 dark:text-indigo-200 border border-indigo-500/30 text-xs flex items-center justify-between">
+                                <span className="flex items-center space-x-2">
+                                  <Boxes className="w-4 h-4 text-indigo-600 shrink-0" />
+                                  <span>
+                                    <strong>Partially Received Pallet:</strong> {totalLandedUnits} units landed ({pastReceipts.length} {pastReceipts.length === 1 ? 'batch' : 'batches'}) • <strong>{pendingUnits} units</strong> pending in future deliveries.
+                                  </span>
                                 </span>
-                                <span className={`px-2 py-0.5 rounded font-bold ${pendingUnits > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                  {pendingUnits > 0 ? `Pending: ${pendingUnits} u` : 'Fully Landed'}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Intake Controls */}
-                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end pt-1 bg-surface p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
-                              <div className="sm:col-span-4">
-                                <label className="block text-[10px] text-content-secondary font-medium mb-1">
-                                  Date of Arrival
-                                </label>
-                                <DateInput
-                                  value={row.currentArrivalDate || cartingInDate || ''}
-                                  onChange={(d) => handleUpdatePalletRow(row.id, { currentArrivalDate: d })}
-                                />
-                              </div>
-
-                              <div className="sm:col-span-4">
-                                <label className="block text-[10px] text-content-secondary font-medium mb-1">
-                                  Quantity Received (Units)
-                                </label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={pendingUnits > 0 ? pendingUnits : bUnits}
-                                  step="1"
-                                  value={row.currentReceivedUnits !== undefined ? row.currentReceivedUnits : ''}
-                                  placeholder={pendingUnits > 0 ? `Max ${pendingUnits}` : 'Units'}
-                                  onChange={(e) => {
-                                    const val = e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1);
-                                    handleUpdatePalletRow(row.id, { currentReceivedUnits: val });
-                                  }}
-                                  onWheel={(e) => e.currentTarget.blur()}
-                                  className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-indigo-200 text-indigo-900 outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
-                                />
-                              </div>
-
-                              <div className="sm:col-span-4 flex items-center justify-end">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    const val = typeof row.currentReceivedUnits === 'number' ? row.currentReceivedUnits : 0;
-                                    if (val <= 0) {
-                                      setErrorMsg(`Pallet ${row.palletNumber}: Please enter Quantity Received greater than 0.`);
-                                      return;
-                                    }
-                                    if (val > pendingUnits && pastReceipts.length > 0) {
-                                      setErrorMsg(`Pallet ${row.palletNumber}: Received units cannot exceed remaining pending ${pendingUnits} units.`);
-                                      return;
-                                    }
-                                    const arrDate = row.currentArrivalDate || cartingInDate || formatToDDMMYYYY(new Date());
-                                    const newLog: PartialReceiptLog = {
-                                      id: `pr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                                      arrivalDate: arrDate,
-                                      unitsReceived: val,
-                                      recordedAt: new Date().toISOString()
-                                    };
-                                    const updatedLogs = [...pastReceipts, newLog];
-                                    handleUpdatePalletRow(row.id, {
-                                      partialReceipts: updatedLogs,
-                                      currentReceivedUnits: '',
-                                      isSaved: true
-                                    });
-                                    setErrorMsg(null);
-                                  }}
-                                  className="w-full px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                                  onClick={() => handleUpdatePalletRow(row.id, { isSaved: false })}
+                                  className="text-indigo-700 dark:text-indigo-300 hover:text-indigo-950 dark:hover:text-white font-semibold flex items-center space-x-1 cursor-pointer ml-2 shrink-0 underline text-[11px]"
+                                  title="Edit partial intake logs"
                                 >
-                                  <Plus className="w-3.5 h-3.5" />
-                                  <span>Log Intake Batch</span>
+                                  <Pencil className="w-3 h-3" />
+                                  <span>Edit Pallet</span>
                                 </button>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="p-3 rounded-lg bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 space-y-2.5">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold text-indigo-950 dark:text-indigo-200 flex items-center space-x-1.5">
+                                    <Boxes className="w-4 h-4 text-indigo-600 shrink-0" />
+                                    <span>Partially Received Pallet (Split Intake Across Trucks / Dates)</span>
+                                  </span>
+                                  <div className="text-[11px] font-mono flex items-center space-x-2">
+                                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                                      Landed: {totalLandedUnits} u
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded font-bold ${pendingUnits > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                      {pendingUnits > 0 ? `Pending: ${pendingUnits} u` : 'Fully Landed'}
+                                    </span>
+                                  </div>
+                                </div>
 
-                            {/* Past Intake Logs Table */}
-                            {pastReceipts.length > 0 && (
-                              <div className="space-y-1.5">
-                                <span className="text-[10px] font-bold text-content-secondary uppercase tracking-wider block">
-                                  Recorded Intake Logs ({pastReceipts.length}):
-                                </span>
-                                <div className="border border-indigo-100 dark:border-indigo-900/40 rounded-lg overflow-hidden bg-surface">
-                                  <table className="w-full text-[11px] font-mono">
-                                    <thead className="bg-indigo-50/60 dark:bg-indigo-950/40 text-content-secondary text-[10px]">
-                                      <tr>
-                                        <th className="py-1 px-2 text-left">#</th>
-                                        <th className="py-1 px-2 text-left">Date of Arrival</th>
-                                        <th className="py-1 px-2 text-right">Units Received</th>
-                                        <th className="py-1 px-2 text-right">Action</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-indigo-50 dark:divide-indigo-950/40">
-                                      {pastReceipts.map((log, lIdx) => (
-                                        <tr key={log.id}>
-                                          <td className="py-1 px-2 text-content-muted">{lIdx + 1}</td>
-                                          <td className="py-1 px-2 font-medium">{log.arrivalDate}</td>
-                                          <td className="py-1 px-2 text-right font-bold text-emerald-700">+{log.unitsReceived} u</td>
-                                          <td className="py-1 px-2 text-right">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                const updatedLogs = pastReceipts.filter((_, idx) => idx !== lIdx);
-                                                handleUpdatePalletRow(row.id, { partialReceipts: updatedLogs });
-                                              }}
-                                              className="text-red-500 hover:text-red-700 p-0.5 cursor-pointer"
-                                              title="Remove this intake log"
-                                            >
-                                              <Trash2 className="w-3 h-3 inline" />
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
+                                {/* Intake Controls */}
+                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end pt-1 bg-surface p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+                                  <div className="sm:col-span-4">
+                                    <label className="block text-[10px] text-content-secondary font-medium mb-1">
+                                      Date of Arrival
+                                    </label>
+                                    <DateInput
+                                      value={row.currentArrivalDate || cartingInDate || ''}
+                                      onChange={(d) => handleUpdatePalletRow(row.id, { currentArrivalDate: d })}
+                                    />
+                                  </div>
+
+                                  <div className="sm:col-span-4">
+                                    <label className="block text-[10px] text-content-secondary font-medium mb-1">
+                                      Quantity Received (Units)
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max={pendingUnits > 0 ? pendingUnits : bUnits}
+                                      step="1"
+                                      value={row.currentReceivedUnits !== undefined ? row.currentReceivedUnits : ''}
+                                      placeholder={pendingUnits > 0 ? `Max ${pendingUnits}` : 'Units'}
+                                      onChange={(e) => {
+                                        const val = e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1);
+                                        handleUpdatePalletRow(row.id, { currentReceivedUnits: val });
+                                      }}
+                                      onWheel={(e) => e.currentTarget.blur()}
+                                      className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-indigo-200 text-indigo-900 outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                                    />
+                                  </div>
+
+                                  <div className="sm:col-span-4 flex items-center justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const val = typeof row.currentReceivedUnits === 'number' ? row.currentReceivedUnits : 0;
+                                        if (val <= 0) {
+                                          setErrorMsg(`Pallet ${row.palletNumber}: Please enter Quantity Received greater than 0.`);
+                                          return;
+                                        }
+                                        if (val > pendingUnits && pastReceipts.length > 0) {
+                                          setErrorMsg(`Pallet ${row.palletNumber}: Received units cannot exceed remaining pending ${pendingUnits} units.`);
+                                          return;
+                                        }
+                                        const arrDate = row.currentArrivalDate || cartingInDate || formatToDDMMYYYY(new Date());
+                                        const newLog: PartialReceiptLog = {
+                                          id: `pr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                                          arrivalDate: arrDate,
+                                          unitsReceived: val,
+                                          recordedAt: new Date().toISOString()
+                                        };
+                                        const updatedLogs = [...pastReceipts, newLog];
+                                        handleUpdatePalletRow(row.id, {
+                                          partialReceipts: updatedLogs,
+                                          currentReceivedUnits: '',
+                                          isSaved: false
+                                        });
+                                        setErrorMsg(null);
+                                      }}
+                                      className="w-full px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Log Intake Batch</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Past Intake Logs Table */}
+                                {pastReceipts.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <span className="text-[10px] font-bold text-content-secondary uppercase tracking-wider block">
+                                      Recorded Intake Logs ({pastReceipts.length}):
+                                    </span>
+                                    <div className="border border-indigo-100 dark:border-indigo-900/40 rounded-lg overflow-hidden bg-surface">
+                                      <table className="w-full text-[11px] font-mono">
+                                        <thead className="bg-indigo-50/60 dark:bg-indigo-950/40 text-content-secondary text-[10px]">
+                                          <tr>
+                                            <th className="py-1 px-2 text-left">#</th>
+                                            <th className="py-1 px-2 text-left">Date of Arrival</th>
+                                            <th className="py-1 px-2 text-right">Units Received</th>
+                                            <th className="py-1 px-2 text-right">Action</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-indigo-50 dark:divide-indigo-950/40">
+                                          {pastReceipts.map((log, lIdx) => (
+                                            <tr key={log.id}>
+                                              <td className="py-1 px-2 text-content-muted">{lIdx + 1}</td>
+                                              <td className="py-1 px-2 font-medium">{log.arrivalDate}</td>
+                                              <td className="py-1 px-2 text-right font-bold text-emerald-700">+{log.unitsReceived} u</td>
+                                              <td className="py-1 px-2 text-right">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const updatedLogs = pastReceipts.filter((_, idx) => idx !== lIdx);
+                                                    handleUpdatePalletRow(row.id, { partialReceipts: updatedLogs });
+                                                  }}
+                                                  className="text-red-500 hover:text-red-700 p-0.5 cursor-pointer"
+                                                  title="Remove this intake log"
+                                                >
+                                                  <Trash2 className="w-3 h-3 inline" />
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Save Pallet Action */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-indigo-200 dark:border-indigo-800/60">
+                                  <span className="text-[11px] text-indigo-900 dark:text-indigo-300">
+                                    Review recorded logs and click Save Pallet to lock intake into inward.
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const currentInputUnits = typeof row.currentReceivedUnits === 'number' ? row.currentReceivedUnits : 0;
+                                      let finalReceipts = [...pastReceipts];
+                                      if (currentInputUnits > 0) {
+                                        if (currentInputUnits > pendingUnits && pastReceipts.length > 0) {
+                                          setErrorMsg(`Pallet ${row.palletNumber}: Received units cannot exceed remaining pending ${pendingUnits} units.`);
+                                          return;
+                                        }
+                                        const arrDate = row.currentArrivalDate || cartingInDate || formatToDDMMYYYY(new Date());
+                                        finalReceipts.push({
+                                          id: `pr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                                          arrivalDate: arrDate,
+                                          unitsReceived: currentInputUnits,
+                                          recordedAt: new Date().toISOString()
+                                        });
+                                      }
+                                      if (finalReceipts.length === 0) {
+                                        setErrorMsg(`Pallet ${row.palletNumber}: Please enter received units or log at least one intake batch.`);
+                                        return;
+                                      }
+                                      setErrorMsg(null);
+                                      handleUpdatePalletRow(row.id, {
+                                        partialReceipts: finalReceipts,
+                                        currentReceivedUnits: '',
+                                        isSaved: true
+                                      });
+                                    }}
+                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Save Pallet</span>
+                                  </button>
                                 </div>
                               </div>
                             )}
-                          </div>
+                          </>
                         );
                       })()}
 
