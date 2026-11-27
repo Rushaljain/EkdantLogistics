@@ -198,9 +198,10 @@ export function WarehouseInventoryHub({
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
   const [showVarianceModal, setShowVarianceModal] = useState<boolean>(false);
   const [showShortfillsModal, setShowShortfillsModal] = useState<boolean>(false);
-  const [pendingInwardDgPrompt, setPendingInwardDgPrompt] = useState<{
+  const [pendingInwardActionPrompt, setPendingInwardActionPrompt] = useState<{
     entry: CFSLedgerEntry;
     pallets: PalletStockUnit[];
+    actionType: 'DG_BL' | 'DISPATCH_TOOL' | 'DISPATCH_MODAL';
   } | null>(null);
   const [dispatchDetails, setDispatchDetails] = useState(() => {
     const today = formatToDDMMYYYY(new Date());
@@ -695,6 +696,26 @@ export function WarehouseInventoryHub({
       showToast("Select at least 1 pallet to load.");
       return;
     }
+
+    // Intercept if any selected pallet belongs to an invoice with pending inward
+    const pendingEntry = entries.find((e) => {
+      const hasSelected = (e.pallets || []).some((p) => selectedPalletIds.has(p.id));
+      if (!hasSelected) return false;
+      const pendingBat = (e.pendingInwardBatteries !== undefined)
+        ? e.pendingInwardBatteries
+        : (e.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+      return e.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
+    });
+
+    if (pendingEntry) {
+      setPendingInwardActionPrompt({
+        entry: pendingEntry,
+        pallets: selectedPalletsStats.palletList,
+        actionType: 'DISPATCH_TOOL'
+      });
+      return;
+    }
+
     const customer = selectedDispatchCustomer || selectedPalletsStats.palletList[0].brand || 'Consignee';
     const firstEntry = entries.find((e) => (e.pallets || []).some((p) => p.id === selectedPalletsStats.palletList[0].id));
 
@@ -712,6 +733,20 @@ export function WarehouseInventoryHub({
 
   // Action: Open Dispatch Dialog for a specific Invoice in the List
   const handleOpenDispatchForInvoice = (entry: CFSLedgerEntry) => {
+    const pendingBat = (entry.pendingInwardBatteries !== undefined)
+      ? entry.pendingInwardBatteries
+      : (entry.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+    const isPendingInward = entry.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
+
+    if (isPendingInward) {
+      setPendingInwardActionPrompt({
+        entry,
+        pallets: [],
+        actionType: 'DISPATCH_MODAL'
+      });
+      return;
+    }
+
     const availablePallets = (entry.pallets || []).filter((p) => p.status !== 'STUFFED_DISPATCHED');
     if (availablePallets.length === 0) {
       showToast(`Invoice ${entry.customInvoiceNo} has already been fully dispatched.`);
@@ -1425,6 +1460,24 @@ export function WarehouseInventoryHub({
                 <button
                   type="button"
                   onClick={() => {
+                    const pendingEntry = entries.find((e) => {
+                      const hasSelected = (e.pallets || []).some((p) => selectedPalletIds.has(p.id));
+                      if (!hasSelected) return false;
+                      const pendingBat = (e.pendingInwardBatteries !== undefined)
+                        ? e.pendingInwardBatteries
+                        : (e.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+                      return e.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
+                    });
+
+                    if (pendingEntry) {
+                      setPendingInwardActionPrompt({
+                        entry: pendingEntry,
+                        pallets: selectedPalletsStats.palletList,
+                        actionType: 'DISPATCH_MODAL'
+                      });
+                      return;
+                    }
+
                     setDispatchDetails((prev) => ({
                       ...prev,
                       containerNo: prev.containerNo || '',
@@ -1528,6 +1581,20 @@ export function WarehouseInventoryHub({
                           onConfirmFullGateIn={(entryId) => handleConfirmFullGateIn(entryId)}
                           onOpenDispatch={(invEntry) => handleOpenDispatchForInvoice(invEntry)}
                           onLoadDispatchTool={(invEntry) => {
+                            const pendingBat = (invEntry.pendingInwardBatteries !== undefined)
+                              ? invEntry.pendingInwardBatteries
+                              : (invEntry.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+                            const isPendingInward = invEntry.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
+
+                            if (isPendingInward) {
+                              setPendingInwardActionPrompt({
+                                entry: invEntry,
+                                pallets: [],
+                                actionType: 'DISPATCH_TOOL'
+                              });
+                              return;
+                            }
+
                             const targetPallets = (invEntry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
                             if (targetPallets.length === 0) {
                               showToast('No ready pallets available to load into container planner.');
@@ -1539,6 +1606,20 @@ export function WarehouseInventoryHub({
                             showToast(`Loaded ${targetPallets.length} ready pallets from #${invEntry.customInvoiceNo} into Dispatch Tool.`);
                           }}
                           onLoadCheckedIntoWorkspace={(pallets) => {
+                            const pendingBat = (entry.pendingInwardBatteries !== undefined)
+                              ? entry.pendingInwardBatteries
+                              : (entry.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
+                            const isPendingInward = entry.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
+
+                            if (isPendingInward) {
+                              setPendingInwardActionPrompt({
+                                entry,
+                                pallets,
+                                actionType: 'DISPATCH_TOOL'
+                              });
+                              return;
+                            }
+
                             const targetPallets = pallets.length > 0 ? pallets : (entry.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE');
                             if (targetPallets.length === 0) {
                               showToast('No ready pallets available to load into container planner.');
@@ -1555,7 +1636,7 @@ export function WarehouseInventoryHub({
                             const isPendingInward = invEntry.inwardStatus === 'PENDING_INWARD' || pendingBat > 0;
 
                             if (isPendingInward) {
-                              setPendingInwardDgPrompt({ entry: invEntry, pallets });
+                              setPendingInwardActionPrompt({ entry: invEntry, pallets, actionType: 'DG_BL' });
                               return;
                             }
 
@@ -3065,15 +3146,26 @@ export function WarehouseInventoryHub({
           </div>
         </div>
       )}
-      {/* Material Inward Incomplete / DG & BL Interception Modal */}
-      {pendingInwardDgPrompt && (() => {
-        const pEntry = pendingInwardDgPrompt.entry;
+      {/* Material Inward Incomplete / Dispatch & DG Interception Modal */}
+      {pendingInwardActionPrompt && (() => {
+        const pEntry = pendingInwardActionPrompt.entry;
+        const actionType = pendingInwardActionPrompt.actionType;
         const pendBat = (pEntry.pendingInwardBatteries !== undefined)
           ? pEntry.pendingInwardBatteries
           : (pEntry.pallets?.reduce((sum, p) => sum + (p.pendingUnits || 0), 0) || 0);
         const pendPlt = (pEntry.pendingInwardPallets !== undefined)
           ? pEntry.pendingInwardPallets
           : (pEntry.pallets?.filter((p) => (p.pendingUnits || 0) > 0 || p.status === 'PENDING_GATE_IN').length || 0);
+
+        const isDgBl = actionType === 'DG_BL';
+        const isDispatchModal = actionType === 'DISPATCH_MODAL';
+        const isDispatchTool = actionType === 'DISPATCH_TOOL';
+
+        const modalTitle = isDgBl
+          ? 'Material Inward Incomplete'
+          : 'Material Inward Incomplete — Carting In Progress';
+
+        const modalSubtitle = `Invoice #${pEntry.customInvoiceNo} has ${pendBat} pending units`;
 
         return (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
@@ -3083,8 +3175,8 @@ export function WarehouseInventoryHub({
                   <AlertTriangle className="w-5 h-5 text-amber-600" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-content-primary">Material Inward Incomplete</h3>
-                  <p className="text-xs text-content-secondary font-mono">Invoice #{pEntry.customInvoiceNo} has pending stock</p>
+                  <h3 className="text-base font-bold text-content-primary">{modalTitle}</h3>
+                  <p className="text-xs text-content-secondary font-mono">{modalSubtitle}</p>
                 </div>
               </div>
 
@@ -3093,19 +3185,29 @@ export function WarehouseInventoryHub({
                   Invoice <strong className="text-brand-primary">#{pEntry.customInvoiceNo}</strong> has{' '}
                   <strong className="text-amber-700 font-mono font-bold">{pendBat} units</strong> ({pendPlt} pallets) that have not yet arrived in the warehouse.
                 </p>
-                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200">
-                  ⚠️ <strong>Export Compliance Note:</strong> Container DG &amp; BL documents can only be generated for stock that is fully accounted for. Unreceived goods cannot be dispatched unless officially classified as Shortfall.
+
+                <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 space-y-1">
+                  <div className="font-semibold flex items-center space-x-1.5">
+                    <span>⚠️ Operational &amp; Compliance Requirement:</span>
+                  </div>
+                  <p className="text-[11px] leading-normal">
+                    {isDgBl
+                      ? 'Container DG & BL documents can only be generated for stock that is fully accounted for. Unreceived goods cannot be dispatched unless officially classified as Shortfall.'
+                      : 'The Dispatch Tool cannot load unreceived inward stock. To proceed with dispatching only the arrived cargo, unreceived units must be officially converted to Shortfall - Factory Pending. Otherwise, access to the dispatch tool is disabled until remaining material arrives.'}
+                  </p>
                 </div>
+
                 <p>
                   Would you like to record these <strong className="font-mono">{pendBat} pending units</strong> as{' '}
-                  <strong className="text-content-primary">Shortfall - Factory Pending</strong> in the reconciliation logs and proceed with DG &amp; BL generation?
+                  <strong className="text-content-primary">Shortfall - Factory Pending</strong> in the reconciliation logs and proceed with{' '}
+                  {isDgBl ? 'DG & BL generation' : isDispatchModal ? 'container dispatch' : 'Dispatch Tool loading'}?
                 </p>
               </div>
 
               <div className="pt-3 border-t border-divider flex flex-col sm:flex-row items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setPendingInwardDgPrompt(null)}
+                  onClick={() => setPendingInwardActionPrompt(null)}
                   className="w-full sm:w-auto px-4 py-2 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary text-xs font-semibold transition-colors cursor-pointer"
                 >
                   Wait for Inward
@@ -3115,16 +3217,38 @@ export function WarehouseInventoryHub({
                   onClick={() => {
                     const updated = convertPendingInwardToShortfall(pEntry.id, 'Shortfall - Factory Pending');
                     if (updated) {
-                      markLedgerDocumentCreated([updated.id], 'DG');
-                      markLedgerDocumentCreated([updated.id], 'BL');
-                      reloadEntries();
-                      const readyPallets = (updated.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE' && p.receivedBatteries > 0);
-                      const shipment = buildShipmentFromStockPallets(readyPallets, updated.customer, updated.pod, updated.exporterShipper);
-                      onLoadShipmentIntoWorkspace(shipment);
-                      onNavigateToWorkspace();
-                      showToast(`Recorded ${pendBat} units as Shortfall - Factory Pending. DG Manifest & BL ready!`);
+                      if (isDgBl) {
+                        markLedgerDocumentCreated([updated.id], 'DG');
+                        markLedgerDocumentCreated([updated.id], 'BL');
+                        reloadEntries();
+                        const readyPallets = (updated.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE' && p.receivedBatteries > 0);
+                        const shipment = buildShipmentFromStockPallets(readyPallets, updated.customer, updated.pod, updated.exporterShipper);
+                        onLoadShipmentIntoWorkspace(shipment);
+                        onNavigateToWorkspace();
+                        showToast(`Recorded ${pendBat} units as Shortfall - Factory Pending. DG Manifest & BL ready!`);
+                      } else if (isDispatchTool) {
+                        reloadEntries();
+                        const readyPallets = (updated.pallets || []).filter((p) => p.status === 'IN_WAREHOUSE' && p.receivedBatteries > 0);
+                        const promptPallets = pendingInwardActionPrompt.pallets;
+                        const targetPallets = promptPallets.length > 0
+                          ? readyPallets.filter((p) => promptPallets.some((sp) => sp.id === p.id || sp.palletNumber === p.palletNumber))
+                          : readyPallets;
+                        const palletsToLoad = targetPallets.length > 0 ? targetPallets : readyPallets;
+                        if (palletsToLoad.length === 0) {
+                          showToast('All remaining units converted to Shortfall. No floor pallets available to dispatch.');
+                        } else {
+                          const shipment = buildShipmentFromStockPallets(palletsToLoad, updated.customer, updated.pod, updated.exporterShipper);
+                          onLoadShipmentIntoWorkspace(shipment);
+                          onNavigateToWorkspace();
+                          showToast(`Recorded ${pendBat} units as Shortfall. Loaded ${palletsToLoad.length} ready pallets into Dispatch Tool.`);
+                        }
+                      } else if (isDispatchModal) {
+                        reloadEntries();
+                        showToast(`Recorded ${pendBat} units as Shortfall - Factory Pending.`);
+                        handleOpenDispatchForInvoice(updated);
+                      }
                     }
-                    setPendingInwardDgPrompt(null);
+                    setPendingInwardActionPrompt(null);
                   }}
                   className="w-full sm:w-auto px-4 py-2 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                 >
