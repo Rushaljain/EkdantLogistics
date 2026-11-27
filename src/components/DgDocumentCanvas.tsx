@@ -268,10 +268,7 @@ export function DgDocumentCanvas({
                 <EditableDocCell
                   boxNumber=""
                   label="Reference Number(s)"
-                  value={getVal(
-                    'box_4_shipper_reference',
-                    activeShipment.shipperReference || activeShipment.invoiceNumbers?.[0] || ''
-                  )}
+                  value={getVal('box_4_shipper_reference', '')}
                   onChange={(val) => handleUpdate('box_4_shipper_reference', val, 'shipperReference')}
                 />
                 <EditableDocCell
@@ -438,7 +435,17 @@ export function DgDocumentCanvas({
                 </div>
                 <textarea
                   rows={9}
-                  value={getVal('box_14_shipping_marks', cargoBlockText)}
+                  value={(() => {
+                    const rawVal = getVal('box_14_shipping_marks', cargoBlockText);
+                    return rawVal
+                      ? rawVal
+                          .replace(/\bAUTOMOTIVE\b/gi, '')
+                          .replace(/\s{2,}/g, ' ')
+                          .split('\n')
+                          .filter((line) => !/brand\s*new\s*car\s*battery|brand\s*name\s*:\s*dynex/i.test(line))
+                          .join('\n')
+                      : '';
+                  })()}
                   onChange={(e) => handleUpdate('box_14_shipping_marks', e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-[9px] font-mono font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-sky-500 leading-relaxed tracking-tight"
                 />
@@ -652,16 +659,13 @@ export function DgDocumentCanvas({
                     <EditableDocCell
                       boxNumber="4"
                       label="Shipper's reference"
-                      value={getVal(
-                        'box_4_shipper_reference',
-                        activeShipment.shipperReference || activeShipment.invoiceNumbers?.[0] || ''
-                      )}
+                      value={getVal('box_4_shipper_reference', '')}
                       onChange={(val) => handleUpdate('box_4_shipper_reference', val, 'shipperReference')}
                     />
                     <EditableDocCell
                       boxNumber="5"
                       label="Freight Forwarder's reference"
-                      value={getVal('box_5_freight_forwarder_reference', activeShipment.forwarderReference || '')}
+                      value={getVal('box_5_freight_forwarder_reference', '')}
                       onChange={(val) => handleUpdate('box_5_freight_forwarder_reference', val, 'forwarderReference')}
                       stage2Key="forwarderReference"
                     />
@@ -678,17 +682,14 @@ export function DgDocumentCanvas({
                       <EditableDocCell
                         boxNumber="4"
                         label="Shipper's reference"
-                        value={getVal(
-                          'box_4_shipper_reference',
-                          activeShipment.shipperReference || activeShipment.invoiceNumbers?.[0] || ''
-                        )}
+                        value={getVal('box_4_shipper_reference', '')}
                         onChange={(val) => handleUpdate('box_4_shipper_reference', val, 'shipperReference')}
                       />
                     </div>
                     <EditableDocCell
                       boxNumber="5"
                       label="Freight Forwarder's reference"
-                      value={getVal('box_5_freight_forwarder_reference', activeShipment.forwarderReference || '')}
+                      value={getVal('box_5_freight_forwarder_reference', '')}
                       onChange={(val) => handleUpdate('box_5_freight_forwarder_reference', val, 'forwarderReference')}
                       stage2Key="forwarderReference"
                     />
@@ -758,12 +759,7 @@ export function DgDocumentCanvas({
                 <EditableDocCell
                   boxNumber="18"
                   label={isDiamond ? 'Total cube (m3)' : 'Cube (m³)'}
-                  value={getVal(
-                    'box_18_cube_m3',
-                    (activeShipment.volumeCbm && activeShipment.volumeCbm > 0)
-                      ? `${activeShipment.volumeCbm} CBM`
-                      : (activePallets > 0 ? `${Number((activePallets * 1.15).toFixed(1))} CBM` : '')
-                  )}
+                  value={getVal('box_18_cube_m3', '')}
                   onChange={(val) => handleUpdate('box_18_cube_m3', val, 'volumeCbm')}
                 />
               </div>
@@ -773,29 +769,13 @@ export function DgDocumentCanvas({
             <div className="px-3 py-1 bg-white border-t border-slate-900 flex items-center justify-between font-mono text-[8.5px] font-bold text-slate-900">
               <span className="ml-auto mr-6 uppercase text-slate-700">Total cube (m3)</span>
               <span>
-                {getVal(
-                  'box_18_cube_m3',
-                  (activeShipment.volumeCbm && activeShipment.volumeCbm > 0)
-                    ? `${activeShipment.volumeCbm} CBM`
-                    : (activePallets > 0 ? `${Number((activePallets * 1.15).toFixed(1))} CBM` : '')
-                )}
+                {getVal('box_18_cube_m3', '')}
               </span>
             </div>
 
             {/* Extra "Other Details" Horizontal Bar */}
             <div className="p-1.5 bg-slate-100 font-mono text-[8.5px] font-bold text-slate-900 border-t border-slate-900">
-              {isNomination && (
-                <span>Other Details : UN PACKING CODE :- {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'}</span>
-              )}
-              {isVstar && (
-                <span>Other Details : UN PACKING CODE: {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'}</span>
-              )}
-              {isDiamond && (
-                <span>Other Details : UN PACKAGING NO. {(activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134').replace(/^UN\s*PACKAGING\s*NO\.?\s*/i, '')}</span>
-              )}
-              {!isNomination && !isVstar && !isDiamond && (
-                <span>Other Details : UN PACKING CODE: {activeShipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134'}</span>
-              )}
+              <span>Other Details : </span>
             </div>
 
             {/* Official IMO Equipment Row (Boxes 15, 16, 17, 18, 19) */}

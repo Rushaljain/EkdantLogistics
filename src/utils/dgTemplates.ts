@@ -262,6 +262,36 @@ export function filterShipmentByDgCargoItems(
 }
 
 /**
+ * Cleans the technical name for dangerous goods declaration:
+ * - Strips "AUTOMOTIVE"
+ * - Strips commercial brand/marketing details (e.g. "BRAND NEW CAR BATTERY BRAND NAME : DYNEX MATRIX / DYNEX MAX")
+ * - Strips redundant parenthetical clauses (e.g. "(LEAD ACID STORAGE BATTERIES)")
+ * - Falls back cleanly to 'LEAD ACID STORAGE BATTERIES'
+ */
+export function cleanTechnicalName(desc?: string): string {
+  if (!desc || !desc.trim()) return 'LEAD ACID STORAGE BATTERIES';
+  let cleaned = desc
+    .split('\n')
+    .map((line) => line.trim())
+    // Filter out brand, model, commercial invoice marketing lines
+    .filter((line) => !/brand\s*new|brand\s*name|dynex|matrix|max\b|car\s*battery/i.test(line))
+    .join(' ')
+    .trim();
+
+  // Strip inline occurrences of commercial marketing text if on single line
+  cleaned = cleaned.replace(/\b(?:BRAND\s*NEW|BRAND\s*NAME|DYNEX\s*MATRIX|DYNEX\s*MAX|CAR\s*BATTERY)\b.*$/i, '').trim();
+  // Remove "AUTOMOTIVE"
+  cleaned = cleaned.replace(/\bAUTOMOTIVE\b/gi, '').replace(/\s{2,}/g, ' ').trim();
+  // Remove redundant parentheses like "(LEAD ACID STORAGE BATTERIES)"
+  cleaned = cleaned.replace(/\([^)]*lead\s*acid[^)]*\)/gi, '').replace(/\s{2,}/g, ' ').trim();
+
+  if (!cleaned || /^(?:NA|N\/A|NIL|NONE|-)$/i.test(cleaned)) {
+    return 'LEAD ACID STORAGE BATTERIES';
+  }
+  return cleaned;
+}
+
+/**
  * Generates the Box 14 DG Cargo text block tailored 1:1 to the chosen template layout
  */
 export function buildTemplateCargoBlock(
@@ -273,7 +303,7 @@ export function buildTemplateCargoBlock(
   const imdg = IMDG_UN_LOOKUP[unDigits] || IMDG_UN_LOOKUP['2794'];
   const psn = (shipment.properShippingName || imdg?.properShippingName || 'BATTERIES, WET, FILLED WITH ACID').trim();
   const rawTech = (shipment.productDescription || '').trim();
-  const techName = rawTech && rawTech.toLowerCase() !== psn.toLowerCase() ? rawTech : 'LEAD ACID STORAGE BATTERIES';
+  const techName = cleanTechnicalName(rawTech && rawTech.toLowerCase() !== psn.toLowerCase() ? rawTech : '');
   const imoClass = (shipment.imoClass || imdg?.imoClass || '8').trim();
   const pg = (shipment.packingGroup || imdg?.packingGroup || 'III').trim();
   const ems = (shipment.emsNumber || imdg?.emsNumber || 'F-A, S-B').trim();
@@ -295,6 +325,9 @@ export function buildTemplateCargoBlock(
       const filtered = rawMarks
         .split('\n')
         .filter((l) => !/^(?:PALLET\s*NOS?|PALLET\s*NO|PALLETS?|\d+\s*TO\s*\d+)/i.test(l.trim()))
+        .filter((l) => !/brand\s*new\s*car\s*battery|brand\s*name\s*:\s*dynex/i.test(l.trim()))
+        .map((l) => l.replace(/\bAUTOMOTIVE\b/gi, '').replace(/\s{2,}/g, ' ').trim())
+        .filter(Boolean)
         .join('\n')
         .trim();
       if (filtered && !/un\s*(?:no|number)|proper\s*shipping|class\s*8|imdg\s*code/i.test(filtered)) {
@@ -412,7 +445,7 @@ export function buildTemplateCargoBlock(
       const lines: string[] = [
         `UN: ${unNo || '2794'}`,
         `PROPER SHIPPING NAME: ${psn || 'Batteries, wet-filled with acid'}`,
-        `TECHNICAL NAME (IF ANY): ${techName || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES'}`,
+        `TECHNICAL NAME (IF ANY): ${techName || 'LEAD ACID STORAGE BATTERIES'}`,
         `CLASS: ${imoClass || '8'}`,
         'SUB RISK (IF ANY): NA',
         'PACKING GROUP: NIL',

@@ -1770,7 +1770,7 @@ export function buildShipmentFromStockPallets(
     portOfDischarge: destinationPort || src?.portOfDischarge || '',
     placeOfDelivery: destinationPort || src?.placeOfDelivery || '',
     finalDestination: destinationPort || src?.finalDestination || '',
-    productDescription: src?.productDescription || 'LEAD ACID AUTOMOTIVE STORAGE BATTERIES',
+    productDescription: src?.productDescription ? src.productDescription.replace(/\bAUTOMOTIVE\b/gi, '').replace(/\s{2,}/g, ' ').trim() : 'LEAD ACID STORAGE BATTERIES',
     brandName: src?.brandName || (palletItems[0]?.brand || ''),
     hsnCode: src?.hsnCode || '85071000',
     properShippingName: 'BATTERIES, WET, FILLED WITH ACID',

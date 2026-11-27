@@ -165,10 +165,8 @@ function generateDgManifestHtml(
   }
 
   const box3Page = val((id, lbl) => id.includes('box_3') || lbl.includes('page of page') || id.includes('page')) || (isOneLine || isMscLine ? '3 Page of Page' : '1 OF 1');
-  const defaultShipperRef = shipment.shipperReference || (shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0 ? shipment.invoiceNumbers.join(', ') : '') || '';
-  const box4ShipperRef = val((id, lbl) => id.includes('box_4') || lbl.includes("shipper's ref") || lbl.includes('shipper ref')) || defaultShipperRef;
-  const defaultForwarderRef = shipment.forwarderReference || '';
-  const box5ForwarderRef = val((id, lbl) => id.includes('box_5') || lbl.includes('forwarder') || lbl.includes('freight forwarder')) || defaultForwarderRef;
+  const box4ShipperRef = ''; // Kept blank always as per client requirement
+  const box5ForwarderRef = ''; // Kept blank always as per client requirement
   const box6Consignee = val((id, lbl) => id.includes('box_6') || lbl.includes('consignee')) ||
     buildCleanPartyBlock(shipment.consigneeName, shipment.consigneeAddress);
   const defaultCarrier = isCmaCgm ? 'CMA-CGM AGENCIES INDIA PVT.LTD.' : (isKmtc ? 'KOREA MARINE TRANSPORT CO. LTD.' : '');
@@ -183,10 +181,7 @@ function generateDgManifestHtml(
 
   const box16Gross = formatWeightWithKgs(val((id, lbl) => id.includes('box_16') || lbl.includes('gross mass')), shipment.grossWeightKg);
   const box17Net = formatWeightWithKgs(val((id, lbl) => id.includes('box_17') || lbl.includes('net mass')), shipment.netWeightKg);
-  const totalPallets = shipment.totalPallets || shipment.outerPackagingCount || shipment.pallets?.length || 0;
-  const defaultVolumeCbm = totalPallets > 0 ? Number((totalPallets * 1.15).toFixed(1)) : 0;
-  const effectiveVolume = (shipment.volumeCbm && shipment.volumeCbm > 0) ? shipment.volumeCbm : defaultVolumeCbm;
-  const box18Cube = val((id, lbl) => id.includes('box_18') || lbl.includes('cube') || lbl.includes('m³') || lbl.includes('cbm')) || (effectiveVolume > 0 ? `${effectiveVolume} CBM` : '');
+  const box18Cube = ''; // Kept blank always as per client requirement
 
   const box19Tare = val((id, lbl) => id.includes('box_18_tare') || id.includes('box_19_tare') || lbl.includes('tare mass')) || (shipment.tareWeightKg > 0 ? `${shipment.tareWeightKg.toLocaleString()} KGS` : '2,150 KGS');
   const calculatedVgm = (shipment.grossWeightKg || 0) + (shipment.tareWeightKg || 2150);
@@ -627,12 +622,12 @@ function generateDgManifestHtml(
           Total cube (m3)
         </td>
         <td class="right-col" style="font-weight: bold; font-size: 8px; border-top: 1px solid #000; padding: 3px 6px;">
-          <div class="box-val box-val-bold">${escapeHtml(box18Cube || '')}</div>
+          <div class="box-val"></div>
         </td>
       </tr>
       <tr>
         <td colspan="4" style="background: #f8fafc; font-weight: bold; font-family: monospace; font-size: 7.5px; padding: 3px 6px; border-top: 1px solid #000;">
-          Other Details : UN PACKING CODE: ${escapeHtml(shipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134')}
+          Other Details : 
         </td>
       </tr>
     </table>
@@ -1252,7 +1247,6 @@ export async function generatePopulatedDocxBlob(
     const imoClass = shipment.imoClass || '8';
     const pg = shipment.packingGroup || 'III';
     const ems = shipment.emsNumber || 'F-A, S-B';
-    const unPkg = shipment.unPackingCode || '';
     const sgg = shipment.segregationGroup || 'SGG1';
     const tareVal = shipment.tareWeightKg || 2200;
     const vgmVal = (shipment.grossWeightKg || 0) + tareVal;
@@ -1349,10 +1343,6 @@ export async function generatePopulatedDocxBlob(
 
 
 
-    const totalPallets = shipment.totalPallets || shipment.outerPackagingCount || shipment.pallets?.length || 0;
-    const defaultVolumeCbm = totalPallets > 0 ? Number((totalPallets * 1.15).toFixed(1)) : 0;
-    const effectiveVolume = (shipment.volumeCbm && shipment.volumeCbm > 0) ? shipment.volumeCbm : defaultVolumeCbm;
-
     const data: Record<string, string> = {
       shipperBlock: sParsed.compactBlock,
       shipperName: sParsed.name,
@@ -1372,8 +1362,8 @@ export async function generatePopulatedDocxBlob(
       ),
       bookingNo: val('box_2_transport_document_number', shipment.bookingNumber || ''),
       pageInfo: val('box_3_page_of_page', '1 OF 1'),
-      shipperRef: val('box_4_shipper_reference', shipment.shipperReference || (shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0 ? shipment.invoiceNumbers.join(', ') : '') || ''),
-      forwarderRef: val('box_5_freight_forwarder_reference', shipment.forwarderReference || ''),
+      shipperRef: '',
+      forwarderRef: '',
       carrierName: carrier,
       vesselVoyage: val(
         'box_10_vessel_and_voyage_number',
@@ -1389,10 +1379,10 @@ export async function generatePopulatedDocxBlob(
       box14CargoBlock: cargoBlock,
       grossMass: formatWeightWithKgs(val('box_16_gross_mass_kg', val('box_16_gross_mass', '')), shipment.grossWeightKg),
       netMass: formatWeightWithKgs(val('box_17_net_mass_kg', val('box_17_net_mass', '')), shipment.netWeightKg),
-      cube: val('box_18_cube_m3', effectiveVolume > 0 ? `${effectiveVolume} CBM` : (isDiamond ? '25 CBM' : '')),
-      totalCube: val('box_18_cube_m3', effectiveVolume > 0 ? `${effectiveVolume} CBM` : (isDiamond ? '25 CBM' : '')),
-      unPackingCode: val('box_other_details_un_pack', '') || `UN PACKING CODE: ${unPkg || '4G/Z 30/S/**IND/K/19700134'}`,
-      unCode: val('box_other_details_un_code', (shipment as any).unCode || ''),
+      cube: '',
+      totalCube: '',
+      unPackingCode: '',
+      unCode: '',
       containerNo: deduplicateTokens(val('box_19_container_and_seal_number', val('box_19_container_number', shipment.containerNumber || ''))),
       sealNo: deduplicateTokens(val('box_16_seal_number', shipment.sealNumber || '')),
       containerType: val('box_17_container_size_type', isDiamond ? '01X20 GP' : (isOneLine || isMscLine ? "1x20'" : (isNomination || isVstar ? '20 GP' : (shipment.containerType || "20' GP")))),
@@ -1717,7 +1707,6 @@ export async function exportManifestToDocx(
         const imoClass = shipment.imoClass || '8';
         const pg = shipment.packingGroup || 'III';
         const ems = shipment.emsNumber || 'F-A, S-B';
-        const unPkg = shipment.unPackingCode || '4G/Z 30/S/**IND/K/19700134';
         const sgg = shipment.segregationGroup || 'SGG1';
         const carrierDefault = tmplId === 'CMA_CGM_DG'
           ? 'CMA-CGM AGENCIES INDIA PVT. LTD.'
@@ -1769,7 +1758,7 @@ export async function exportManifestToDocx(
           consigneeAddressLine1: cParsed.addr1,
           consigneeAddressLine2: cParsed.addr2,
           consigneeAddressLine3: cParsed.addr3,
-          shipperRef: val('box_4_shipper_reference', shipment.shipperReference || (shipment.invoiceNumbers && shipment.invoiceNumbers.length > 0 ? shipment.invoiceNumbers.join(', ') : '') || ''),
+          shipperRef: '',
           emergencyContact: cleanEmergency,
           carrierName: carrier,
           bookingNo: val('box_2_transport_document_number', shipment.bookingNumber || ''),
@@ -1797,8 +1786,8 @@ export async function exportManifestToDocx(
           hazardClass: imoClass,
           subsidiaryRisk: 'NA',
           packingGroup: pg,
-          unPackingCode: unPkg || '4G/Z 30/S/**IND/K/19700134',
-          unCode: (shipment as any).unCode || '',
+          unPackingCode: '',
+          unCode: '',
           emsNo: ems,
           flashPoint: 'NA',
           marinePollutant: shipment.marinePollutant ? 'YES' : 'NA',
