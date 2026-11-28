@@ -14,7 +14,8 @@ import {
   FileSpreadsheet,
   Download,
   Scissors,
-  Undo2
+  Undo2,
+  Package
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type {
@@ -22,11 +23,12 @@ import type {
   ExtractedPallet,
   ContainerType,
   ContainerAllocation,
-  MergedTransfer
+  MergedTransfer,
+  FloorStockItem
 } from '../types/index.ts';
 import { CONTAINER_SPECS } from '../types/index.ts';
 import { autoAllocate20GPContainers } from '../utils/manifestKeywordReference.ts';
-import { toExactWeight } from '../utils/inventoryStore.ts';
+import { toExactWeight, getFloorStockItems } from '../utils/inventoryStore.ts';
 
 export interface ContainerItem {
   id: string;
@@ -246,6 +248,55 @@ export function ContainerBayWorkspace({
     containerType: '20GP',
     tareWeightKg: 0
   });
+
+  // Floor Stock Picker State
+  const [showFloorStockPicker, setShowFloorStockPicker] = useState<boolean>(false);
+  const floorStockWarehouseItems = useMemo(() => getFloorStockItems(), [showFloorStockPicker]);
+
+  const handleAddFloorStockToContainer = (item: FloorStockItem) => {
+    const baseNum = String(item.palletNumber).replace(/^PLT\s*#?/i, '');
+    const palletNum = pallets.some((p) => String(p.palletNumber) === baseNum)
+      ? `${baseNum}_loose_${Date.now().toString().slice(-4)}`
+      : baseNum;
+
+    const newPallet: ExtractedPallet = {
+      id: item.id,
+      palletNumber: palletNum,
+      parentPalletNumber: item.parentPalletNumber || baseNum,
+      isSplitPiece: true,
+      modelCode: item.model || 'STANDARD',
+      brand: item.brand || undefined,
+      invoiceNumber: item.invoiceNo || undefined,
+      boxCount: item.looseUnits,
+      grossWeightKg: item.grossWeightKg || 0,
+      netWeightKg: item.netWeightKg || 0,
+      sourceFile: `CFS_FLOOR_STOCK_INV_${item.invoiceNo}`
+    };
+
+    const nextPallets = [...pallets, newPallet];
+    setPallets(nextPallets);
+    setPalletAllocationMap((prev) => ({
+      ...prev,
+      [palletNum]: activeContainer.id
+    }));
+
+    const nextInvoiceNumbers = Array.from(new Set([...(shipmentJson.invoiceNumbers || []), item.invoiceNo]));
+    onUpdateShipment({
+      ...shipmentJson,
+      invoiceNumbers: nextInvoiceNumbers,
+      pallets: nextPallets.map((p) => ({
+        palletNumber: String(p.palletNumber),
+        modelCode: p.modelCode,
+        brand: p.brand || '',
+        boxCount: p.boxCount,
+        grossWeightKg: p.grossWeightKg || 0,
+        netWeightKg: p.netWeightKg || 0,
+        sourceFile: p.sourceFile || 'CFS_WAREHOUSE'
+      }))
+    });
+
+    setShowFloorStockPicker(false);
+  };
 
   // Split / Move Units State
   const [splitMoveState, setSplitMoveState] = useState<{
@@ -1368,6 +1419,17 @@ export function ContainerBayWorkspace({
                         <Boxes className="w-3.5 h-3.5 text-brand-accent" />
                         <span className="font-medium">Add Container</span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddMenu(false);
+                          setShowFloorStockPicker(true);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-content-primary hover:bg-surface-secondary flex items-center space-x-2 transition-colors border-t border-divider/60 cursor-pointer"
+                      >
+                        <Package className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="font-medium">Add Floor Stock (Loose)</span>
+                      </button>
                     </div>
                   </>
                 )}
@@ -1442,6 +1504,11 @@ export function ContainerBayWorkspace({
                         {p.isSplitPiece && (
                           <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-800 shrink-0">
                             SPLIT
+                          </span>
+                        )}
+                        {p.parentPalletNumber && (
+                          <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded border bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800 shrink-0" title={`Origin Pallet: #${p.parentPalletNumber}`}>
+                            Ex-PLT #{p.parentPalletNumber}
                           </span>
                         )}
                         {p.modelCode && (
@@ -2467,6 +2534,78 @@ export function ContainerBayWorkspace({
                 className="px-4 py-1.5 rounded-lg text-xs font-bold bg-brand-primary hover:bg-brand-primary-hover text-brand-primary-text shadow-sm cursor-pointer"
               >
                 Add Container
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floor Stock (Loose Stock) Picker Modal */}
+      {showFloorStockPicker && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-surface border border-divider rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-divider">
+              <div className="flex items-center space-x-2">
+                <Package className="w-4 h-4 text-amber-600" />
+                <h3 className="text-sm font-bold text-content-primary">
+                  Add Floor Stock (Loose Units) to Container
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFloorStockPicker(false)}
+                className="text-content-muted hover:text-content-primary p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-content-secondary leading-relaxed">
+              Select loose boxes or pending pallets retained in warehouse from partial dispatches. These will be loaded into active container (<strong>{activeContainer.label}</strong>).
+            </p>
+
+            <div className="max-h-[360px] overflow-y-auto space-y-2 pr-1 font-mono">
+              {floorStockWarehouseItems.length === 0 ? (
+                <div className="p-8 text-center text-xs text-content-secondary border border-dashed border-divider rounded-xl">
+                  No loose floor stock currently in warehouse.
+                </div>
+              ) : (
+                floorStockWarehouseItems.map((item: FloorStockItem) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl border border-divider bg-surface-secondary/40 hover:bg-surface-secondary/80 flex items-center justify-between text-xs transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-brand-primary">PLT #{item.palletNumber}</span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                          Ex-PLT #{item.parentPalletNumber || item.palletNumber}
+                        </span>
+                        <span className="text-content-primary font-bold">({item.looseUnits} Units)</span>
+                      </div>
+                      <div className="text-[11px] text-content-secondary mt-0.5">
+                        Invoice: <strong>#{item.invoiceNo}</strong> • Consignee: {item.customer} • {item.model}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAddFloorStockToContainer(item)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-primary hover:bg-brand-primary-hover text-white shadow-2xs transition-colors cursor-pointer shrink-0 ml-3"
+                    >
+                      + Add to Plan
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-divider">
+              <button
+                type="button"
+                onClick={() => setShowFloorStockPicker(false)}
+                className="px-4 py-1.5 rounded-lg border border-divider bg-surface hover:bg-surface-secondary text-xs font-medium text-content-primary cursor-pointer"
+              >
+                Cancel
               </button>
             </div>
           </div>

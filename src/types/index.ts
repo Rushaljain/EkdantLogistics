@@ -690,6 +690,7 @@ export interface PalletStockUnit {
   // Sprint 7.1 Split Piece & Unit Allocation Metadata
   parentPalletNumber?: string | number;
   isSplitPiece?: boolean;
+  isFloorStock?: boolean;
   allocatedUnits?: number;
   remainingUnits?: number;
   mergedTransfers?: MergedTransfer[];
@@ -800,6 +801,26 @@ export interface CustomerStockSummary {
   required20GPContainers: number;
   alertType: CustomerStockAlert;
   alertMessage: string;
+}
+
+export interface FloorStockItem {
+  id: string;
+  entryId: string;
+  invoiceNo: string;
+  invoiceDate: string;
+  customer: string;
+  pod: string;
+  palletNumber: string | number;
+  parentPalletNumber?: string | number;
+  model: string;
+  brand: string;
+  looseUnits: number;
+  invoicedUnits: number;
+  grossWeightKg: number;
+  netWeightKg: number;
+  landedDate: string;
+  isFloorStock: boolean;
+  pallet: PalletStockUnit;
 }
 
 // =========================================================================

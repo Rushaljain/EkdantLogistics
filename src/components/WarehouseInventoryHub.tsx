@@ -25,7 +25,8 @@ import type {
   ExtractedShipmentJSON,
   PalletStockUnit,
   ShortfallRecord,
-  TrashBinItem
+  TrashBinItem,
+  FloorStockItem
 } from '../types/index.ts';
 import {
   type CFSMonth,
@@ -37,6 +38,7 @@ import {
   confirmFullGateIn,
   confirmStuffingDispatch,
   buildShipmentFromStockPallets,
+  getFloorStockItems,
   exportCFSMasterReportXlsx,
   importCFSExcel,
   formatToDDMMYYYY,
@@ -198,6 +200,37 @@ export function WarehouseInventoryHub({
   const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
   const [showVarianceModal, setShowVarianceModal] = useState<boolean>(false);
   const [showShortfillsModal, setShowShortfillsModal] = useState<boolean>(false);
+  const [showFloorStockModal, setShowFloorStockModal] = useState<boolean>(false);
+  const [floorStockSearch, setFloorStockSearch] = useState<string>('');
+  const [palletUnitMap, setPalletUnitMap] = useState<Record<string, number>>({});
+
+  const handleUpdatePalletUnits = (palletId: string, count: number) => {
+    setPalletUnitMap((prev) => ({
+      ...prev,
+      [palletId]: count
+    }));
+  };
+
+  const floorStockItems = useMemo(() => getFloorStockItems(entries), [entries]);
+  const floorStockStats = useMemo(() => {
+    const totalUnits = floorStockItems.reduce((s, i) => s + i.looseUnits, 0);
+    const totalPallets = floorStockItems.length;
+    const totalKg = toExactWeight(floorStockItems.reduce((s, i) => s + (i.grossWeightKg || 0), 0));
+    return { totalUnits, totalPallets, totalKg };
+  }, [floorStockItems]);
+
+  const filteredFloorStockItems = useMemo(() => {
+    if (!floorStockSearch.trim()) return floorStockItems;
+    const q = floorStockSearch.toLowerCase();
+    return floorStockItems.filter(
+      (item) =>
+        item.invoiceNo.toLowerCase().includes(q) ||
+        item.customer.toLowerCase().includes(q) ||
+        String(item.palletNumber).toLowerCase().includes(q) ||
+        (item.parentPalletNumber && String(item.parentPalletNumber).toLowerCase().includes(q)) ||
+        item.model.toLowerCase().includes(q)
+    );
+  }, [floorStockItems, floorStockSearch]);
   const [pendingInwardActionPrompt, setPendingInwardActionPrompt] = useState<{
     entry: CFSLedgerEntry;
     pallets: PalletStockUnit[];
@@ -657,8 +690,11 @@ export function WarehouseInventoryHub({
       (e.pallets || []).forEach((p) => {
         if (selectedPalletIds.has(p.id)) {
           count++;
-          batteries += p.receivedBatteries || p.invoicedBatteries || 0;
-          grossKg += p.grossWeightKg || 0;
+          const maxBat = p.receivedBatteries || p.invoicedBatteries || 0;
+          const u = palletUnitMap[p.id] !== undefined ? palletUnitMap[p.id] : maxBat;
+          const ratio = maxBat > 0 ? u / maxBat : 1;
+          batteries += u;
+          grossKg += (p.grossWeightKg || 0) * ratio;
           palletList.push(p);
         }
       });
@@ -666,7 +702,7 @@ export function WarehouseInventoryHub({
 
     const required20GP = Math.ceil(count / 22);
     return { count, batteries, grossKg: toExactWeight(grossKg), required20GP, palletList };
-  }, [selectedPalletIds, entries]);
+  }, [selectedPalletIds, entries, palletUnitMap]);
 
   // Toggle Pallet Selection
   const togglePalletSelection = (palletId: string, customer: string) => {
@@ -723,7 +759,8 @@ export function WarehouseInventoryHub({
       selectedPalletsStats.palletList,
       customer,
       firstEntry?.pod,
-      firstEntry?.exporterShipper
+      firstEntry?.exporterShipper,
+      palletUnitMap
     );
 
     onLoadShipmentIntoWorkspace(truthJson);
@@ -784,13 +821,15 @@ export function WarehouseInventoryHub({
         ...dispatchDetails,
         containerNo,
         sealNo
-      }
+      },
+      palletUnitMap
     );
 
     showToast(`Dispatched ${stuffedCount} pallets into Container ${containerNo}! Stock deducted from warehouse.`);
     setShowDispatchModal(false);
     setSelectedPalletIds(new Set());
     setSelectedDispatchCustomer('');
+    setPalletUnitMap({});
     reloadEntries();
   };
 
@@ -1265,6 +1304,44 @@ export function WarehouseInventoryHub({
                 </div>
               </div>
             </div>
+
+            {/* Column 5: Floor Stock (Loose Units Interactive Drilldown) */}
+            <div
+              onClick={() => setShowFloorStockModal(true)}
+              className="flex-1 pt-4 lg:pt-0 lg:pl-6 flex flex-col justify-between cursor-pointer group select-none"
+              title="Click to view Floor Stock (Loose units & residual pallets from partial dispatches with parent invoice references)"
+            >
+              <div className="flex items-center space-x-1.5 mb-2.5">
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-content-primary tracking-tight group-hover:text-amber-600 transition-colors">
+                  Floor Stock
+                </h3>
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-amber-100 text-amber-800 border border-amber-300">
+                  LOOSE
+                </span>
+              </div>
+              <div className="flex items-center divide-x divide-slate-200 dark:divide-divider pt-0.5">
+                <div className="pr-4 sm:pr-5">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                    LOOSE UNITS
+                  </span>
+                  <span className={`text-xl sm:text-2xl font-bold leading-none ${
+                    floorStockStats.totalUnits > 0
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-slate-900 dark:text-content-primary'
+                  }`}>
+                    {floorStockStats.totalUnits.toLocaleString()}
+                  </span>
+                </div>
+                <div className="pl-4 sm:pl-5">
+                  <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider block mb-1">
+                    PALLETS
+                  </span>
+                  <span className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-content-primary leading-none">
+                    {floorStockStats.totalPallets}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1664,6 +1741,8 @@ export function WarehouseInventoryHub({
                             setEditingInwardEntry(invEntry);
                             setShowManualInwardModal(true);
                           }}
+                          palletUnitMap={palletUnitMap}
+                          onUpdatePalletUnits={handleUpdatePalletUnits}
                         />
                       );
                     })}
@@ -2973,6 +3052,196 @@ export function WarehouseInventoryHub({
                 type="button"
                 onClick={() => setShowShortfillsModal(false)}
                 className="px-4 py-1.5 rounded-lg bg-surface hover:bg-surface-secondary text-content-primary border border-divider text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floor Stock (Loose Stock) Management Modal */}
+      {showFloorStockModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in font-sans">
+          <div className="bg-surface border border-divider rounded-2xl max-w-5xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-scale-in">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-divider flex items-center justify-between bg-surface-secondary/40">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-content-primary flex items-center space-x-2">
+                    <span>Floor Stock &amp; Loose Units</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                      {floorStockStats.totalUnits.toLocaleString()} Loose Units ({floorStockStats.totalPallets} Plts)
+                    </span>
+                  </h3>
+                  <p className="text-xs text-content-secondary mt-0.5">
+                    Unselected residual units retained in warehouse from partial dispatches. Full parent reference (Invoice # and Pallet #) maintained for live tracking.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFloorStockModal(false)}
+                className="p-1.5 rounded-lg text-content-muted hover:text-content-primary hover:bg-surface-secondary transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Summary Pill Bar */}
+            <div className="px-4 py-2.5 bg-surface border-b border-divider flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-medium">
+                  <span>Total Loose Units:</span>
+                  <strong className="font-bold">{floorStockStats.totalUnits.toLocaleString()} u</strong>
+                </div>
+                <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 border border-slate-200 font-medium">
+                  <span>Loose Pallets:</span>
+                  <strong className="font-bold">{floorStockStats.totalPallets} Plt</strong>
+                </div>
+                <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-surface-secondary text-content-secondary border border-divider font-medium">
+                  <span>Gross Weight:</span>
+                  <strong className="font-bold">{floorStockStats.totalKg.toLocaleString()} kg</strong>
+                </div>
+              </div>
+
+              {/* Filter search */}
+              <div className="relative w-64 shrink-0">
+                <Search className="w-3.5 h-3.5 text-content-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={floorStockSearch}
+                  onChange={(e) => setFloorStockSearch(e.target.value)}
+                  placeholder="Filter by invoice, pallet, model..."
+                  className="w-full pl-8 pr-7 py-1 bg-surface-secondary/60 border border-divider rounded-lg text-xs text-content-primary placeholder-content-muted focus:outline-none focus:border-brand-primary"
+                />
+                {floorStockSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setFloorStockSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-content-muted hover:text-content-primary"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Table Content */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+              {filteredFloorStockItems.length === 0 ? (
+                <div className="p-12 text-center bg-surface-secondary/30 border border-dashed border-divider rounded-xl">
+                  <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2 opacity-80" />
+                  <p className="text-xs font-semibold text-content-primary">
+                    {floorStockItems.length === 0 ? 'No Loose Floor Stock in Warehouse' : 'No floor stock matches your filter'}
+                  </p>
+                  <p className="text-xs text-content-muted mt-1 max-w-md mx-auto font-sans">
+                    {floorStockItems.length === 0
+                      ? 'When partial units are selected for dispatch (e.g. 50 out of 100 boxes), the pending boxes will be retained on the floor with their parent invoice and parent pallet references.'
+                      : 'Try clearing the search filter above.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-divider bg-surface shadow-xs">
+                  <table className="w-full text-xs font-mono border-collapse">
+                    <thead className="bg-surface-secondary border-b border-divider text-[10px] text-content-secondary uppercase font-semibold">
+                      <tr>
+                        <th className="py-2.5 px-3 border-r border-divider text-left">Parent Invoice &amp; Date</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-left">Consignee</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-center">Floor Pallet &amp; Origin</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-left">Model / SKU</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-right font-bold text-amber-700">Loose Units</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-right">Gross (kg)</th>
+                        <th className="py-2.5 px-3 border-r border-divider text-left">POD</th>
+                        <th className="py-2.5 px-3 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-divider/50">
+                      {filteredFloorStockItems.map((item: FloorStockItem) => (
+                        <tr key={item.id} className="hover:bg-surface-secondary/50 transition-colors">
+                          <td className="py-2 px-3 border-r border-divider whitespace-nowrap">
+                            <div className="font-bold text-brand-primary">#{item.invoiceNo}</div>
+                            <div className="text-[10px] text-content-muted">{item.invoiceDate}</div>
+                          </td>
+                          <td className="py-2 px-3 border-r border-divider text-content-primary max-w-[150px] truncate" title={item.customer}>
+                            {item.customer}
+                          </td>
+                          <td className="py-2 px-3 border-r border-divider text-center whitespace-nowrap">
+                            <span className="font-bold text-content-primary">PLT #{item.palletNumber}</span>
+                            <div className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300 mt-0.5">
+                              Ex-PLT #{item.parentPalletNumber || item.palletNumber}
+                            </div>
+                          </td>
+                          <td className="py-2 px-3 border-r border-divider text-content-primary max-w-[160px] truncate" title={`${item.model} (${item.brand})`}>
+                            <div className="font-semibold">{item.model}</div>
+                            <div className="text-[10px] text-content-muted">{item.brand}</div>
+                          </td>
+                          <td className="py-2 px-3 border-r border-divider text-right whitespace-nowrap">
+                            <span className="font-bold text-amber-700 text-sm">{item.looseUnits.toLocaleString()}</span>
+                            <span className="text-[10px] text-content-muted ml-1">/ {item.invoicedUnits.toLocaleString()} u</span>
+                          </td>
+                          <td className="py-2 px-3 border-r border-divider text-right font-medium">
+                            {item.grossWeightKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg
+                          </td>
+                          <td className="py-2 px-3 border-r border-divider whitespace-nowrap text-content-secondary">
+                            {item.pod || '—'}
+                          </td>
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowFloorStockModal(false);
+                                  togglePalletSelection(item.pallet.id, item.customer);
+                                  handleViewInvoiceInInventory(item.invoiceNo);
+                                  showToast(`Selected loose pallet from #${item.invoiceNo} for dispatch.`);
+                                }}
+                                className="px-2 py-1 rounded-md text-[11px] font-semibold bg-brand-primary text-white hover:bg-brand-primary-hover shadow-2xs transition-colors cursor-pointer"
+                                title="Select this floor pallet for warehouse dispatch"
+                              >
+                                Select for Dispatch
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowFloorStockModal(false);
+                                  const shipment = buildShipmentFromStockPallets(
+                                    [item.pallet],
+                                    item.customer,
+                                    item.pod
+                                  );
+                                  onLoadShipmentIntoWorkspace(shipment);
+                                  onNavigateToWorkspace();
+                                  showToast(`Loaded floor stock from #${item.invoiceNo} into Container Planner.`);
+                                }}
+                                className="px-2 py-1 rounded-md text-[11px] font-semibold bg-surface border border-divider hover:bg-surface-secondary text-content-primary shadow-2xs transition-colors cursor-pointer"
+                                title="Load this loose pallet directly into Container Planner"
+                              >
+                                Container Plan →
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 border-t border-divider bg-surface-secondary/30 flex items-center justify-between text-xs font-mono text-content-secondary">
+              <div>
+                Showing <strong>{filteredFloorStockItems.length}</strong> of <strong>{floorStockItems.length}</strong> loose floor stock items
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFloorStockModal(false)}
+                className="px-4 py-1.5 rounded-lg border border-divider bg-surface hover:bg-surface-secondary font-medium transition-colors cursor-pointer"
               >
                 Close
               </button>

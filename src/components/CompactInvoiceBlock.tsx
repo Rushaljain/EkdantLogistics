@@ -46,6 +46,8 @@ interface CompactInvoiceBlockProps {
   onDeletePallet?: (entry: CFSLedgerEntry, pallet: PalletStockUnit) => void;
   onEditInward?: (entry: CFSLedgerEntry) => void;
   onLoadDispatchTool?: (entry: CFSLedgerEntry) => void;
+  palletUnitMap?: Record<string, number>;
+  onUpdatePalletUnits?: (palletId: string, count: number) => void;
 }
 
 export function CompactInvoiceBlock({
@@ -61,7 +63,9 @@ export function CompactInvoiceBlock({
   onRecordShortFill,
   onDeleteInvoice,
   onEditInward,
-  onLoadDispatchTool
+  onLoadDispatchTool,
+  palletUnitMap,
+  onUpdatePalletUnits
 }: CompactInvoiceBlockProps): React.JSX.Element {
   // Pallet search filter inside expanded pallet table
   const [palletSearchQuery, setPalletSearchQuery] = useState('');
@@ -114,10 +118,13 @@ export function CompactInvoiceBlock({
 
   // Units Mode State: allows operator to specify custom units to dispatch per pallet
   const [unitsMode, setUnitsMode] = useState(false);
-  const [customUnitCounts, setCustomUnitCounts] = useState<Record<string, number>>({});
+  const [localUnitCounts, setLocalUnitCounts] = useState<Record<string, number>>({});
+
+  const customUnitCounts = palletUnitMap ?? localUnitCounts;
 
   const handleCustomUnitsChange = (palletId: string, val: number) => {
-    setCustomUnitCounts((prev) => ({ ...prev, [palletId]: val }));
+    setLocalUnitCounts((prev) => ({ ...prev, [palletId]: val }));
+    onUpdatePalletUnits?.(palletId, val);
     if (!selectedPalletIds.has(palletId)) {
       onTogglePallet(palletId, entry.customer);
     }
@@ -284,6 +291,14 @@ export function CompactInvoiceBlock({
                   <td className="p-2.5 font-bold text-brand-primary border-r border-divider/50 whitespace-nowrap">
                     <div className="flex flex-col">
                       <span>PLT #{displayPalletNum}</span>
+                      {pallet.isFloorStock && (
+                        <span
+                          className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300 mt-0.5 w-fit font-mono tracking-tight"
+                          title={`Floor Stock: Loose units from parent pallet PLT #${pallet.parentPalletNumber || pallet.palletNumber}`}
+                        >
+                          FLOOR STOCK (EX-PLT #{pallet.parentPalletNumber || pallet.palletNumber})
+                        </span>
+                      )}
                       {hasAttachedShortFill && (
                         <span
                           className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200 mt-0.5 w-fit font-mono tracking-tight"

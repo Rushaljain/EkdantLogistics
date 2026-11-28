@@ -19,7 +19,8 @@ import type {
   ShortFillLink,
   LinkedShortFill,
   MergedTransfer,
-  TrashBinItem
+  TrashBinItem,
+  FloorStockItem
 } from '../types/index.ts';
 import { createEmptyShipmentJSON } from '../types/index.ts';
 import { autoAllocate20GPContainers } from './manifestKeywordReference.ts';
@@ -1451,6 +1452,7 @@ export function confirmStuffingDispatch(
     stuffingDate?: string;
     pickupDate?: string;
     portGateInDate?: string;
+    vehicleNo?: string;
   },
   palletUnitMap?: Record<string, number>
 ): { updatedEntries: CFSLedgerEntry[]; stuffedCount: number } {
@@ -1470,7 +1472,9 @@ export function confirmStuffingDispatch(
     let newlyStuffedPallets = 0;
     let newlyStuffedBatteries = 0;
 
-    const updatedPallets = (entry.pallets || []).map((p) => {
+    const updatedPallets: PalletStockUnit[] = [];
+
+    (entry.pallets || []).forEach((p) => {
       if (selectedSet.has(p.id) && p.status !== 'STUFFED_DISPATCHED') {
         const availableUnits = p.receivedBatteries || p.invoicedBatteries || 0;
         const requestedUnits = palletUnitMap?.[p.id] ?? p.allocatedUnits ?? availableUnits;
@@ -1480,29 +1484,53 @@ export function confirmStuffingDispatch(
         if (isFullDispatch) {
           newlyStuffedPallets += 1;
           newlyStuffedBatteries += availableUnits;
-          return {
+          updatedPallets.push({
             ...p,
             status: 'STUFFED_DISPATCHED' as const,
             containerNo: dispatchDetails.containerNo,
             stuffedDate: dispatchDetails.stuffingDate || today,
             allocatedUnits: undefined
-          };
+          });
         } else {
-          // Partial unit dispatch: keep pallet in warehouse with remaining units
+          // Partial unit dispatch:
+          // 1. Mark dispatched slice as STUFFED_DISPATCHED
+          const ratioDispatched = availableUnits > 0 ? unitsToDispatch / availableUnits : 1;
+          const ratioRemaining = availableUnits > 0 ? (availableUnits - unitsToDispatch) / availableUnits : 0;
           const remainingUnits = availableUnits - unitsToDispatch;
-          const ratioRemaining = availableUnits > 0 ? remainingUnits / availableUnits : 1;
+
+          newlyStuffedPallets += 1;
           newlyStuffedBatteries += unitsToDispatch;
-          return {
+
+          updatedPallets.push({
             ...p,
+            receivedBatteries: unitsToDispatch,
+            invoicedBatteries: unitsToDispatch,
+            grossWeightKg: toExactWeight((p.grossWeightKg || 0) * ratioDispatched),
+            netWeightKg: p.netWeightKg !== undefined ? toExactWeight(p.netWeightKg * ratioDispatched) : 0,
+            status: 'STUFFED_DISPATCHED' as const,
+            containerNo: dispatchDetails.containerNo,
+            stuffedDate: dispatchDetails.stuffingDate || today,
+            allocatedUnits: undefined
+          });
+
+          // 2. Spawn remaining units into Floor Stock
+          updatedPallets.push({
+            ...p,
+            id: `${p.id}_floor_${Date.now()}`,
+            palletNumber: p.palletNumber,
+            parentPalletNumber: p.palletNumber,
+            isFloorStock: true,
             receivedBatteries: remainingUnits,
+            invoicedBatteries: remainingUnits,
             grossWeightKg: toExactWeight((p.grossWeightKg || 0) * ratioRemaining),
             netWeightKg: p.netWeightKg !== undefined ? toExactWeight(p.netWeightKg * ratioRemaining) : 0,
             status: 'IN_WAREHOUSE' as const,
             allocatedUnits: undefined
-          };
+          });
         }
+      } else {
+        updatedPallets.push(p);
       }
-      return p;
     });
 
     totalStuffedCount += newlyStuffedPallets > 0 ? newlyStuffedPallets : 1;
@@ -1522,6 +1550,37 @@ export function confirmStuffingDispatch(
       portGateInDate: dispatchDetails.portGateInDate || entry.portGateInDate,
       pallets: updatedPallets
     });
+
+    if (newlyStuffedPallets > 0 || newlyStuffedBatteries > 0) {
+      const grossKg = toExactWeight(
+        updatedPallets
+          .filter((p) => p.status === 'STUFFED_DISPATCHED' && p.containerNo === dispatchDetails.containerNo)
+          .reduce((s, p) => s + (p.grossWeightKg || 0), 0)
+      );
+
+      recordMovementLog({
+        sourceLedgerId: entry.id,
+        receivedDate: entry.cartingInDate || entry.truckReportingDate || entry.lastPltRecdDate || today,
+        dispatchedDate: dispatchDetails.stuffingDate || today,
+        status: updated.balancePallets === 0 ? 'DISPATCHED' : 'PARTIAL_DISPATCHED',
+        movementDate: dispatchDetails.stuffingDate || today,
+        direction: 'STOCK_OUT',
+        customer: entry.customer,
+        customInvoiceNo: entry.customInvoiceNo,
+        modelDescription: (entry.pallets || []).map((p) => p.model).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ') || '-',
+        pallets: newlyStuffedPallets,
+        batteries: newlyStuffedBatteries,
+        grossWeightKg: grossKg,
+        containerNo: dispatchDetails.containerNo,
+        sealNo: dispatchDetails.sealNo,
+        shippingBillNo: dispatchDetails.shippingBillNo || entry.shippingBillNo,
+        shippingBillDate: dispatchDetails.shippingBillDate || entry.shippingBillDate,
+        vehicleNo: dispatchDetails.vehicleNo || entry.vehicleNo,
+        remainingBalancePallets: updated.balancePallets,
+        remainingBalanceBatteries: updated.balanceBatteries,
+        remarks: updated.balancePallets === 0 ? 'Full Dispatch (Stock-Out)' : 'PARTIAL / BALANCE IN CFS'
+      });
+    }
 
     affectedEntries.push(updated);
     return updated;
@@ -1583,6 +1642,48 @@ export function confirmStuffingDispatch(
   saveCFSLedgerEntries(updatedEntries);
   affectedEntries.forEach((e) => syncEntryToCloud(e));
   return { updatedEntries: affectedEntries, stuffedCount: totalStuffedCount };
+}
+
+/**
+ * Floor Stock & Loose Units Query:
+ * Extracts all loose / residual units that spawned from partial dispatches
+ * or split pallets that remain IN_WAREHOUSE.
+ */
+export function getFloorStockItems(customEntries?: CFSLedgerEntry[]): FloorStockItem[] {
+  const entries = customEntries || getCFSLedgerEntries();
+  const items: FloorStockItem[] = [];
+
+  entries.forEach((e) => {
+    (e.pallets || []).forEach((p) => {
+      const isLoose = Boolean(p.isFloorStock) || (p.status === 'IN_WAREHOUSE' && p.parentPalletNumber !== undefined);
+      if (isLoose && p.status !== 'STUFFED_DISPATCHED') {
+        const looseUnits = p.receivedBatteries || p.invoicedBatteries || 0;
+        if (looseUnits > 0) {
+          items.push({
+            id: p.id,
+            entryId: e.id,
+            invoiceNo: e.customInvoiceNo,
+            invoiceDate: e.invoiceDate || formatToDDMMYYYY(e.createdAt),
+            customer: e.customer || 'Consignee',
+            pod: e.pod || '',
+            palletNumber: p.palletNumber,
+            parentPalletNumber: p.parentPalletNumber,
+            model: p.model,
+            brand: p.brand || '',
+            looseUnits,
+            invoicedUnits: p.invoicedBatteries || looseUnits,
+            grossWeightKg: p.grossWeightKg || 0,
+            netWeightKg: p.netWeightKg || 0,
+            landedDate: e.cartingInDate || e.truckReportingDate || e.invoiceDate || formatToDDMMYYYY(e.createdAt),
+            isFloorStock: true,
+            pallet: p
+          });
+        }
+      }
+    });
+  });
+
+  return items;
 }
 
 /**
@@ -1714,18 +1815,25 @@ export function buildShipmentFromStockPallets(
   selectedPallets: PalletStockUnit[],
   customerName: string,
   destinationPort?: string,
-  exporterShipper?: string
+  exporterShipper?: string,
+  palletUnitMap?: Record<string, number>
 ): ExtractedShipmentJSON {
   const selectedPalletUnits: Record<string, number> = {};
   selectedPallets.forEach((p) => {
-    if (p.allocatedUnits !== undefined && p.allocatedUnits > 0) {
+    const custom = palletUnitMap?.[p.id];
+    if (custom !== undefined && custom > 0) {
+      selectedPalletUnits[p.id] = custom;
+    } else if (p.allocatedUnits !== undefined && p.allocatedUnits > 0) {
       selectedPalletUnits[p.id] = p.allocatedUnits;
     }
   });
 
   const palletItems: PalletItem[] = selectedPallets.map((p, idx) => {
     const fullUnits = p.receivedBatteries || p.invoicedBatteries || 0;
-    const actualUnits = p.allocatedUnits !== undefined && p.allocatedUnits > 0 ? p.allocatedUnits : fullUnits;
+    const custom = palletUnitMap?.[p.id];
+    const actualUnits = custom !== undefined && custom > 0
+      ? custom
+      : (p.allocatedUnits !== undefined && p.allocatedUnits > 0 ? p.allocatedUnits : fullUnits);
     const ratio = fullUnits > 0 ? actualUnits / fullUnits : 1;
     const grossKg = toExactWeight((p.grossWeightKg || 0) * ratio);
     const netKg = p.netWeightKg ? toExactWeight(p.netWeightKg * ratio) : 0;
@@ -1967,7 +2075,9 @@ export function executeWorkspaceDispatch(
     let newlyStuffedBatteries = 0;
     const newlyStuffedPalletIds: string[] = [];
 
-    const updatedPallets = (entry.pallets || []).map((p) => {
+    const updatedPallets: PalletStockUnit[] = [];
+
+    (entry.pallets || []).forEach((p) => {
       const isMatch = targetPalletIds.size > 0
         ? targetPalletIds.has(p.id)
         : p.status === 'IN_WAREHOUSE';
@@ -1982,30 +2092,54 @@ export function executeWorkspaceDispatch(
           newlyStuffedPallets += 1;
           newlyStuffedBatteries += availableUnits;
           newlyStuffedPalletIds.push(p.id);
-          return {
+          updatedPallets.push({
             ...p,
             status: 'STUFFED_DISPATCHED' as const,
             containerNo: dispatchDetails.containerNo,
             stuffedDate: dispatchDetails.stuffingDate || today,
             allocatedUnits: undefined
-          };
+          });
         } else {
-          // Partial Unit Dispatch: The pallet stays IN_WAREHOUSE with remaining units
+          // Partial Unit Dispatch:
+          // 1. Mark dispatched slice as STUFFED_DISPATCHED
+          const ratioDispatched = availableUnits > 0 ? unitsToDispatch / availableUnits : 1;
+          const ratioRemaining = availableUnits > 0 ? (availableUnits - unitsToDispatch) / availableUnits : 0;
           const remainingUnits = availableUnits - unitsToDispatch;
-          const ratioRemaining = availableUnits > 0 ? remainingUnits / availableUnits : 1;
+
+          newlyStuffedPallets += 1;
           newlyStuffedBatteries += unitsToDispatch;
           newlyStuffedPalletIds.push(p.id);
-          return {
+
+          updatedPallets.push({
             ...p,
+            receivedBatteries: unitsToDispatch,
+            invoicedBatteries: unitsToDispatch,
+            grossWeightKg: toExactWeight((p.grossWeightKg || 0) * ratioDispatched),
+            netWeightKg: p.netWeightKg !== undefined ? toExactWeight(p.netWeightKg * ratioDispatched) : 0,
+            status: 'STUFFED_DISPATCHED' as const,
+            containerNo: dispatchDetails.containerNo,
+            stuffedDate: dispatchDetails.stuffingDate || today,
+            allocatedUnits: undefined
+          });
+
+          // 2. Spawn remaining units into Floor Stock
+          updatedPallets.push({
+            ...p,
+            id: `${p.id}_floor_${Date.now()}`,
+            palletNumber: p.palletNumber,
+            parentPalletNumber: p.palletNumber,
+            isFloorStock: true,
             receivedBatteries: remainingUnits,
+            invoicedBatteries: remainingUnits,
             grossWeightKg: toExactWeight((p.grossWeightKg || 0) * ratioRemaining),
             netWeightKg: p.netWeightKg !== undefined ? toExactWeight(p.netWeightKg * ratioRemaining) : 0,
             status: 'IN_WAREHOUSE' as const,
             allocatedUnits: undefined
-          };
+          });
         }
+      } else {
+        updatedPallets.push(p);
       }
-      return p;
     });
 
     totalStuffedCount += newlyStuffedPallets > 0 ? newlyStuffedPallets : (newlyStuffedPalletIds.length > 0 ? 1 : 0);
@@ -2811,19 +2945,26 @@ export function getDerivedInventoryMovements(entries: CFSLedgerEntry[]): Invento
       ? (e.stuffingDate || e.portGateInDate || e.pickupDate || receivedDate)
       : '-';
 
+    const dispatchedPallets = (e.actualStuffedPallets && e.actualStuffedPallets > 0)
+      ? e.actualStuffedPallets
+      : Math.max(0, recPallets - (e.balancePallets ?? 0));
+    const dispatchedBatteries = (e.actualStuffedBatteries && e.actualStuffedBatteries > 0)
+      ? e.actualStuffedBatteries
+      : Math.max(0, recBatteries - (e.balanceBatteries ?? 0));
+
     derived.push({
       id: logId,
       sourceLedgerId: e.id,
       receivedDate,
       dispatchedDate,
-      movementDate: receivedDate,
+      movementDate: isDispatched ? dispatchedDate : receivedDate,
       status,
       direction: isDispatched ? 'STOCK_OUT' : 'STOCK_IN',
       customer: e.customer || 'Customer',
       customInvoiceNo: e.customInvoiceNo,
       modelDescription: modelDesc,
-      pallets: recPallets,
-      batteries: recBatteries,
+      pallets: isDispatched ? dispatchedPallets : recPallets,
+      batteries: isDispatched ? dispatchedBatteries : recBatteries,
       grossWeightKg: e.invoicedGrossWeightKg || 0,
       containerNo: e.containerNo || '-',
       sealNo: e.sealNo || '-',
