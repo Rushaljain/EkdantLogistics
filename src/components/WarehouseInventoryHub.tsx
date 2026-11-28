@@ -158,6 +158,18 @@ export function WarehouseInventoryHub({
     hydrateInventoryFromSupabase().then(() => {
       setEntries(getCFSLedgerEntries());
     });
+
+    const handleStorageOrLedgerChange = () => {
+      setEntries(getCFSLedgerEntries());
+      setTrashBinItems(getCFSTrashBinEntries());
+    };
+
+    window.addEventListener('storage', handleStorageOrLedgerChange);
+    window.addEventListener('cfs_ledger_updated', handleStorageOrLedgerChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageOrLedgerChange);
+      window.removeEventListener('cfs_ledger_updated', handleStorageOrLedgerChange);
+    };
   }, []);
 
   const [activeSection, setActiveSection] = useState<HubSection>('inventory');

@@ -86,11 +86,17 @@ export function ManualInwardModal({
   editingEntry,
   initialShortfallInvoiceNo
 }: ManualInwardModalProps): React.JSX.Element | null {
-  // Fresh entries fetched whenever modal opens
-  const existingEntries = useMemo(() => {
-    if (!isOpen) return [];
-    return getCFSLedgerEntries();
+  // Fresh entries fetched whenever modal opens or when updated
+  const [existingEntries, setExistingEntries] = useState<CFSLedgerEntry[]>([]);
+  useEffect(() => {
+    if (isOpen) {
+      setExistingEntries(getCFSLedgerEntries());
+    }
   }, [isOpen]);
+
+  const reloadModalEntries = () => {
+    setExistingEntries(getCFSLedgerEntries());
+  };
 
   const isReadOnly = Boolean(
     editingEntry && (
@@ -599,10 +605,15 @@ export function ManualInwardModal({
     const sourceNetKg = transferSourceRow.netWeightKg || 0;
     const sourceGrossKg = transferSourceRow.grossWeightKg || 0;
 
+    // Battery cargo weight only (excluding 25kg wooden tare)
+    const sourceTareKg = (sourceGrossKg > sourceNetKg && sourceNetKg > 0) ? Math.min(25, toExactWeight(sourceGrossKg - sourceNetKg)) : 0;
+    const sourceCargoGrossKg = Math.max(0, sourceGrossKg - sourceTareKg);
+
     const transferredNetKg = toExactWeight(sourceNetKg * sourceRatio);
-    const transferredGrossKg = toExactWeight(sourceGrossKg * sourceRatio);
+    const transferredCargoGrossKg = toExactWeight(sourceCargoGrossKg * sourceRatio);
+
     const remainingNetKg = toExactWeight(sourceNetKg * remainingRatio);
-    const remainingGrossKg = toExactWeight(sourceGrossKg * remainingRatio);
+    const remainingGrossKg = toExactWeight((sourceCargoGrossKg * remainingRatio) + (remainingSourceUnits > 0 ? sourceTareKg : 0));
 
     if (transferSelectedInvoiceId === 'CURRENT') {
       // Target is another pallet in the CURRENT inward modal
@@ -641,12 +652,62 @@ export function ManualInwardModal({
               ...r,
               billedUnits: newTargetUnits,
               netWeightKg: toExactWeight((r.netWeightKg || 0) + transferredNetKg),
-              grossWeightKg: toExactWeight((r.grossWeightKg || 0) + transferredGrossKg)
+              grossWeightKg: toExactWeight((r.grossWeightKg || 0) + transferredCargoGrossKg)
             };
           }
           return r;
         });
       });
+
+      // If editing an existing inward entry, also update the existing entry in storage so it syncs immediately
+      if (editingEntry?.id) {
+        const freshEntries = getCFSLedgerEntries();
+        const currentInwardEntry = freshEntries.find((e) => e.id === editingEntry.id);
+        if (currentInwardEntry) {
+          let updatedPallets = currentInwardEntry.pallets || [];
+          if (isFullTransfer) {
+            updatedPallets = updatedPallets.filter((p) => p.id !== transferSourceRow.id && String(p.palletNumber) !== String(transferSourceRow.palletNumber));
+          } else {
+            updatedPallets = updatedPallets.map((p) => {
+              if (p.id === transferSourceRow.id || String(p.palletNumber) === String(transferSourceRow.palletNumber)) {
+                return {
+                  ...p,
+                  invoicedBatteries: remainingSourceUnits,
+                  receivedBatteries: remainingSourceUnits,
+                  remainingUnits: remainingSourceUnits,
+                  grossWeightKg: remainingGrossKg,
+                  netWeightKg: remainingNetKg
+                };
+              }
+              return p;
+            });
+          }
+
+          updatedPallets = updatedPallets.map((p) => {
+            if (p.id === targetRow.id || String(p.palletNumber) === String(targetRow.palletNumber)) {
+              return {
+                ...p,
+                invoicedBatteries: newTargetUnits,
+                receivedBatteries: newTargetUnits,
+                remainingUnits: newTargetUnits,
+                grossWeightKg: toExactWeight((p.grossWeightKg || 0) + transferredCargoGrossKg),
+                netWeightKg: toExactWeight((p.netWeightKg || 0) + transferredNetKg)
+              };
+            }
+            return p;
+          });
+
+          const updatedCurrentEntry = {
+            ...currentInwardEntry,
+            pallets: updatedPallets,
+            updatedAt: new Date().toISOString()
+          };
+
+          const newLedgerList = freshEntries.map((e) => e.id === updatedCurrentEntry.id ? updatedCurrentEntry : e);
+          saveCFSLedgerEntries(newLedgerList);
+          reloadModalEntries();
+        }
+      }
 
       // If full transfer: decrement invoiced pallets count by 1 since source pallet is discarded
       if (isFullTransfer) {
@@ -669,7 +730,8 @@ export function ManualInwardModal({
       setTransferSourceRow(null);
     } else {
       // Target is a pallet in an EXISTING saved invoice in the warehouse ledger
-      const targetEntry = existingEntries.find((e) => e.id === transferSelectedInvoiceId);
+      const freshEntries = getCFSLedgerEntries();
+      const targetEntry = freshEntries.find((e) => e.id === transferSelectedInvoiceId);
       if (!targetEntry) {
         alert('Selected invoice not found in warehouse ledger.');
         return;
@@ -685,32 +747,70 @@ export function ManualInwardModal({
       const newTargetUnits = currentTargetUnits + unitsToMove;
       const targetPalletNum = targetPallet.palletNumber;
 
-      // Update the target invoice in the persistent ledger
-      const updatedEntries = existingEntries.map((e) => {
-        if (e.id !== targetEntry.id) return e;
-        const updatedPallets = (e.pallets || []).map((p) => {
-          if (p.id === targetPallet.id || String(p.palletNumber) === String(targetPallet.palletNumber)) {
-            return {
-              ...p,
-              receivedBatteries: newTargetUnits,
-              invoicedBatteries: newTargetUnits,
-              grossWeightKg: toExactWeight((p.grossWeightKg || 0) + transferredGrossKg),
-              netWeightKg: toExactWeight((p.netWeightKg || 0) + transferredNetKg)
-            };
-          }
-          return p;
-        });
-
-        const newBalanceBatteries = (e.balanceBatteries || 0) + unitsToMove;
-        return {
-          ...e,
-          balanceBatteries: newBalanceBatteries,
-          actualReceivedBatteries: (e.actualReceivedBatteries || 0) + unitsToMove,
-          pallets: updatedPallets
-        };
+      // Update target pallet with transferred units and cargo weight
+      const updatedPallets = (targetEntry.pallets || []).map((p) => {
+        if (p.id === targetPallet.id || String(p.palletNumber) === String(targetPallet.palletNumber)) {
+          return {
+            ...p,
+            receivedBatteries: newTargetUnits,
+            invoicedBatteries: newTargetUnits,
+            remainingUnits: newTargetUnits,
+            grossWeightKg: toExactWeight((p.grossWeightKg || 0) + transferredCargoGrossKg),
+            netWeightKg: toExactWeight((p.netWeightKg || 0) + transferredNetKg)
+          };
+        }
+        return p;
       });
 
-      saveCFSLedgerEntries(updatedEntries);
+      // Update target invoice: recalculate actual received and balance
+      const updatedTargetEntry = {
+        ...targetEntry,
+        invoicedBatteries: (targetEntry.invoicedBatteries || 0) + unitsToMove,
+        actualReceivedBatteries: (targetEntry.actualReceivedBatteries || 0) + unitsToMove,
+        balanceBatteries: (targetEntry.balanceBatteries || 0) + unitsToMove,
+        invoicedGrossWeightKg: toExactWeight((targetEntry.invoicedGrossWeightKg || 0) + transferredCargoGrossKg),
+        invoicedNetWeightKg: toExactWeight((targetEntry.invoicedNetWeightKg || 0) + transferredNetKg),
+        actualGrossWeightKg: toExactWeight((targetEntry.actualGrossWeightKg || 0) + transferredCargoGrossKg),
+        actualNetWeightKg: toExactWeight((targetEntry.actualNetWeightKg || 0) + transferredNetKg),
+        pallets: updatedPallets,
+        updatedAt: new Date().toISOString()
+      };
+
+      let newLedgerList = freshEntries.map((e) => e.id === updatedTargetEntry.id ? updatedTargetEntry : e);
+
+      // If user is editing an existing inward, also update editing entry's pallets in storage
+      if (editingEntry?.id) {
+        const currentInwardEntry = newLedgerList.find((e) => e.id === editingEntry.id);
+        if (currentInwardEntry) {
+          let currentPallets = currentInwardEntry.pallets || [];
+          if (isFullTransfer) {
+            currentPallets = currentPallets.filter((p) => p.id !== transferSourceRow.id && String(p.palletNumber) !== String(transferSourceRow.palletNumber));
+          } else {
+            currentPallets = currentPallets.map((p) => {
+              if (p.id === transferSourceRow.id || String(p.palletNumber) === String(transferSourceRow.palletNumber)) {
+                return {
+                  ...p,
+                  invoicedBatteries: remainingSourceUnits,
+                  receivedBatteries: remainingSourceUnits,
+                  remainingUnits: remainingSourceUnits,
+                  grossWeightKg: remainingGrossKg,
+                  netWeightKg: remainingNetKg
+                };
+              }
+              return p;
+            });
+          }
+          const updatedCurrent = {
+            ...currentInwardEntry,
+            pallets: currentPallets,
+            updatedAt: new Date().toISOString()
+          };
+          newLedgerList = newLedgerList.map((e) => e.id === updatedCurrent.id ? updatedCurrent : e);
+        }
+      }
+
+      saveCFSLedgerEntries(newLedgerList);
+      reloadModalEntries();
 
       // If full transfer: discard source pallet from current inward. If partial: preserve with remaining units
       if (isFullTransfer) {
@@ -734,6 +834,12 @@ export function ManualInwardModal({
           })
         );
       }
+
+      // Also adjust total invoiced units if transferring out to another invoice
+      setInvoicedBatteriesStr((prevStr) => {
+        const count = parseInt(prevStr, 10);
+        return count >= unitsToMove ? String(count - unitsToMove) : prevStr;
+      });
 
       // Show Acknowledgement pop-up
       setTransferAck({
@@ -2953,10 +3059,11 @@ export function ManualInwardModal({
                         className="w-full px-2.5 py-2 rounded-lg bg-input-bg border border-divider text-content-primary font-mono text-xs outline-none focus:border-brand-primary cursor-pointer"
                       >
                         <option value="">-- Choose Target Pallet --</option>
-                        {destPallets.map((p) => {
+                        {destPallets.map((p, pIdx) => {
                           const u = p.receivedBatteries || p.invoicedBatteries || 0;
+                          const palletKey = p.id || String(p.palletNumber) || `plt_idx_${pIdx}`;
                           return (
-                            <option key={p.id} value={p.id}>
+                            <option key={palletKey} value={palletKey}>
                               PLT #{p.palletNumber} — Currently {u} Units ({p.model || 'STANDARD'})
                             </option>
                           );

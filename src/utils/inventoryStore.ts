@@ -934,6 +934,7 @@ export function saveCFSLedgerEntries(entries: CFSLedgerEntry[]): void {
   try {
     const cleaned = entries.map((e) => recomputeCFSDerivedFields(e));
     window.localStorage.setItem(CFS_LEDGER_STORAGE_KEY, JSON.stringify(cleaned));
+    window.dispatchEvent(new CustomEvent('cfs_ledger_updated'));
   } catch (err) {
     console.warn('[CFSLedger] Failed to save to localStorage:', err);
   }
