@@ -1656,14 +1656,16 @@ export function ManualInwardModal({
                   return (
                     <div
                       key={row.id}
-                      className={`p-3 rounded-xl border transition-all text-xs space-y-2.5 ${
+                      className={`p-3.5 rounded-xl border transition-all text-xs space-y-3 ${
                         hasAttachedFills
-                          ? 'bg-purple-50/30 border-purple-300'
+                          ? 'bg-purple-50/20 border-purple-200 dark:border-purple-900/40'
                           : row.receiptStatus === 'SHORTFALL'
-                          ? 'bg-amber-50/40 dark:bg-amber-950/15 border-amber-300 dark:border-amber-800/60'
+                          ? 'bg-amber-50/20 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/40'
                           : row.receiptStatus === 'SHORTFILL'
-                          ? 'bg-blue-50/40 dark:bg-blue-950/15 border-blue-300 dark:border-blue-800/60'
-                          : 'bg-surface-secondary/40 border-divider'
+                          ? 'bg-blue-50/20 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900/40'
+                          : row.receiptStatus === 'PARTIALLY_RECEIVED'
+                          ? 'bg-indigo-50/20 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-900/40'
+                          : 'bg-surface border-divider shadow-xs'
                       }`}
                     >
                       {/* Shortfill Recovery Indicator Banner (when editing an inward that received a shortfill) */}
@@ -1818,10 +1820,10 @@ export function ManualInwardModal({
                             Pallet Wt
                           </label>
                           <div
-                            className={`h-[34px] px-1.5 rounded-lg border flex items-center justify-center font-mono font-bold text-xs truncate ${
+                            className={`h-[34px] px-1.5 rounded-lg border flex items-center justify-center font-mono font-medium text-xs truncate ${
                               palletTare > 0
-                                ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700/60'
-                                : 'bg-surface border-divider text-content-muted'
+                                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50'
+                                : 'bg-surface-secondary/50 border-divider text-content-muted'
                             }`}
                             title={`Palette Weight (Tare Wood) = Gross (${pGross} kg) - Net (${pNet} kg) = ${palletTare} kg`}
                           >
@@ -1844,16 +1846,16 @@ export function ManualInwardModal({
                               }
                               handleUpdatePalletRow(row.id, updates);
                             }}
-                            className={`w-full px-2 py-1.5 rounded-lg font-semibold outline-none cursor-pointer border text-xs ${
+                            className={`w-full px-2.5 py-1.5 rounded-lg font-medium outline-none cursor-pointer border text-xs transition-colors ${
                               row.receiptStatus === 'RECEIVED'
-                                ? 'bg-emerald-500/10 text-emerald-800 border-emerald-300'
+                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800/50'
                                 : row.receiptStatus === 'NOT_RECEIVED'
-                                ? 'bg-slate-500/10 text-slate-800 border-slate-300'
+                                ? 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-750'
                                 : row.receiptStatus === 'PARTIALLY_RECEIVED'
-                                ? 'bg-indigo-500/10 text-indigo-800 border-indigo-300'
+                                ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-250 dark:border-indigo-800/50'
                                 : row.receiptStatus === 'SHORTFALL'
-                                ? 'bg-amber-500/10 text-amber-800 border-amber-400'
-                                : 'bg-blue-500/10 text-blue-800 border-blue-400'
+                                ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800/50'
+                                : 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800/50'
                             }`}
                           >
                             <option value="RECEIVED">Received (Full Physical)</option>
@@ -1893,27 +1895,27 @@ export function ManualInwardModal({
 
                       {/* 1. RECEIVED FULL */}
                       {row.receiptStatus === 'RECEIVED' && (
-                        <div className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-800 border border-emerald-500/20 text-[11px] flex items-center justify-between">
-                          <span className="flex items-center space-x-1.5">
+                        <div className="px-3 py-2 rounded-lg bg-surface border border-emerald-200 dark:border-emerald-900/40 text-xs flex items-center justify-between shadow-2xs">
+                          <span className="flex items-center space-x-1.5 text-content-primary">
                             <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                             <span>
-                              Full Physical Receipt: <strong>{bUnits} units</strong> entering active floor inventory.
+                              Full Physical Receipt: <strong className="font-semibold">{bUnits} units</strong> entering active floor inventory.
                             </span>
                           </span>
-                          <span className="font-mono font-semibold">0 missing</span>
+                          <span className="font-mono text-content-secondary font-medium">0 missing</span>
                         </div>
                       )}
 
                       {/* 2. NOT RECEIVED (ARRIVING LATER) */}
                       {row.receiptStatus === 'NOT_RECEIVED' && (
-                        <div className="px-2.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-[11px] flex items-center justify-between">
-                          <span className="flex items-center space-x-1.5 font-medium">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <div className="px-3 py-2 rounded-lg bg-surface border border-divider text-xs flex items-center justify-between shadow-2xs">
+                          <span className="flex items-center space-x-1.5 text-content-primary">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                             <span>
-                              <strong>Not Received Yet:</strong> Pallet arriving in a future shipment • <strong>0 units</strong> on floor now • <strong>{bUnits} units</strong> pending arrival.
+                              <strong className="font-semibold">Not Received Yet:</strong> Pallet arriving in a future shipment • <span className="text-content-secondary">0 units on floor now • {bUnits} units pending arrival.</span>
                             </span>
                           </span>
-                          <span className="font-mono font-bold text-amber-800 bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded text-[10px]">
+                          <span className="font-mono font-medium text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded text-[10px]">
                             PENDING INWARD
                           </span>
                         </div>
@@ -1930,17 +1932,17 @@ export function ManualInwardModal({
                           <>
                             {/* When Pallet is Saved: Show Clean Info Banner */}
                             {row.isSaved ? (
-                              <div className="px-3 py-2 rounded-lg bg-indigo-500/10 text-indigo-950 dark:text-indigo-200 border border-indigo-500/30 text-xs flex items-center justify-between">
-                                <span className="flex items-center space-x-2">
-                                  <Boxes className="w-4 h-4 text-indigo-600 shrink-0" />
+                              <div className="px-3 py-2 rounded-lg bg-surface border border-indigo-200 dark:border-indigo-900/40 text-xs flex items-center justify-between shadow-2xs">
+                                <span className="flex items-center space-x-2 text-content-primary">
+                                  <Boxes className="w-4 h-4 text-indigo-500 shrink-0" />
                                   <span>
-                                    <strong>Partially Received Pallet:</strong> {totalLandedUnits} units landed ({pastReceipts.length} {pastReceipts.length === 1 ? 'batch' : 'batches'}) • <strong>{pendingUnits} units</strong> pending in future deliveries.
+                                    <strong className="font-semibold text-content-primary">Partially Received Pallet:</strong> {totalLandedUnits} units landed ({pastReceipts.length} {pastReceipts.length === 1 ? 'batch' : 'batches'}) • <span className="text-content-secondary">{pendingUnits} units pending in future deliveries.</span>
                                   </span>
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => handleUpdatePalletRow(row.id, { isSaved: false })}
-                                  className="text-indigo-700 dark:text-indigo-300 hover:text-indigo-950 dark:hover:text-white font-semibold flex items-center space-x-1 cursor-pointer ml-2 shrink-0 underline text-[11px]"
+                                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium flex items-center space-x-1 cursor-pointer ml-2 shrink-0 underline text-[11px]"
                                   title="Edit partial intake logs"
                                 >
                                   <Pencil className="w-3 h-3" />
@@ -1948,24 +1950,24 @@ export function ManualInwardModal({
                                 </button>
                               </div>
                             ) : (
-                              <div className="p-3 rounded-lg bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/60 space-y-2.5">
+                              <div className="p-3 rounded-lg bg-surface-secondary/40 border border-divider space-y-2.5">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                  <span className="text-xs font-semibold text-indigo-950 dark:text-indigo-200 flex items-center space-x-1.5">
-                                    <Boxes className="w-4 h-4 text-indigo-600 shrink-0" />
+                                  <span className="text-xs font-medium text-content-primary flex items-center space-x-1.5">
+                                    <Boxes className="w-4 h-4 text-indigo-500 shrink-0" />
                                     <span>Partially Received Pallet (Split Intake Across Trucks / Dates)</span>
                                   </span>
                                   <div className="text-[11px] font-mono flex items-center space-x-2">
-                                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium border border-emerald-500/20">
                                       Landed: {totalLandedUnits} u
                                     </span>
-                                    <span className={`px-2 py-0.5 rounded font-bold ${pendingUnits > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                    <span className={`px-2 py-0.5 rounded font-medium border ${pendingUnits > 0 ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20'}`}>
                                       {pendingUnits > 0 ? `Pending: ${pendingUnits} u` : 'Fully Landed'}
                                     </span>
                                   </div>
                                 </div>
 
                                 {/* Intake Controls */}
-                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end pt-1 bg-surface p-2.5 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end pt-1 bg-surface p-2.5 rounded-lg border border-divider">
                                   <div className="sm:col-span-4">
                                     <label className="block text-[10px] text-content-secondary font-medium mb-1">
                                       Date of Arrival
@@ -1992,7 +1994,7 @@ export function ManualInwardModal({
                                         handleUpdatePalletRow(row.id, { currentReceivedUnits: val });
                                       }}
                                       onWheel={(e) => e.currentTarget.blur()}
-                                      className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-indigo-200 text-indigo-900 outline-none focus:ring-1 focus:ring-indigo-500 text-xs"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-medium bg-surface border-divider text-content-primary outline-none focus:border-brand-primary text-xs"
                                     />
                                   </div>
 
@@ -2024,7 +2026,7 @@ export function ManualInwardModal({
                                         });
                                         setErrorMsg(null);
                                       }}
-                                      className="w-full px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                                      className="w-full px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-primary/90 text-white font-medium text-xs flex items-center justify-center space-x-1 shadow-xs cursor-pointer transition-colors"
                                     >
                                       <Plus className="w-3.5 h-3.5" />
                                       <span>Log Intake Batch</span>
@@ -2035,12 +2037,12 @@ export function ManualInwardModal({
                                 {/* Past Intake Logs Table */}
                                 {pastReceipts.length > 0 && (
                                   <div className="space-y-1.5">
-                                    <span className="text-[10px] font-bold text-content-secondary uppercase tracking-wider block">
+                                    <span className="text-[10px] font-medium text-content-secondary uppercase tracking-wider block">
                                       Recorded Intake Logs ({pastReceipts.length}):
                                     </span>
-                                    <div className="border border-indigo-100 dark:border-indigo-900/40 rounded-lg overflow-hidden bg-surface">
+                                    <div className="border border-divider rounded-lg overflow-hidden bg-surface">
                                       <table className="w-full text-[11px] font-mono">
-                                        <thead className="bg-indigo-50/60 dark:bg-indigo-950/40 text-content-secondary text-[10px]">
+                                        <thead className="bg-surface-secondary text-content-secondary text-[10px]">
                                           <tr>
                                             <th className="py-1 px-2 text-left">#</th>
                                             <th className="py-1 px-2 text-left">Date of Arrival</th>
@@ -2048,12 +2050,12 @@ export function ManualInwardModal({
                                             <th className="py-1 px-2 text-right">Action</th>
                                           </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-indigo-50 dark:divide-indigo-950/40">
+                                        <tbody className="divide-y divide-divider">
                                           {pastReceipts.map((log, lIdx) => (
                                             <tr key={log.id}>
                                               <td className="py-1 px-2 text-content-muted">{lIdx + 1}</td>
-                                              <td className="py-1 px-2 font-medium">{log.arrivalDate}</td>
-                                              <td className="py-1 px-2 text-right font-bold text-emerald-700">+{log.unitsReceived} u</td>
+                                              <td className="py-1 px-2 font-medium text-content-primary">{log.arrivalDate}</td>
+                                              <td className="py-1 px-2 text-right font-semibold text-emerald-600">+{log.unitsReceived} u</td>
                                               <td className="py-1 px-2 text-right">
                                                 <button
                                                   type="button"
@@ -2076,8 +2078,8 @@ export function ManualInwardModal({
                                 )}
 
                                 {/* Save Pallet Action */}
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-indigo-200 dark:border-indigo-800/60">
-                                  <span className="text-[11px] text-indigo-900 dark:text-indigo-300">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-divider">
+                                  <span className="text-[11px] text-content-secondary">
                                     Review recorded logs and click Save Pallet to lock intake into inward.
                                   </span>
                                   <button
@@ -2109,7 +2111,7 @@ export function ManualInwardModal({
                                         isSaved: true
                                       });
                                     }}
-                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
+                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
                                   >
                                     <Check className="w-3.5 h-3.5" />
                                     <span>Save Pallet</span>
@@ -2126,17 +2128,17 @@ export function ManualInwardModal({
                         <>
                           {/* When Pallet is Saved: Show Clean Info Banner */}
                           {row.isSaved ? (
-                            <div className="px-3 py-2 rounded-lg bg-amber-500/10 text-amber-900 border border-amber-500/30 text-xs flex items-center justify-between">
-                              <span className="flex items-center space-x-2">
-                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <div className="px-3 py-2 rounded-lg bg-surface border border-amber-200 dark:border-amber-900/40 text-xs flex items-center justify-between shadow-2xs">
+                              <span className="flex items-center space-x-2 text-content-primary">
+                                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
                                 <span>
                                   {row.isFullMissing ? (
                                     <>
-                                      <strong>Entire Pallet Not Received (Full Missing):</strong> {bUnits} units missing (Transferred to Shortfall Backlog) • <strong>0 units</strong> entering floor stock.
+                                      <strong className="font-semibold text-content-primary">Entire Pallet Not Received (Full Missing):</strong> {bUnits} units missing (Transferred to Shortfall Backlog) • <span className="text-content-secondary">0 units entering floor stock.</span>
                                     </>
                                   ) : (
                                     <>
-                                      <strong>Partial Shortfall:</strong> {row.shortfallUnits || 0} units missing in Backlog • <strong>{recdUnits} units</strong> entering active floor inventory.
+                                      <strong className="font-semibold text-content-primary">Partial Shortfall:</strong> {row.shortfallUnits || 0} units missing in Backlog • <span className="text-content-secondary font-medium">{recdUnits} units entering active floor inventory.</span>
                                     </>
                                   )}
                                 </span>
@@ -2144,7 +2146,7 @@ export function ManualInwardModal({
                               <button
                                 type="button"
                                 onClick={() => handleUpdatePalletRow(row.id, { isSaved: false })}
-                                className="text-amber-800 hover:text-amber-950 font-semibold flex items-center space-x-1 cursor-pointer ml-2 shrink-0 underline text-[11px]"
+                                className="text-amber-700 dark:text-amber-400 hover:text-amber-900 font-medium flex items-center space-x-1 cursor-pointer ml-2 shrink-0 underline text-[11px]"
                                 title="Edit shortfall settings"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -2153,9 +2155,9 @@ export function ManualInwardModal({
                             </div>
                           ) : (
                             /* Editing Configuration Form */
-                            <div className="p-3 rounded-lg bg-surface border border-amber-300 dark:border-amber-700/60 space-y-2.5 animate-scale-up">
+                            <div className="p-3 rounded-lg bg-surface-secondary/40 border border-divider space-y-2.5">
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <label className="flex items-center space-x-2 text-xs font-semibold text-amber-900 dark:text-amber-300 cursor-pointer select-none">
+                                <label className="flex items-center space-x-2 text-xs font-medium text-content-primary cursor-pointer select-none">
                                   <input
                                     type="checkbox"
                                     checked={Boolean(row.isFullMissing)}
@@ -2164,18 +2166,18 @@ export function ManualInwardModal({
                                         isFullMissing: e.target.checked
                                       })
                                     }
-                                    className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                    className="w-4 h-4 rounded border-divider text-amber-600 focus:ring-amber-500 cursor-pointer"
                                   />
                                   <span>Entire Pallet Not Received (Full Pallet Missing)</span>
                                 </label>
 
                                 <div className="text-[11px] font-mono">
                                   {row.isFullMissing ? (
-                                    <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-800 font-bold">
+                                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 font-medium border border-amber-500/20">
                                       0 Units on Floor • {bUnits} Units to Backlog
                                     </span>
                                   ) : (
-                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-800 font-bold">
+                                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium border border-emerald-500/20">
                                       Floor: {recdUnits} Units • Backlog: {sfUnits} Units
                                     </span>
                                   )}
@@ -2183,8 +2185,8 @@ export function ManualInwardModal({
                               </div>
 
                               {row.isFullMissing ? (
-                                <p className="text-[11px] text-amber-800 dark:text-amber-300/90">
-                                  ⚠️ Pallet #{row.palletNumber} will NOT enter floor inventory (0 phantom stock). The full {bUnits} units are recorded strictly in the Shortfall Backlog.
+                                <p className="text-[11px] text-content-secondary bg-surface p-2 rounded-md border border-divider">
+                                  ⚠️ Pallet #{row.palletNumber} will not enter floor inventory. The full {bUnits} units are recorded strictly in the Shortfall Backlog.
                                 </p>
                               ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
@@ -2207,7 +2209,7 @@ export function ManualInwardModal({
                                         handleUpdatePalletRow(row.id, { shortfallUnits: val });
                                       }}
                                       onWheel={(e) => e.currentTarget.blur()}
-                                      className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-amber-300 text-amber-800 outline-none focus:ring-1 focus:ring-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-medium bg-surface border-divider text-content-primary outline-none focus:border-brand-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-xs"
                                     />
                                     <span className="text-[10px] text-content-muted mt-0.5 block">
                                       Must be less than billed {bUnits} units
@@ -2218,7 +2220,7 @@ export function ManualInwardModal({
                                     <span className="text-[10px] text-content-secondary font-medium">
                                       Physical Units Entering Warehouse Floor:
                                     </span>
-                                    <span className="text-sm font-mono font-bold text-emerald-700">
+                                    <span className="text-sm font-mono font-semibold text-emerald-600">
                                       {recdUnits} Units
                                     </span>
                                   </div>
@@ -2226,8 +2228,8 @@ export function ManualInwardModal({
                               )}
 
                               {/* Save Pallet Action */}
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-amber-200">
-                                <span className="text-[11px] text-amber-800">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-divider">
+                                <span className="text-[11px] text-content-secondary">
                                   Review values and click Save Pallet to apply into inward.
                                 </span>
                                 <button
@@ -2243,7 +2245,7 @@ export function ManualInwardModal({
                                     setErrorMsg(null);
                                     handleUpdatePalletRow(row.id, { isSaved: true });
                                   }}
-                                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
+                                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                   <span>Save Pallet</span>
@@ -2263,19 +2265,19 @@ export function ManualInwardModal({
                           <>
                             {/* When Pallet is Saved: Show Clean Info Banner */}
                             {row.isSaved ? (
-                              <div className="px-3 py-2 rounded-lg bg-purple-500/10 text-purple-900 border border-purple-500/30 text-xs flex items-center justify-between">
-                                <span className="flex items-center space-x-2">
-                                  <Layers className="w-4 h-4 text-purple-600 shrink-0" />
+                              <div className="px-3 py-2 rounded-lg bg-surface border border-blue-200 dark:border-blue-900/40 text-xs flex items-center justify-between shadow-2xs">
+                                <span className="flex items-center space-x-2 text-content-primary">
+                                  <Layers className="w-4 h-4 text-blue-500 shrink-0" />
                                   <span>
-                                    <strong>Shortfill Reconciled:</strong> {sfillUnits} recovery units for INV #{row.priorInvoiceNo || '—'} (PLT #{row.priorShortfallPalletNumber || '—'})
+                                    <strong className="font-semibold text-content-primary">Shortfill Reconciled:</strong> {sfillUnits} recovery units for INV #{row.priorInvoiceNo || '—'} (PLT #{row.priorShortfallPalletNumber || '—'})
                                     {autoRegUnits > 0 && ` + ${autoRegUnits} regular new units`}
-                                    {' '}• <strong>{bUnits} units</strong> entering active floor inventory.
+                                    {' '}• <span className="text-content-secondary font-medium">{bUnits} units entering active floor inventory.</span>
                                   </span>
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => handleUpdatePalletRow(row.id, { isSaved: false })}
-                                  className="text-purple-800 hover:text-purple-950 font-semibold flex items-center space-x-1 cursor-pointer ml-2 shrink-0 underline text-[11px]"
+                                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 font-medium flex items-center space-x-1 cursor-pointer ml-2 shrink-0 underline text-[11px]"
                                   title="Edit shortfill settings"
                                 >
                                   <Pencil className="w-3 h-3" />
@@ -2284,7 +2286,7 @@ export function ManualInwardModal({
                               </div>
                             ) : (
                               /* Editing Configuration Form */
-                              <div className="p-3 rounded-lg bg-surface border border-purple-300 dark:border-purple-700/60 space-y-2.5 animate-scale-up">
+                              <div className="p-3 rounded-lg bg-surface-secondary/40 border border-divider space-y-2.5">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                                   {/* Prior Invoice Dropdown */}
                                   <div className="sm:col-span-2">
@@ -2372,25 +2374,25 @@ export function ManualInwardModal({
                                         handleUpdatePalletRow(row.id, { shortfillUnits: val });
                                       }}
                                       onWheel={(e) => e.currentTarget.blur()}
-                                      className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-bold bg-surface border-purple-300 text-purple-700 outline-none focus:ring-1 focus:ring-purple-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      className="w-full px-2.5 py-1.5 rounded-lg border font-mono font-medium bg-surface border-divider text-content-primary outline-none focus:border-brand-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-xs"
                                     />
                                   </div>
                                 </div>
 
                                 {/* Auto-Calculated Split Banner */}
-                                <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-xs text-purple-950 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 font-sans">
+                                <div className="p-2.5 rounded-lg bg-surface border border-divider text-xs text-content-primary flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 font-sans">
                                   <span>
-                                    <strong>Auto-Calculated Split:</strong>{' '}
-                                    <span className="text-purple-700 font-bold font-mono">{sfillUnits} Shortfill Units</span> (reconciling INV #{row.priorInvoiceNo || '—'}) +{' '}
-                                    <span className="text-blue-700 font-bold font-mono">{autoRegUnits} Regular New Units</span>
+                                    <strong className="font-semibold">Auto-Calculated Split:</strong>{' '}
+                                    <span className="text-blue-600 dark:text-blue-400 font-semibold font-mono">{sfillUnits} Shortfill Units</span> (reconciling INV #{row.priorInvoiceNo || '—'}) +{' '}
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold font-mono">{autoRegUnits} Regular New Units</span>
                                   </span>
-                                  <span className="font-mono font-bold text-purple-800">
+                                  <span className="font-mono font-semibold text-content-secondary">
                                     = {bUnits} Total Units on Floor
                                   </span>
                                 </div>
 
                                 {/* Transit Pallet Renumbering Toggle */}
-                                <div className="pt-1 border-t border-divider/60">
+                                <div className="pt-1 border-t border-divider">
                                   <label className="flex items-center space-x-1.5 text-[11px] text-content-secondary font-medium mb-1 cursor-pointer select-none">
                                     <input
                                       type="checkbox"
@@ -2418,7 +2420,7 @@ export function ManualInwardModal({
                                         })
                                       }
                                       placeholder="Enter arrived pallet number..."
-                                      className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-purple-300 text-purple-800 font-mono text-xs outline-none focus:ring-1 focus:ring-purple-500"
+                                      className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono text-xs outline-none focus:border-brand-primary"
                                     />
                                   ) : (
                                     <span className="text-[10px] text-content-muted block">
@@ -2428,8 +2430,8 @@ export function ManualInwardModal({
                                 </div>
 
                                 {/* Save Pallet Action */}
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-purple-200">
-                                  <span className="text-[11px] text-purple-800">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-divider">
+                                  <span className="text-[11px] text-content-secondary">
                                     Review split and click Save Pallet to apply reconciliation into inward.
                                   </span>
                                   <button
@@ -2450,7 +2452,7 @@ export function ManualInwardModal({
                                       setErrorMsg(null);
                                       handleUpdatePalletRow(row.id, { isSaved: true, regularUnits: autoRegUnits });
                                     }}
-                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
+                                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
                                   >
                                     <Check className="w-3.5 h-3.5" />
                                     <span>Save Pallet</span>
