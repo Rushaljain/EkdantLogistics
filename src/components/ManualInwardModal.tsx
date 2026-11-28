@@ -1656,17 +1656,7 @@ export function ManualInwardModal({
                   return (
                     <div
                       key={row.id}
-                      className={`p-3.5 rounded-xl border transition-all text-xs space-y-3 ${
-                        hasAttachedFills
-                          ? 'bg-purple-50/20 border-purple-200 dark:border-purple-900/40'
-                          : row.receiptStatus === 'SHORTFALL'
-                          ? 'bg-amber-50/20 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/40'
-                          : row.receiptStatus === 'SHORTFILL'
-                          ? 'bg-blue-50/20 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900/40'
-                          : row.receiptStatus === 'PARTIALLY_RECEIVED'
-                          ? 'bg-indigo-50/20 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-900/40'
-                          : 'bg-surface border-divider shadow-xs'
-                      }`}
+                      className="p-3.5 rounded-xl border border-divider bg-surface shadow-xs transition-all text-xs space-y-3"
                     >
                       {/* Shortfill Recovery Indicator Banner (when editing an inward that received a shortfill) */}
                       {hasAttachedFills && (
@@ -1820,10 +1810,10 @@ export function ManualInwardModal({
                             Pallet Wt
                           </label>
                           <div
-                            className={`h-[34px] px-1.5 rounded-lg border flex items-center justify-center font-mono font-medium text-xs truncate ${
+                            className={`h-[34px] px-1.5 rounded-lg border flex items-center justify-center font-mono font-semibold text-xs truncate ${
                               palletTare > 0
-                                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50'
-                                : 'bg-surface-secondary/50 border-divider text-content-muted'
+                                ? 'bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                                : 'bg-surface-secondary border-divider text-content-muted'
                             }`}
                             title={`Palette Weight (Tare Wood) = Gross (${pGross} kg) - Net (${pNet} kg) = ${palletTare} kg`}
                           >
@@ -1846,23 +1836,23 @@ export function ManualInwardModal({
                               }
                               handleUpdatePalletRow(row.id, updates);
                             }}
-                            className={`w-full px-2.5 py-1.5 rounded-lg font-medium outline-none cursor-pointer border text-xs transition-colors ${
+                            className={`w-full px-2.5 py-1.5 rounded-lg font-semibold outline-none cursor-pointer border text-xs transition-colors ${
                               row.receiptStatus === 'RECEIVED'
-                                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800/50'
+                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-700'
                                 : row.receiptStatus === 'NOT_RECEIVED'
-                                ? 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-750'
+                                ? 'bg-slate-100 text-slate-900 border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600'
                                 : row.receiptStatus === 'PARTIALLY_RECEIVED'
-                                ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-250 dark:border-indigo-800/50'
+                                ? 'bg-indigo-50 text-indigo-950 border-indigo-300 dark:bg-indigo-950/50 dark:text-indigo-100 dark:border-indigo-700'
                                 : row.receiptStatus === 'SHORTFALL'
-                                ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800/50'
-                                : 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800/50'
+                                ? 'bg-amber-50 text-amber-950 border-amber-300 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-700'
+                                : 'bg-blue-50 text-blue-950 border-blue-300 dark:bg-blue-950/50 dark:text-blue-100 dark:border-blue-700'
                             }`}
                           >
-                            <option value="RECEIVED">Received (Full Physical)</option>
-                            <option value="PARTIALLY_RECEIVED">Partially Received (Split Intake)</option>
-                            <option value="NOT_RECEIVED">Not Received (Arriving Later)</option>
-                            <option value="SHORTFALL">Shortfall (Missing / Partial)</option>
-                            <option value="SHORTFILL">Shortfill (Reconcile Prior)</option>
+                            <option value="RECEIVED" className="bg-surface text-content-primary">Received (Full Physical)</option>
+                            <option value="PARTIALLY_RECEIVED" className="bg-surface text-content-primary">Partially Received (Split Intake)</option>
+                            <option value="NOT_RECEIVED" className="bg-surface text-content-primary">Not Received (Arriving Later)</option>
+                            <option value="SHORTFALL" className="bg-surface text-content-primary">Shortfall (Missing / Partial)</option>
+                            <option value="SHORTFILL" className="bg-surface text-content-primary">Shortfill (Reconcile Prior)</option>
                           </select>
                         </div>
 
@@ -2311,11 +2301,11 @@ export function ManualInwardModal({
                                       }}
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono text-xs outline-none cursor-pointer focus:border-brand-primary"
                                     >
-                                      <option value="">-- Select Prior Invoice --</option>
+                                      <option value="" className="bg-surface text-content-secondary">-- Select Prior Invoice --</option>
                                       {openShortfallInvoices.map((ent) => {
                                         const rem = getEntryRemainingShortfallUnits(ent);
                                         return (
-                                          <option key={ent.id} value={ent.customInvoiceNo}>
+                                          <option key={ent.id} value={ent.customInvoiceNo} className="bg-surface text-content-primary">
                                             {ent.customInvoiceNo} — {ent.customer || 'No Customer'} ({rem} Units short)
                                           </option>
                                         );
@@ -2344,9 +2334,9 @@ export function ManualInwardModal({
                                       }}
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono text-xs outline-none cursor-pointer focus:border-brand-primary"
                                     >
-                                      <option value="">-- Select Pallet --</option>
+                                      <option value="" className="bg-surface text-content-secondary">-- Select Pallet --</option>
                                       {priorPallets.map((sf) => (
-                                        <option key={sf.id} value={String(sf.palletNumber)}>
+                                        <option key={sf.id} value={String(sf.palletNumber)} className="bg-surface text-content-primary">
                                           PLT #{sf.palletNumber} (
                                           {sf.remainingShortfallUnits ?? sf.shortfallUnits} Units rem)
                                         </option>
