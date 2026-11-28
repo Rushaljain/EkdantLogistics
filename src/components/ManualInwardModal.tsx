@@ -180,7 +180,7 @@ export function ManualInwardModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMinimised, setIsMinimised] = useState(false);
 
-  // Pallet Transfer State (Move units from source pallet to target pallet, discarding source)
+  // Pallet Transfer State (Move units from source pallet to target pallet)
   const [transferSourceRow, setTransferSourceRow] = useState<InwardPalletRow | null>(null);
   const [transferSelectedInvoiceId, setTransferSelectedInvoiceId] = useState<string>('');
   const [transferSelectedTargetKey, setTransferSelectedTargetKey] = useState<string>('');
@@ -191,6 +191,8 @@ export function ManualInwardModal({
     targetInvoiceNo: string;
     unitsTransferred: number;
     newTotalUnits: number;
+    sourceDiscarded: boolean;
+    remainingSourceUnits: number;
   } | null>(null);
 
   // Clean reset form state
@@ -579,9 +581,28 @@ export function ManualInwardModal({
       return;
     }
 
+    const sourceTotalUnits = typeof transferSourceRow.billedUnits === 'number'
+      ? transferSourceRow.billedUnits
+      : (parseInt(String(transferSourceRow.billedUnits), 10) || 0);
+
+    if (unitsToMove > sourceTotalUnits) {
+      alert(`Cannot transfer ${unitsToMove} units. Source pallet only has ${sourceTotalUnits} units.`);
+      return;
+    }
+
+    const isFullTransfer = unitsToMove >= sourceTotalUnits;
+    const remainingSourceUnits = Math.max(0, sourceTotalUnits - unitsToMove);
+    const sourceRatio = sourceTotalUnits > 0 ? unitsToMove / sourceTotalUnits : 1;
+    const remainingRatio = sourceTotalUnits > 0 ? remainingSourceUnits / sourceTotalUnits : 0;
+
     const sourcePalletNum = transferSourceRow.palletNumber || 'Source Pallet';
     const sourceNetKg = transferSourceRow.netWeightKg || 0;
     const sourceGrossKg = transferSourceRow.grossWeightKg || 0;
+
+    const transferredNetKg = toExactWeight(sourceNetKg * sourceRatio);
+    const transferredGrossKg = toExactWeight(sourceGrossKg * sourceRatio);
+    const remainingNetKg = toExactWeight(sourceNetKg * remainingRatio);
+    const remainingGrossKg = toExactWeight(sourceGrossKg * remainingRatio);
 
     if (transferSelectedInvoiceId === 'CURRENT') {
       // Target is another pallet in the CURRENT inward modal
@@ -595,28 +616,45 @@ export function ManualInwardModal({
       const newTargetUnits = targetBilled + unitsToMove;
       const targetPalletNum = targetRow.palletNumber;
 
-      // Update target pallet with transferred units and weight, discard source pallet
-      setPalletRows((prev) =>
-        prev
-          .filter((r) => r.id !== transferSourceRow.id)
-          .map((r) => {
-            if (r.id === targetRow.id) {
+      // If full transfer: discard source pallet. If partial transfer: update source pallet with remaining units/weight
+      setPalletRows((prev) => {
+        let rows = prev;
+        if (isFullTransfer) {
+          rows = rows.filter((r) => r.id !== transferSourceRow.id);
+        } else {
+          rows = rows.map((r) => {
+            if (r.id === transferSourceRow.id) {
               return {
                 ...r,
-                billedUnits: newTargetUnits,
-                netWeightKg: toExactWeight((r.netWeightKg || 0) + sourceNetKg),
-                grossWeightKg: toExactWeight((r.grossWeightKg || 0) + sourceGrossKg)
+                billedUnits: remainingSourceUnits,
+                netWeightKg: remainingNetKg,
+                grossWeightKg: remainingGrossKg
               };
             }
             return r;
-          })
-      );
+          });
+        }
 
-      // Decrement invoiced pallets count by 1 since source pallet is discarded/merged
-      setInvoicedPalletsStr((prevStr) => {
-        const count = parseInt(prevStr, 10);
-        return count > 1 ? String(count - 1) : prevStr;
+        return rows.map((r) => {
+          if (r.id === targetRow.id) {
+            return {
+              ...r,
+              billedUnits: newTargetUnits,
+              netWeightKg: toExactWeight((r.netWeightKg || 0) + transferredNetKg),
+              grossWeightKg: toExactWeight((r.grossWeightKg || 0) + transferredGrossKg)
+            };
+          }
+          return r;
+        });
       });
+
+      // If full transfer: decrement invoiced pallets count by 1 since source pallet is discarded
+      if (isFullTransfer) {
+        setInvoicedPalletsStr((prevStr) => {
+          const count = parseInt(prevStr, 10);
+          return count > 1 ? String(count - 1) : prevStr;
+        });
+      }
 
       // Show Acknowledgement pop-up
       setTransferAck({
@@ -624,7 +662,9 @@ export function ManualInwardModal({
         targetPalletNum: `PLT #${targetPalletNum}`,
         targetInvoiceNo: customInvoiceNo || 'Current Inward',
         unitsTransferred: unitsToMove,
-        newTotalUnits: newTargetUnits
+        newTotalUnits: newTargetUnits,
+        sourceDiscarded: isFullTransfer,
+        remainingSourceUnits
       });
       setTransferSourceRow(null);
     } else {
@@ -654,8 +694,8 @@ export function ManualInwardModal({
               ...p,
               receivedBatteries: newTargetUnits,
               invoicedBatteries: newTargetUnits,
-              grossWeightKg: toExactWeight((p.grossWeightKg || 0) + sourceGrossKg),
-              netWeightKg: toExactWeight((p.netWeightKg || 0) + sourceNetKg)
+              grossWeightKg: toExactWeight((p.grossWeightKg || 0) + transferredGrossKg),
+              netWeightKg: toExactWeight((p.netWeightKg || 0) + transferredNetKg)
             };
           }
           return p;
@@ -672,12 +712,28 @@ export function ManualInwardModal({
 
       saveCFSLedgerEntries(updatedEntries);
 
-      // Discard source pallet from current inward
-      setPalletRows((prev) => prev.filter((r) => r.id !== transferSourceRow.id));
-      setInvoicedPalletsStr((prevStr) => {
-        const count = parseInt(prevStr, 10);
-        return count > 1 ? String(count - 1) : prevStr;
-      });
+      // If full transfer: discard source pallet from current inward. If partial: preserve with remaining units
+      if (isFullTransfer) {
+        setPalletRows((prev) => prev.filter((r) => r.id !== transferSourceRow.id));
+        setInvoicedPalletsStr((prevStr) => {
+          const count = parseInt(prevStr, 10);
+          return count > 1 ? String(count - 1) : prevStr;
+        });
+      } else {
+        setPalletRows((prev) =>
+          prev.map((r) => {
+            if (r.id === transferSourceRow.id) {
+              return {
+                ...r,
+                billedUnits: remainingSourceUnits,
+                netWeightKg: remainingNetKg,
+                grossWeightKg: remainingGrossKg
+              };
+            }
+            return r;
+          })
+        );
+      }
 
       // Show Acknowledgement pop-up
       setTransferAck({
@@ -685,7 +741,9 @@ export function ManualInwardModal({
         targetPalletNum: `PLT #${targetPalletNum}`,
         targetInvoiceNo: targetEntry.customInvoiceNo,
         unitsTransferred: unitsToMove,
-        newTotalUnits: newTargetUnits
+        newTotalUnits: newTargetUnits,
+        sourceDiscarded: isFullTransfer,
+        remainingSourceUnits
       });
       setTransferSourceRow(null);
     }
@@ -2148,10 +2206,14 @@ export function ManualInwardModal({
                                           recordedAt: new Date().toISOString()
                                         };
                                         const updatedLogs = [...pastReceipts, newLog];
+                                        const newTotalLanded = updatedLogs.reduce((s, l) => s + (l.unitsReceived || 0), 0);
+                                        const isNowFullyReceived = bUnits > 0 && newTotalLanded >= bUnits;
+
                                         handleUpdatePalletRow(row.id, {
                                           partialReceipts: updatedLogs,
                                           currentReceivedUnits: '',
-                                          isSaved: false
+                                          isSaved: isNowFullyReceived,
+                                          ...(isNowFullyReceived ? { receiptStatus: 'RECEIVED' } : {})
                                         });
                                         setErrorMsg(null);
                                       }}
@@ -2233,11 +2295,15 @@ export function ManualInwardModal({
                                         setErrorMsg(`Pallet ${row.palletNumber}: Please enter received units or log at least one intake batch.`);
                                         return;
                                       }
+                                      const finalTotalLanded = finalReceipts.reduce((s, l) => s + (l.unitsReceived || 0), 0);
+                                      const isNowFullyReceived = bUnits > 0 && finalTotalLanded >= bUnits;
+
                                       setErrorMsg(null);
                                       handleUpdatePalletRow(row.id, {
                                         partialReceipts: finalReceipts,
                                         currentReceivedUnits: '',
-                                        isSaved: true
+                                        isSaved: true,
+                                        ...(isNowFullyReceived ? { receiptStatus: 'RECEIVED' } : {})
                                       });
                                     }}
                                     className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer self-end sm:self-auto"
@@ -2802,7 +2868,9 @@ export function ManualInwardModal({
             {/* Source Pallet Summary */}
             <div className="p-3 rounded-xl bg-surface-secondary/70 border border-divider flex items-center justify-between text-xs font-mono">
               <div>
-                <span className="text-[10px] text-content-muted block uppercase">Source Pallet (Will be Discarded)</span>
+                <span className="text-[10px] text-content-muted block uppercase">
+                  Source Pallet {transferUnitsInput !== '' && Number(transferUnitsInput) >= (typeof transferSourceRow.billedUnits === 'number' ? transferSourceRow.billedUnits : parseInt(String(transferSourceRow.billedUnits), 10) || 0) ? '(Will be Discarded)' : '(Will be Preserved with Remaining Units)'}
+                </span>
                 <span className="font-bold text-brand-primary text-sm">PLT #{transferSourceRow.palletNumber}</span>
                 <span className="text-content-secondary ml-2 font-sans text-xs">({transferSourceRow.model || 'STANDARD'})</span>
               </div>
@@ -2933,7 +3001,11 @@ export function ManualInwardModal({
                 className="px-4 py-2 rounded-lg bg-brand-primary hover:bg-brand-primary-hover disabled:opacity-50 text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>Confirm Transfer &amp; Discard Source</span>
+                <span>
+                  {transferUnitsInput !== '' && Number(transferUnitsInput) >= (typeof transferSourceRow.billedUnits === 'number' ? transferSourceRow.billedUnits : parseInt(String(transferSourceRow.billedUnits), 10) || 0)
+                    ? 'Confirm Transfer & Discard Source'
+                    : 'Confirm Partial Transfer'}
+                </span>
               </button>
             </div>
           </div>
@@ -2969,9 +3041,11 @@ export function ManualInwardModal({
                 <span>New Target Total:</span>
                 <span className="font-bold text-emerald-600">{transferAck.newTotalUnits} Units</span>
               </div>
-              <div className="flex justify-between text-amber-700 font-sans text-[11px] pt-1 border-t border-divider/60">
-                <span>Source Status:</span>
-                <span className="font-semibold">Discarded</span>
+              <div className="flex justify-between text-content-secondary font-sans text-[11px] pt-1 border-t border-divider/60">
+                <span>Source Pallet:</span>
+                <span className={transferAck.sourceDiscarded ? 'text-amber-700 font-semibold' : 'text-emerald-700 font-semibold'}>
+                  {transferAck.sourceDiscarded ? 'Discarded (All Units Moved)' : `Preserved with ${transferAck.remainingSourceUnits} Units`}
+                </span>
               </div>
             </div>
 
