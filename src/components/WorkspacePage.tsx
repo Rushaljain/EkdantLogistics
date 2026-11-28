@@ -152,15 +152,13 @@ export function WorkspacePage({
     const today = formatToDDMMYYYY(new Date());
     const vName = shipmentJson.vesselName || '';
     const vVoy = shipmentJson.voyageNumber || '';
-    const vComb = vName ? (vVoy ? `${vName} / ${vVoy}` : vName) : '';
     return {
       containerNo: (shipmentJson.containerNumber && !shipmentJson.containerNumber.startsWith('Container ') ? shipmentJson.containerNumber : '') || shipmentJson.containers?.[0]?.containerNumber || '',
       sealNo: (shipmentJson.sealNumber !== '---' ? shipmentJson.sealNumber : '') || shipmentJson.containers?.[0]?.sealNumber || '',
       bookingNumber: shipmentJson.bookingNumber || '',
-      forwarderReference: shipmentJson.forwarderReference || '',
       carrierName: shipmentJson.carrierName || '',
-      vesselVoyage: vComb,
-      additionalHandlingInfo: (shipmentJson as any).additionalHandlingInformation || shipmentJson.emergencyContactPhone || '',
+      vesselName: vName,
+      voyageNumber: vVoy,
       shippingBillNo: shipmentJson.shippingBillNumbers || '',
       shippingBillDate: shipmentJson.invoiceDates?.[0] || today,
       stuffingDate: today,
@@ -244,25 +242,19 @@ export function WorkspacePage({
       targetShipment.vesselName?.trim() &&
       targetShipment.vesselName !== '---'
     );
-    const hasForwarder = Boolean(
-      targetShipment.forwarderReference?.trim() &&
-      targetShipment.forwarderReference !== '---'
-    );
 
-    if (!hasContainerNo || !hasSealNo || !hasBookingNo || !hasCarrier || !hasVessel || !hasForwarder) {
+    if (!hasContainerNo || !hasSealNo || !hasBookingNo || !hasCarrier || !hasVessel) {
       setPendingExport({ actionType, docType, overrideShipment });
       const vName = targetShipment.vesselName || '';
       const vVoy = targetShipment.voyageNumber || '';
-      const vComb = vName ? (vVoy ? `${vName} / ${vVoy}` : vName) : '';
       setDispatchDetails((prev) => ({
         ...prev,
         containerNo: (targetShipment.containerNumber && !targetShipment.containerNumber.startsWith('Container ') ? targetShipment.containerNumber : prev.containerNo) || '',
         sealNo: (targetShipment.sealNumber !== '---' ? targetShipment.sealNumber : prev.sealNo) || '',
         bookingNumber: targetShipment.bookingNumber || prev.bookingNumber || '',
-        forwarderReference: targetShipment.forwarderReference || prev.forwarderReference || '',
         carrierName: targetShipment.carrierName || prev.carrierName || '',
-        vesselVoyage: vComb || prev.vesselVoyage || '',
-        additionalHandlingInfo: (targetShipment as any).additionalHandlingInformation || targetShipment.emergencyContactPhone || prev.additionalHandlingInfo || '',
+        vesselName: vName || prev.vesselName || '',
+        voyageNumber: vVoy || prev.voyageNumber || '',
         shippingBillNo: targetShipment.shippingBillNumbers || prev.shippingBillNo || ''
       }));
       setShowDispatchConfirmModal(true);
@@ -285,18 +277,13 @@ export function WorkspacePage({
       alert('Please enter Carrier Name before proceeding.');
       return;
     }
-    if (!dispatchDetails.vesselVoyage.trim()) {
-      alert('Please enter Vessel and Voyage Number before proceeding.');
-      return;
-    }
-    if (!dispatchDetails.forwarderReference.trim()) {
-      alert("Please enter Freight Forwarder's Reference before proceeding.");
+    if (!dispatchDetails.vesselName.trim()) {
+      alert('Please enter Vessel Name before proceeding.');
       return;
     }
 
-    const vParts = dispatchDetails.vesselVoyage.split('/').map((s) => s.trim());
-    const vName = vParts[0] || dispatchDetails.vesselVoyage;
-    const vVoy = vParts.length > 1 ? vParts.slice(1).join('/') : (shipmentJson.voyageNumber || '');
+    const vName = dispatchDetails.vesselName.trim();
+    const vVoy = dispatchDetails.voyageNumber.trim();
 
     const { stuffedCount } = executeWorkspaceDispatch(shipmentJson, dispatchDetails);
     const updatedContainers = (shipmentJson.containers && shipmentJson.containers.length > 0)
@@ -311,9 +298,6 @@ export function WorkspacePage({
       carrierName: dispatchDetails.carrierName,
       vesselName: vName,
       voyageNumber: vVoy,
-      forwarderReference: dispatchDetails.forwarderReference,
-      emergencyContactPhone: dispatchDetails.additionalHandlingInfo || shipmentJson.emergencyContactPhone,
-      additionalHandlingInformation: dispatchDetails.additionalHandlingInfo || (shipmentJson as any).additionalHandlingInformation,
       shippingBillNumbers: dispatchDetails.shippingBillNo || shipmentJson.shippingBillNumbers,
       containers: updatedContainers,
       isDispatched: true,
@@ -1454,37 +1438,27 @@ export function WorkspacePage({
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-content-secondary mb-1 font-medium">Vessel and Voy *</label>
-                    <input
-                      type="text"
-                      value={dispatchDetails.vesselVoyage}
-                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, vesselVoyage: e.target.value })}
-                      placeholder="e.g. BROOKLYN BRIDGE / 0184E"
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-content-secondary mb-1 font-medium">Freight Forwarder's Ref *</label>
-                    <input
-                      type="text"
-                      value={dispatchDetails.forwarderReference}
-                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, forwarderReference: e.target.value })}
-                      placeholder="e.g. FWD000263"
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-content-secondary mb-1 font-medium">Additional Handling Information</label>
-                    <input
-                      type="text"
-                      value={dispatchDetails.additionalHandlingInfo}
-                      onChange={(e) => setDispatchDetails({ ...dispatchDetails, additionalHandlingInfo: e.target.value })}
-                      placeholder="e.g. MR. SUJOY MOB : 9729899131"
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
-                    />
+                  <div className="col-span-2 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-content-secondary mb-1 font-medium">Vessel Name *</label>
+                      <input
+                        type="text"
+                        value={dispatchDetails.vesselName}
+                        onChange={(e) => setDispatchDetails({ ...dispatchDetails, vesselName: e.target.value })}
+                        placeholder="e.g. BROOKLYN BRIDGE"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-content-secondary mb-1 font-medium">Voyage No.</label>
+                      <input
+                        type="text"
+                        value={dispatchDetails.voyageNumber}
+                        onChange={(e) => setDispatchDetails({ ...dispatchDetails, voyageNumber: e.target.value })}
+                        placeholder="e.g. 0184E"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-input-bg border border-divider text-content-primary font-mono focus:outline-none focus:border-brand-primary"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
