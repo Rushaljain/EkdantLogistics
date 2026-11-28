@@ -2310,12 +2310,11 @@ export function ManualInwardModal({
                                       className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono text-xs outline-none cursor-pointer focus:border-brand-primary"
                                     >
                                       <option value="">-- Select Prior Invoice --</option>
-                                      {allPriorInvoices.map((ent) => {
+                                      {openShortfallInvoices.map((ent) => {
                                         const rem = getEntryRemainingShortfallUnits(ent);
                                         return (
                                           <option key={ent.id} value={ent.customInvoiceNo}>
-                                            {ent.customInvoiceNo} — {ent.customer || 'No Customer'} (
-                                            {rem > 0 ? `${rem} Units short` : 'Cleared'})
+                                            {ent.customInvoiceNo} — {ent.customer || 'No Customer'} ({rem} Units short)
                                           </option>
                                         );
                                       })}
