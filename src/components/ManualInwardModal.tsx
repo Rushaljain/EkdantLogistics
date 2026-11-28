@@ -20,7 +20,8 @@ import {
   Check,
   Pencil,
   Layers,
-  Lock
+  Lock,
+  ArrowRightLeft
 } from 'lucide-react';
 import type {
   CFSLedgerEntry,
@@ -31,6 +32,7 @@ import type {
 } from '../types/index.ts';
 import {
   getCFSLedgerEntries,
+  saveCFSLedgerEntries,
   recordManualInward,
   cleanInvoiceNumber,
   getSuppliedShortFillsForInvoice,
@@ -177,6 +179,19 @@ export function ManualInwardModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMinimised, setIsMinimised] = useState(false);
+
+  // Pallet Transfer State (Move units from source pallet to target pallet, discarding source)
+  const [transferSourceRow, setTransferSourceRow] = useState<InwardPalletRow | null>(null);
+  const [transferSelectedInvoiceId, setTransferSelectedInvoiceId] = useState<string>('');
+  const [transferSelectedTargetKey, setTransferSelectedTargetKey] = useState<string>('');
+  const [transferUnitsInput, setTransferUnitsInput] = useState<number | ''>('');
+  const [transferAck, setTransferAck] = useState<{
+    sourcePalletNum: string;
+    targetPalletNum: string;
+    targetInvoiceNo: string;
+    unitsTransferred: number;
+    newTotalUnits: number;
+  } | null>(null);
 
   // Clean reset form state
   const resetForm = () => {
@@ -542,6 +557,138 @@ export function ManualInwardModal({
         arrivedPalletNumber: ''
       }
     ]);
+  };
+
+  const handleOpenTransferModal = (row: InwardPalletRow) => {
+    setTransferSourceRow(row);
+    const units = typeof row.billedUnits === 'number' ? row.billedUnits : (parseInt(String(row.billedUnits), 10) || 0);
+    setTransferUnitsInput(units > 0 ? units : '');
+    setTransferSelectedInvoiceId('CURRENT');
+    setTransferSelectedTargetKey('');
+  };
+
+  const handleConfirmTransferUnits = () => {
+    if (!transferSourceRow) return;
+    const unitsToMove = typeof transferUnitsInput === 'number' ? transferUnitsInput : parseInt(String(transferUnitsInput), 10) || 0;
+    if (unitsToMove <= 0) {
+      alert('Please enter a valid number of units to transfer (> 0).');
+      return;
+    }
+    if (!transferSelectedTargetKey) {
+      alert('Please select a target pallet to receive the units.');
+      return;
+    }
+
+    const sourcePalletNum = transferSourceRow.palletNumber || 'Source Pallet';
+    const sourceNetKg = transferSourceRow.netWeightKg || 0;
+    const sourceGrossKg = transferSourceRow.grossWeightKg || 0;
+
+    if (transferSelectedInvoiceId === 'CURRENT') {
+      // Target is another pallet in the CURRENT inward modal
+      const targetRow = palletRows.find((r) => r.id === transferSelectedTargetKey);
+      if (!targetRow) {
+        alert('Selected target pallet not found.');
+        return;
+      }
+
+      const targetBilled = typeof targetRow.billedUnits === 'number' ? targetRow.billedUnits : (parseInt(String(targetRow.billedUnits), 10) || 0);
+      const newTargetUnits = targetBilled + unitsToMove;
+      const targetPalletNum = targetRow.palletNumber;
+
+      // Update target pallet with transferred units and weight, discard source pallet
+      setPalletRows((prev) =>
+        prev
+          .filter((r) => r.id !== transferSourceRow.id)
+          .map((r) => {
+            if (r.id === targetRow.id) {
+              return {
+                ...r,
+                billedUnits: newTargetUnits,
+                netWeightKg: toExactWeight((r.netWeightKg || 0) + sourceNetKg),
+                grossWeightKg: toExactWeight((r.grossWeightKg || 0) + sourceGrossKg)
+              };
+            }
+            return r;
+          })
+      );
+
+      // Decrement invoiced pallets count by 1 since source pallet is discarded/merged
+      setInvoicedPalletsStr((prevStr) => {
+        const count = parseInt(prevStr, 10);
+        return count > 1 ? String(count - 1) : prevStr;
+      });
+
+      // Show Acknowledgement pop-up
+      setTransferAck({
+        sourcePalletNum: `PLT #${sourcePalletNum}`,
+        targetPalletNum: `PLT #${targetPalletNum}`,
+        targetInvoiceNo: customInvoiceNo || 'Current Inward',
+        unitsTransferred: unitsToMove,
+        newTotalUnits: newTargetUnits
+      });
+      setTransferSourceRow(null);
+    } else {
+      // Target is a pallet in an EXISTING saved invoice in the warehouse ledger
+      const targetEntry = existingEntries.find((e) => e.id === transferSelectedInvoiceId);
+      if (!targetEntry) {
+        alert('Selected invoice not found in warehouse ledger.');
+        return;
+      }
+
+      const targetPallet = (targetEntry.pallets || []).find((p) => p.id === transferSelectedTargetKey || String(p.palletNumber) === transferSelectedTargetKey);
+      if (!targetPallet) {
+        alert('Selected target pallet not found in target invoice.');
+        return;
+      }
+
+      const currentTargetUnits = targetPallet.receivedBatteries || targetPallet.invoicedBatteries || 0;
+      const newTargetUnits = currentTargetUnits + unitsToMove;
+      const targetPalletNum = targetPallet.palletNumber;
+
+      // Update the target invoice in the persistent ledger
+      const updatedEntries = existingEntries.map((e) => {
+        if (e.id !== targetEntry.id) return e;
+        const updatedPallets = (e.pallets || []).map((p) => {
+          if (p.id === targetPallet.id || String(p.palletNumber) === String(targetPallet.palletNumber)) {
+            return {
+              ...p,
+              receivedBatteries: newTargetUnits,
+              invoicedBatteries: newTargetUnits,
+              grossWeightKg: toExactWeight((p.grossWeightKg || 0) + sourceGrossKg),
+              netWeightKg: toExactWeight((p.netWeightKg || 0) + sourceNetKg)
+            };
+          }
+          return p;
+        });
+
+        const newBalanceBatteries = (e.balanceBatteries || 0) + unitsToMove;
+        return {
+          ...e,
+          balanceBatteries: newBalanceBatteries,
+          actualReceivedBatteries: (e.actualReceivedBatteries || 0) + unitsToMove,
+          pallets: updatedPallets
+        };
+      });
+
+      saveCFSLedgerEntries(updatedEntries);
+
+      // Discard source pallet from current inward
+      setPalletRows((prev) => prev.filter((r) => r.id !== transferSourceRow.id));
+      setInvoicedPalletsStr((prevStr) => {
+        const count = parseInt(prevStr, 10);
+        return count > 1 ? String(count - 1) : prevStr;
+      });
+
+      // Show Acknowledgement pop-up
+      setTransferAck({
+        sourcePalletNum: `PLT #${sourcePalletNum}`,
+        targetPalletNum: `PLT #${targetPalletNum}`,
+        targetInvoiceNo: targetEntry.customInvoiceNo,
+        unitsTransferred: unitsToMove,
+        newTotalUnits: newTargetUnits
+      });
+      setTransferSourceRow(null);
+    }
   };
 
   const handleRemovePalletRow = (rowId: string) => {
@@ -1852,19 +1999,15 @@ export function ManualInwardModal({
                           </select>
                         </div>
 
-                        {/* Action: Edit & Delete */}
+                        {/* Action: Transfer & Delete */}
                         <div className="col-span-2 sm:col-span-1 text-right flex items-center justify-end space-x-1">
                           <button
                             type="button"
-                            onClick={() => handleUpdatePalletRow(row.id, { isSaved: !row.isSaved })}
-                            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                              row.isSaved
-                                ? 'text-brand-primary hover:bg-brand-primary/10'
-                                : 'text-amber-800 bg-amber-100 hover:bg-amber-200'
-                            }`}
-                            title={row.isSaved ? "Edit pallet configuration" : "Close edit mode"}
+                            onClick={() => handleOpenTransferModal(row)}
+                            className="p-1.5 rounded-md text-brand-primary hover:bg-brand-primary/10 transition-colors cursor-pointer"
+                            title="Transfer pallet units to another pallet and discard this pallet"
                           >
-                            <Pencil className="w-3.5 h-3.5" />
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
@@ -2628,6 +2771,220 @@ export function ManualInwardModal({
           </div>
         </form>
       </div>
+
+      {/* =========================================================================
+          PALLET UNIT TRANSFER MODAL
+          ========================================================================= */}
+      {transferSourceRow && (
+        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-fade-in">
+          <div className="bg-surface border border-divider rounded-2xl shadow-2xl max-w-lg w-full p-5 space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between pb-3 border-b border-divider">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-lg bg-brand-primary/10 text-brand-primary flex items-center justify-center">
+                  <ArrowRightLeft className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-content-primary">Transfer Pallet Units</h3>
+                  <p className="text-[11px] text-content-secondary">
+                    Move boxes from PLT #{transferSourceRow.palletNumber} to another pallet and discard source.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTransferSourceRow(null)}
+                className="text-content-muted hover:text-content-primary p-1 rounded-md transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Source Pallet Summary */}
+            <div className="p-3 rounded-xl bg-surface-secondary/70 border border-divider flex items-center justify-between text-xs font-mono">
+              <div>
+                <span className="text-[10px] text-content-muted block uppercase">Source Pallet (Will be Discarded)</span>
+                <span className="font-bold text-brand-primary text-sm">PLT #{transferSourceRow.palletNumber}</span>
+                <span className="text-content-secondary ml-2 font-sans text-xs">({transferSourceRow.model || 'STANDARD'})</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-content-muted block uppercase">Available Units</span>
+                <span className="font-bold text-emerald-600 text-sm">
+                  {typeof transferSourceRow.billedUnits === 'number' ? transferSourceRow.billedUnits : (parseInt(String(transferSourceRow.billedUnits), 10) || 0)} Units
+                </span>
+              </div>
+            </div>
+
+            {/* Transfer Controls */}
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-content-secondary font-medium mb-1">
+                  1. Select Destination Invoice <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={transferSelectedInvoiceId}
+                  onChange={(e) => {
+                    setTransferSelectedInvoiceId(e.target.value);
+                    setTransferSelectedTargetKey('');
+                  }}
+                  className="w-full px-2.5 py-2 rounded-lg bg-input-bg border border-divider text-content-primary text-xs outline-none focus:border-brand-primary cursor-pointer font-sans"
+                >
+                  <option value="CURRENT">
+                    Current Inward ({customInvoiceNo || 'Draft Inward'} • {palletRows.length - 1} other pallets)
+                  </option>
+                  {existingEntries.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.customInvoiceNo} — {e.customer || 'Customer'} ({e.invoiceDate || e.cartingInDate || 'No Date'} • {e.balancePallets || 0} Plts / {e.balanceBatteries || 0} Units)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-content-secondary font-medium mb-1">
+                  2. Select Destination Pallet <span className="text-red-500">*</span>
+                </label>
+                {transferSelectedInvoiceId === 'CURRENT' ? (
+                  palletRows.filter((r) => r.id !== transferSourceRow.id).length === 0 ? (
+                    <p className="text-[11px] text-content-muted p-2 rounded-lg border border-dashed border-divider">
+                      No other pallets in this inward. Please select another invoice above.
+                    </p>
+                  ) : (
+                    <select
+                      value={transferSelectedTargetKey}
+                      onChange={(e) => setTransferSelectedTargetKey(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-lg bg-input-bg border border-divider text-content-primary font-mono text-xs outline-none focus:border-brand-primary cursor-pointer"
+                    >
+                      <option value="">-- Choose Target Pallet --</option>
+                      {palletRows
+                        .filter((r) => r.id !== transferSourceRow.id)
+                        .map((r) => {
+                          const units = typeof r.billedUnits === 'number' ? r.billedUnits : (parseInt(String(r.billedUnits), 10) || 0);
+                          return (
+                            <option key={r.id} value={r.id}>
+                              PLT #{r.palletNumber} — Currently {units} Units ({r.model || 'STANDARD'})
+                            </option>
+                          );
+                        })}
+                    </select>
+                  )
+                ) : (
+                  (() => {
+                    const selEntry = existingEntries.find((e) => e.id === transferSelectedInvoiceId);
+                    const destPallets = (selEntry?.pallets || []).filter((p) => p.status !== 'STUFFED_DISPATCHED');
+                    if (destPallets.length === 0) {
+                      return (
+                        <p className="text-[11px] text-content-muted p-2 rounded-lg border border-dashed border-divider">
+                          No available ready pallets found on this selected invoice.
+                        </p>
+                      );
+                    }
+                    return (
+                      <select
+                        value={transferSelectedTargetKey}
+                        onChange={(e) => setTransferSelectedTargetKey(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-lg bg-input-bg border border-divider text-content-primary font-mono text-xs outline-none focus:border-brand-primary cursor-pointer"
+                      >
+                        <option value="">-- Choose Target Pallet --</option>
+                        {destPallets.map((p) => {
+                          const u = p.receivedBatteries || p.invoicedBatteries || 0;
+                          return (
+                            <option key={p.id} value={p.id}>
+                              PLT #{p.palletNumber} — Currently {u} Units ({p.model || 'STANDARD'})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    );
+                  })()
+                )}
+              </div>
+
+              <div>
+                <label className="block text-content-secondary font-medium mb-1">
+                  3. Units to Transfer <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={typeof transferSourceRow.billedUnits === 'number' ? transferSourceRow.billedUnits : undefined}
+                  value={transferUnitsInput}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1);
+                    setTransferUnitsInput(val);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-surface border border-divider text-content-primary font-mono font-bold text-xs outline-none focus:border-brand-primary"
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-divider flex items-center justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setTransferSourceRow(null)}
+                className="px-4 py-2 rounded-lg border border-divider hover:bg-surface-secondary text-content-secondary hover:text-content-primary text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmTransferUnits}
+                disabled={!transferSelectedTargetKey}
+                className="px-4 py-2 rounded-lg bg-brand-primary hover:bg-brand-primary-hover disabled:opacity-50 text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>Confirm Transfer &amp; Discard Source</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          ACKNOWLEDGEMENT POPUP
+          ========================================================================= */}
+      {transferAck && (
+        <div className="fixed inset-0 z-70 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-fade-in">
+          <div className="bg-surface border border-emerald-300 dark:border-emerald-700/60 rounded-2xl shadow-2xl max-w-sm w-full p-5 space-y-3.5 text-center animate-scale-up">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
+              <Check className="w-6 h-6 stroke-[2.5]" />
+            </div>
+
+            <div>
+              <h3 className="text-base font-bold text-content-primary">Units Transferred Successfully</h3>
+              <p className="text-xs text-content-secondary mt-1">
+                <strong>{transferAck.unitsTransferred} units</strong> transferred from{' '}
+                <strong className="text-brand-primary">{transferAck.sourcePalletNum}</strong> to{' '}
+                <strong className="text-emerald-700 font-bold">{transferAck.targetPalletNum}</strong> on invoice{' '}
+                <strong>{transferAck.targetInvoiceNo}</strong>.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-surface-secondary/70 border border-divider text-xs font-mono space-y-1">
+              <div className="flex justify-between text-content-secondary">
+                <span>Transferred Amount:</span>
+                <span className="font-bold text-content-primary">+{transferAck.unitsTransferred} Units</span>
+              </div>
+              <div className="flex justify-between text-content-secondary">
+                <span>New Target Total:</span>
+                <span className="font-bold text-emerald-600">{transferAck.newTotalUnits} Units</span>
+              </div>
+              <div className="flex justify-between text-amber-700 font-sans text-[11px] pt-1 border-t border-divider/60">
+                <span>Source Status:</span>
+                <span className="font-semibold">Discarded</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setTransferAck(null)}
+              className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
