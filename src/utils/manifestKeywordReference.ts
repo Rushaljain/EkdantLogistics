@@ -543,14 +543,16 @@ export function normalizeShipmentState(raw: ExtractedShipmentJSON): ExtractedShi
   if (!clean.dgDeclarantName || clean.dgDeclarantName.trim() === '' || clean.dgDeclarantName === clean.shipperName || /exide/i.test(clean.dgDeclarantName)) {
     clean.dgDeclarantName = 'MR.SUJOY EXPORT MANAGER';
   }
-  if (!clean.dgDeclarationPlaceAndDate || clean.dgDeclarationPlaceAndDate.trim() === '') {
-    const loc = clean.portOfLoading || clean.placeOfReceipt || '';
+  if (!clean.dgDeclarationPlaceAndDate || clean.dgDeclarationPlaceAndDate.trim() === '' || /nhava\s*sh?eva/i.test(clean.dgDeclarationPlaceAndDate)) {
+    const loc = 'Mumbai, India';
     const dateStr = clean.invoiceDates?.[clean.invoiceDates.length - 1] || clean.invoiceDates?.[0] || '';
-    if (loc && dateStr) {
+    if (dateStr) {
       clean.dgDeclarationPlaceAndDate = `${loc} / ${dateStr}`;
-    } else if (loc || dateStr) {
-      clean.dgDeclarationPlaceAndDate = loc || dateStr;
+    } else {
+      clean.dgDeclarationPlaceAndDate = loc;
     }
+  } else {
+    clean.dgDeclarationPlaceAndDate = clean.dgDeclarationPlaceAndDate.replace(/nhava\s*sh?eva(,\s*india)?/gi, 'Mumbai, India');
   }
 
   // Commercial & Terms defaults
@@ -1311,15 +1313,12 @@ export const KEYWORD_RULES: KeywordRule[] = [
     ],
     excludeKeywords: ['driver', 'carrier'],
     resolver: (shipment) => {
-      if (shipment.dgDeclarationPlaceAndDate && shipment.dgDeclarationPlaceAndDate.trim()) {
-        return shipment.dgDeclarationPlaceAndDate.trim();
+      let placeDate = (shipment.dgDeclarationPlaceAndDate && shipment.dgDeclarationPlaceAndDate.trim()) || '';
+      if (!placeDate || /nhava\s*sh?eva/i.test(placeDate)) {
+        const date = shipment.invoiceDates && shipment.invoiceDates.length > 0 ? shipment.invoiceDates[0] : '';
+        placeDate = date ? `Mumbai, India / ${date}` : 'Mumbai, India';
       }
-      const port = shipment.portOfLoading || shipment.placeOfReceipt;
-      const date = shipment.invoiceDates && shipment.invoiceDates.length > 0 ? shipment.invoiceDates[0] : '';
-      if (port && date) {
-        return `${port} / ${date}`;
-      }
-      return port || date || '';
+      return placeDate.replace(/nhava\s*sh?eva(,\s*india)?/gi, 'Mumbai, India');
     }
   },
 

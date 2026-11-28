@@ -130,6 +130,14 @@ export function DgDocumentCanvas({
   const activePallets = activeShipment.totalPallets || (activeShipment.pallets && activeShipment.pallets.length) || 0;
   const activeBoxes = activeShipment.totalBoxes || activeShipment.totalPackages || 0;
 
+  const normalizePlaceDate = (val?: string) => {
+    if (!val || !val.trim() || val.trim() === '---') {
+      const d = activeShipment.invoiceDates?.[0] || '';
+      return d ? `Mumbai, India / ${d}` : 'Mumbai, India';
+    }
+    return val.replace(/nhava\s*sh?eva(,\s*india)?/gi, 'Mumbai, India').replace(/Mumbai,\s*India,\s*India/gi, 'Mumbai, India');
+  };
+
   // Helper to read field value prioritizing custom override -> active shipment state
   const getVal = (overrideKey: string, fallbackVal: string): string => {
     if (customOverrides[overrideKey] !== undefined) {
@@ -329,7 +337,7 @@ export function DgDocumentCanvas({
                   <EditableDocCell
                     boxNumber=""
                     label="Place and Date"
-                    value={getVal('box_22_place_date', activeShipment.dgDeclarationPlaceAndDate || '')}
+                    value={normalizePlaceDate(getVal('box_22_place_date', activeShipment.dgDeclarationPlaceAndDate || ''))}
                     onChange={(val) => handleUpdate('box_22_place_date', val, 'dgDeclarationPlaceAndDate')}
                   />
                   <div className="p-2 flex flex-col justify-between relative min-h-[56px]">
@@ -508,7 +516,7 @@ export function DgDocumentCanvas({
                   <EditableDocCell
                     boxNumber=""
                     label="Place and Date"
-                    value={getVal('box_22_place_date', activeShipment.dgDeclarationPlaceAndDate || '')}
+                    value={normalizePlaceDate(getVal('box_22_place_date', activeShipment.dgDeclarationPlaceAndDate || ''))}
                     onChange={(val) => handleUpdate('box_22_place_date', val, 'dgDeclarationPlaceAndDate')}
                   />
                   <div className="p-2 flex flex-col justify-between relative min-h-[56px]">
@@ -858,7 +866,7 @@ export function DgDocumentCanvas({
                     rows={2}
                   />
                   <div className="mt-1.5 text-[8px] text-slate-600 font-mono">
-                    Place and date: <span className="font-semibold text-slate-800">{activeShipment.dgDeclarationPlaceAndDate || '---'}</span>
+                    Place and date: <span className="font-semibold text-slate-800">{normalizePlaceDate(activeShipment.dgDeclarationPlaceAndDate)}</span>
                   </div>
                 </div>
                 <div className="border-t border-dotted border-slate-400 pt-1 mt-2 text-[8px] text-slate-500">
@@ -908,7 +916,7 @@ export function DgDocumentCanvas({
                     rows={2}
                   />
                   <div className="mt-1.5 text-[8px] text-slate-600 font-mono">
-                    Place and date: <span className="font-semibold text-slate-800">{activeShipment.dgDeclarationPlaceAndDate || '---'}</span>
+                    Place and date: <span className="font-semibold text-slate-800">{normalizePlaceDate(activeShipment.dgDeclarationPlaceAndDate)}</span>
                   </div>
                 </div>
                 <div className="border-t border-dotted border-slate-400 pt-1 mt-2 text-[8px] text-slate-500">

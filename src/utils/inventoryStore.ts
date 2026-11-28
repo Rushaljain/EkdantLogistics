@@ -1810,6 +1810,7 @@ export function buildShipmentFromStockPallets(
     bookingNumber: src?.bookingNumber || '',
     portOfLoading: src?.portOfLoading || 'NHAVA SHEVA, INDIA',
     placeOfReceipt: src?.placeOfReceipt || 'NHAVA SHEVA',
+    dgDeclarationPlaceAndDate: `Mumbai, India / ${firstEntry?.invoiceDate || formatToDDMMYYYY(new Date())}`,
     portOfDischarge: destinationPort || src?.portOfDischarge || '',
     placeOfDelivery: destinationPort || src?.placeOfDelivery || '',
     finalDestination: destinationPort || src?.finalDestination || '',

@@ -66,6 +66,19 @@ function escapeHtml(str: string): string {
 }
 
 /**
+ * Normalizes DG Place and Date to Mumbai, India (replacing Nhava Sheva/Seva)
+ */
+function normalizeDgPlaceDate(val?: string, defaultDate?: string): string {
+  if (!val || !val.trim() || val.trim() === '---') {
+    return defaultDate ? `Mumbai, India / ${defaultDate}` : 'Mumbai, India';
+  }
+  let cleaned = val.replace(/nhava\s*sh?eva(,\s*india)?/gi, 'Mumbai, India');
+  cleaned = cleaned.replace(/jnpt(,\s*india)?/gi, 'Mumbai, India');
+  cleaned = cleaned.replace(/Mumbai,\s*India,\s*India/gi, 'Mumbai, India');
+  return cleaned;
+}
+
+/**
  * Escapes characters for XML in OpenXML .docx
  */
 function escapeXml(str: string): string {
@@ -298,7 +311,7 @@ function generateDgManifestHtml(
             <tr>
               <td style="width: 50%;">
                 <span class="box-num">Place and Date</span>
-                <div class="box-val">${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+                <div class="box-val">${escapeHtml(normalizeDgPlaceDate(shipment.dgDeclarationPlaceAndDate, shipment.invoiceDates?.[0]))}</div>
               </td>
               <td style="width: 50%;">
                 <span class="box-num">Signature on Behalf of Packer</span>
@@ -388,7 +401,7 @@ function generateDgManifestHtml(
             <tr>
               <td style="width: 50%;">
                 <span class="box-num">Place and Date</span>
-                <div class="box-val">${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+                <div class="box-val">${escapeHtml(normalizeDgPlaceDate(shipment.dgDeclarationPlaceAndDate, shipment.invoiceDates?.[0]))}</div>
               </td>
               <td style="width: 50%;">
                 <span class="box-num">Signature on Behalf of Shipper</span>
@@ -661,7 +674,7 @@ function generateDgManifestHtml(
           </div>
           <div style="margin-top: 6px; font-size: 7.5px;">
             <div>Name/Status: <strong>${escapeHtml(box20Declarant || 'AUTHORIZED SIGNATORY')}</strong></div>
-            <div>Place and Date: ${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+            <div>Place and Date: ${escapeHtml(normalizeDgPlaceDate(shipment.dgDeclarationPlaceAndDate, shipment.invoiceDates?.[0]))}</div>
             <div style="margin-top: 2px;">Signature of Declarant:</div>
             <div style="height: 16px; border-bottom: 1px dotted #94a3b8; margin-top: 2px;"></div>
           </div>
@@ -686,7 +699,7 @@ function generateDgManifestHtml(
           <div style="margin-top: 6px; font-size: 7.5px;">
             <div>Company Name: <strong>${escapeHtml(shipment.shipperName || '---')}</strong></div>
             <div>Declarant: ${escapeHtml(box22ShipperDecl || shipment.dgDeclarantName || 'AUTHORIZED SIGNATORY')}</div>
-            <div>Place &amp; Date: ${escapeHtml(shipment.dgDeclarationPlaceAndDate || '---')}</div>
+            <div>Place &amp; Date: ${escapeHtml(normalizeDgPlaceDate(shipment.dgDeclarationPlaceAndDate, shipment.invoiceDates?.[0]))}</div>
             <div style="margin-top: 2px;">Signature of Declarant:</div>
             <div style="height: 16px; border-bottom: 1px dotted #94a3b8; margin-top: 2px;"></div>
           </div>
@@ -1380,8 +1393,8 @@ export async function generatePopulatedDocxBlob(
       shipperCompany: shipment.shipperName || 'EXIDE INDUSTRIES LIMITED',
       declarantName: declarant,
       shipperDeclarantName: declarant,
-      placeAndDate: val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''),
-      shipperPlaceAndDate: val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''),
+      placeAndDate: normalizeDgPlaceDate(val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''), shipment.invoiceDates?.[0]),
+      shipperPlaceAndDate: normalizeDgPlaceDate(val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''), shipment.invoiceDates?.[0]),
       haulierName: '',
       vehicleRegNo: '',
       unNumber: unNo,
@@ -1727,7 +1740,7 @@ export async function exportManifestToDocx(
           ? defaultShipperDeclarant
           : rawShipperDecl;
 
-        const placeDate = val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || '');
+        const placeDate = normalizeDgPlaceDate(val('box_22_place_date', shipment.dgDeclarationPlaceAndDate || ''), shipment.invoiceDates?.[0]);
 
         const rawEmergency = val('box_21_emergency_contact', shipment.emergencyContactPhone || '');
         const cleanEmergency = (/handling\s*instructions/i.test(rawEmergency) || !rawEmergency.trim()) ? '' : rawEmergency.trim();
