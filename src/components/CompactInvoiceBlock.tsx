@@ -37,7 +37,7 @@ interface CompactInvoiceBlockProps {
   onTogglePallet: (palletId: string, customer: string) => void;
   onSelectAllPallets: (palletIds: string[], customer: string) => void;
   onDeselectAllPallets: (palletIds: string[]) => void;
-  onConfirmFullGateIn: (entryId: string) => void;
+  onConfirmFullGateIn?: (entryId: string) => void;
   onOpenDispatch: (entry: CFSLedgerEntry) => void;
   onLoadCheckedIntoWorkspace?: (pallets: PalletStockUnit[]) => void;
   onGenerateDgBl?: (entry: CFSLedgerEntry, pallets: PalletStockUnit[]) => void;
@@ -58,7 +58,6 @@ export function CompactInvoiceBlock({
   onTogglePallet,
   onSelectAllPallets,
   onDeselectAllPallets,
-  onConfirmFullGateIn,
   onOpenDispatch,
   onRecordShortFill,
   onDeleteInvoice,
@@ -503,25 +502,17 @@ export function CompactInvoiceBlock({
 
             {/* 100% Received / Gate-In Pending / Pending Inward */}
             {(entry.inwardStatus === 'PENDING_INWARD' || (entry.pendingInwardBatteries || 0) > 0) ? (
-              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-medium flex items-center space-x-1 shrink-0">
+              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-medium flex items-center space-x-1 shrink-0 select-none">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                 <span>Pending Inward ({entry.actualReceivedPallets}/{entry.invoicedPallets}p)</span>
               </span>
             ) : entry.actualReceivedPallets < entry.invoicedPallets ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onConfirmFullGateIn(entry.id);
-                }}
-                className="px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-medium flex items-center space-x-1 shrink-0 cursor-pointer"
-                title="Click to confirm full receipt gate-in"
-              >
+              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-medium flex items-center space-x-1 shrink-0 select-none">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                <span>Gate-In ({entry.actualReceivedPallets}/{entry.invoicedPallets})</span>
-              </button>
+                <span>Gate-In Pending ({entry.actualReceivedPallets}/{entry.invoicedPallets}p)</span>
+              </span>
             ) : (
-              <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-medium flex items-center space-x-1 shrink-0">
+              <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-medium flex items-center space-x-1 shrink-0 select-none">
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                 <span>100% Recd</span>
               </span>
@@ -529,7 +520,7 @@ export function CompactInvoiceBlock({
 
             {/* Dangerous Goods (DG) Badge */}
             <span
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border shrink-0 ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border shrink-0 select-none ${
                 entry.dgCreated
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   : 'bg-slate-100 text-slate-500 border-slate-200'
@@ -541,7 +532,7 @@ export function CompactInvoiceBlock({
 
             {/* Bill of Lading (BL) Badge */}
             <span
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border shrink-0 ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border shrink-0 select-none ${
                 entry.blCreated
                   ? 'bg-blue-50 text-blue-700 border-blue-200'
                   : 'bg-slate-100 text-slate-500 border-slate-200'
@@ -551,49 +542,25 @@ export function CompactInvoiceBlock({
               BL {entry.blCreated ? '✓' : '—'}
             </span>
 
-            {/* DG & BL Required / Dispatched / Partially Dispatched / Outward Execution */}
+            {/* Outward & Dispatch Status Badges (Read-Only Status, No Actions / CTAs) */}
             {isFullyDispatched ? (
-              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-semibold flex items-center space-x-1 shrink-0">
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-semibold flex items-center space-x-1 shrink-0 select-none">
                 <CheckCircle2 className="w-3 h-3 text-slate-400" />
                 <span>Dispatched</span>
               </span>
             ) : isPartiallyDispatched ? (
-              <div className="flex items-center space-x-1 shrink-0">
-                <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-300 text-[10px] font-semibold flex items-center space-x-1 shrink-0">
-                  <Truck className="w-3 h-3 text-amber-600" />
-                  <span>Partially Dispatched ({entry.actualStuffedBatteries}u)</span>
-                </span>
-                {isOutwardUnlocked && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenDispatch(entry);
-                    }}
-                    className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[10px] flex items-center space-x-1 shadow-2xs transition-colors cursor-pointer shrink-0"
-                    title={`Outward dispatch remaining ${entry.balanceBatteries} units (${entry.balancePallets} pallets)`}
-                  >
-                    <Truck className="w-3 h-3" />
-                    <span>Outward ({entry.balancePallets}p)</span>
-                  </button>
-                )}
-              </div>
+              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-300 text-[10px] font-semibold flex items-center space-x-1 shrink-0 select-none">
+                <Truck className="w-3 h-3 text-amber-600" />
+                <span>Partially Dispatched ({entry.actualStuffedBatteries}u)</span>
+              </span>
             ) : isOutwardUnlocked ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenDispatch(entry);
-                }}
-                className="px-2.5 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[10px] flex items-center space-x-1 shadow-2xs transition-colors cursor-pointer shrink-0"
-                title={`Outward dispatch ready for ${entry.balancePallets} pallets`}
-              >
-                <Truck className="w-3 h-3" />
-                <span>Outward ({entry.balancePallets})</span>
-              </button>
+              <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-semibold flex items-center space-x-1 shrink-0 select-none">
+                <Truck className="w-3 h-3 text-emerald-600" />
+                <span>Ready for Outward</span>
+              </span>
             ) : (
               <span
-                className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-400 border border-slate-200 text-[10px] font-medium flex items-center space-x-1 shrink-0 cursor-not-allowed"
+                className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-400 border border-slate-200 text-[10px] font-medium flex items-center space-x-1 shrink-0 cursor-default select-none"
                 title="Both DG Manifest and Bill of Lading must be generated before executing outward dispatch"
               >
                 <Lock className="w-3 h-3 text-slate-400" />
