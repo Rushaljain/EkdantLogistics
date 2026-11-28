@@ -1810,11 +1810,7 @@ export function ManualInwardModal({
                             Pallet Wt
                           </label>
                           <div
-                            className={`h-[34px] px-1.5 rounded-lg border flex items-center justify-center font-mono font-semibold text-xs truncate ${
-                              palletTare > 0
-                                ? 'bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-200 border-amber-300 dark:border-amber-700'
-                                : 'bg-surface-secondary border-divider text-content-muted'
-                            }`}
+                            className="h-[34px] px-2 rounded-lg border border-divider bg-surface text-content-primary flex items-center justify-center font-mono font-medium text-xs truncate"
                             title={`Palette Weight (Tare Wood) = Gross (${pGross} kg) - Net (${pNet} kg) = ${palletTare} kg`}
                           >
                             {palletTare > 0 ? `${palletTare} kg` : '—'}
