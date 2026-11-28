@@ -1832,23 +1832,23 @@ export function ManualInwardModal({
                               }
                               handleUpdatePalletRow(row.id, updates);
                             }}
-                            className={`w-full px-2.5 py-1.5 rounded-lg font-semibold outline-none cursor-pointer border text-xs transition-colors ${
+                            className={`w-full px-2.5 py-1.5 rounded-lg font-semibold outline-none cursor-pointer border text-xs text-black transition-colors ${
                               row.receiptStatus === 'RECEIVED'
-                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-700'
-                                : row.receiptStatus === 'NOT_RECEIVED'
-                                ? 'bg-slate-100 text-slate-900 border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600'
+                                ? 'bg-emerald-200 border-emerald-400'
                                 : row.receiptStatus === 'PARTIALLY_RECEIVED'
-                                ? 'bg-indigo-50 text-indigo-950 border-indigo-300 dark:bg-indigo-950/50 dark:text-indigo-100 dark:border-indigo-700'
+                                ? 'bg-orange-200 border-orange-400'
+                                : row.receiptStatus === 'NOT_RECEIVED'
+                                ? 'bg-red-200 border-red-400'
                                 : row.receiptStatus === 'SHORTFALL'
-                                ? 'bg-amber-50 text-amber-950 border-amber-300 dark:bg-amber-950/50 dark:text-amber-100 dark:border-amber-700'
-                                : 'bg-blue-50 text-blue-950 border-blue-300 dark:bg-blue-950/50 dark:text-blue-100 dark:border-blue-700'
+                                ? 'bg-yellow-200 border-yellow-400'
+                                : 'bg-blue-200 border-blue-400'
                             }`}
                           >
-                            <option value="RECEIVED" className="bg-surface text-content-primary">Received (Full Physical)</option>
-                            <option value="PARTIALLY_RECEIVED" className="bg-surface text-content-primary">Partially Received (Split Intake)</option>
-                            <option value="NOT_RECEIVED" className="bg-surface text-content-primary">Not Received (Arriving Later)</option>
-                            <option value="SHORTFALL" className="bg-surface text-content-primary">Shortfall (Missing / Partial)</option>
-                            <option value="SHORTFILL" className="bg-surface text-content-primary">Shortfill (Reconcile Prior)</option>
+                            <option value="RECEIVED" className="bg-white text-black font-medium">Received (Full Physical)</option>
+                            <option value="PARTIALLY_RECEIVED" className="bg-white text-black font-medium">Partially Received (Split Intake)</option>
+                            <option value="NOT_RECEIVED" className="bg-white text-black font-medium">Not Received (Arriving Later)</option>
+                            <option value="SHORTFALL" className="bg-white text-black font-medium">Shortfall (Missing / Partial)</option>
+                            <option value="SHORTFILL" className="bg-white text-black font-medium">Shortfill (Reconcile Prior)</option>
                           </select>
                         </div>
 

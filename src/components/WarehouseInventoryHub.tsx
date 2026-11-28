@@ -2194,8 +2194,12 @@ export function WarehouseInventoryHub({
                                         type: isDispatch ? 'DISPATCH' : 'INWARD',
                                         date: dateStr,
                                         timestamp: parseDateStrToTime(dateStr) || new Date(m.createdAt).getTime(),
-                                        pallets: m.pallets,
-                                        batteries: m.batteries,
+                                        pallets: isDispatch && (inv.actualStuffedPallets || 0) > 0 && m.pallets > (inv.actualStuffedPallets || 0)
+                                          ? (inv.actualStuffedPallets || 0)
+                                          : m.pallets,
+                                        batteries: isDispatch && (inv.actualStuffedBatteries || 0) > 0 && m.batteries > (inv.actualStuffedBatteries || 0)
+                                          ? (inv.actualStuffedBatteries || 0)
+                                          : m.batteries,
                                         containerNo: m.containerNo,
                                         sealNo: m.sealNo,
                                         vehicleNo: m.vehicleNo,
